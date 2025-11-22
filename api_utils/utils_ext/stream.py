@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import time
 from typing import Any, AsyncGenerator
 
 
@@ -72,6 +73,11 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     last_ui_check_time = 0
     ui_check_interval = 30  # Check UI state every 30 empty reads (3 seconds)
     
+    # [LOGIC-FIX] Last Packet Watchdog for silence detection
+    last_packet_time = time.time()
+    silence_detection_threshold = 5.0  # 5 seconds of silence triggers completion
+    min_items_before_silence_check = 10  # Only check silence after receiving some data
+    
     # UI-based generation check helper
     async def check_ui_generation_active():
         """Check if the AI is still generating based on UI state."""
@@ -92,7 +98,10 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     return True
                     
             return False
-        except Exception:
+        except Exception as e:
+            # [FIX-ZOMBIE] If target closed, definitely not generating
+            if "Target closed" in str(e) or "Connection closed" in str(e):
+                return False
             # If UI check fails, assume generation is not active
             return False
 
@@ -134,14 +143,23 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 logger.warning(f"[{req_id}] ⛔ Quota detected during wait loop. Aborting request immediately.")
                 raise QuotaExceededError("Global Quota Limit Reached during stream wait.")
 
+            # [FIX-SHUTDOWN] Check for Global Shutdown
+            if GlobalState.IS_SHUTTING_DOWN.is_set():
+                logger.warning(f"[{req_id}] 🛑 Global Shutdown detected during wait loop. Aborting stream.")
+                yield {"done": True, "reason": "global_shutdown", "body": "", "function": []}
+                return
+
             try:
                 data = STREAM_QUEUE.get_nowait()
+                # [SYNC-FIX] CRITICAL: DONE signal forces immediate exit, ignoring all other conditions
                 if data is None:
-                    logger.info(f"[{req_id}] 接收到流结束标志 (None)")
+                    logger.info(f"[{req_id}] 🔴 CRITICAL: Received stream termination signal (None). Forcing immediate exit.")
                     break
                 empty_count = 0
                 data_received = True
                 received_items_count += 1
+                # [LOGIC-FIX] Update last packet time for silence detection
+                last_packet_time = time.time()
                 logger.debug(f"[{req_id}] 接收到流数据[#{received_items_count}]: {type(data)} - {str(data)[:200]}...")
 
                 if isinstance(data, str):
@@ -195,6 +213,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                                      logger.debug(f"[{req_id}] ⏸️ Skipping transition - boundary appears to be internal structure")
                                      # Keep everything in reason to avoid false transitions
 
+                        # [SYNC-FIX] CRITICAL: JSON DONE signal forces immediate exit, ignoring UI state
                         if parsed_data.get("done") is True:
                             body = parsed_data.get("body", "")
                             reason = parsed_data.get("reason", "")
@@ -211,7 +230,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                             if body or reason:
                                 has_content = True
                             
-                            logger.info(f"[{req_id}] 📊 JSON完成状态: Body={len(body)} (+{body_increment}), Reason={len(reason)} (+{reason_increment}), Total: Body={len(accumulated_body)}, Reason={accumulated_reason_len}, Transitions={boundary_transitions}")
+                            logger.info(f"[{req_id}] 🔴 CRITICAL: JSON DONE received. Body={len(body)}, Reason={len(reason)}. Forcing immediate stream completion.")
                             
                             # [FIX-06] Thinking-to-Answer Handover Protocol
                             # 检测是否只输出了思考过程而没有正文 (Thinking > 0, Body == 0)
@@ -344,8 +363,9 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         
                         yield data
                         
+                        # [SYNC-FIX] CRITICAL: Dict DONE signal forces immediate exit, ignoring UI state
                         if data.get("done") is True:
-                            logger.info(f"[{req_id}] 接收到字典格式的完成标志 (body长度:{len(body)}, reason长度:{len(reason)}, 已收到项目数:{received_items_count})")
+                            logger.info(f"[{req_id}] 🔴 CRITICAL: Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing immediate stream completion.")
                             if not has_content and received_items_count == 1 and not stale_done_ignored:
                                 logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
                                 stale_done_ignored = True
@@ -355,6 +375,13 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                             stale_done_ignored = False
             except (queue.Empty, asyncio.QueueEmpty):
                 empty_count += 1
+
+                # [LOGIC-FIX] Silence Detection: Check if stream has been silent for too long
+                if (received_items_count >= min_items_before_silence_check and
+                    time.time() - last_packet_time > silence_detection_threshold):
+                    logger.info(f"[{req_id}] 🔇 Stream silence detected ({silence_detection_threshold}s). Assuming generation complete.")
+                    yield {"done": True, "reason": "silence_detected", "body": "", "function": []}
+                    return
 
                 # Check for disconnect during wait
                 if check_client_disconnected:
@@ -380,24 +407,20 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     yield {"done": True, "reason": "ttfb_timeout", "body": "", "function": []}
                     return
 
-                # Enhanced timeout check with UI-based generation detection
+                # [CRITICAL-FIX] Network State Priority: Trust data flow over UI state
                 if empty_count >= max_empty_retries:
-                    # Check UI state before declaring timeout
-                    ui_generation_active = await check_ui_generation_active()
-                    
-                    if ui_generation_active:
-                        logger.info(f"[{req_id}] Stream timeout reached but UI shows active generation. Extending timeout by 30s...")
-                        max_empty_retries += 300  # Add 30 more seconds
-                        # Reset empty count to continue waiting
-                        empty_count = 0
-                        continue
+                    # CRITICAL FIX: Remove UI-based timeout extension
+                    # Trust Network State over UI State - force exit on timeout
+                    is_thinking = await check_ui_generation_active()
+                    if is_thinking:
+                        logger.warning(f"[{req_id}] 🚨 TIMEOUT REACHED despite active UI! Forcing stream completion.")
                     else:
-                        if not data_received:
-                            logger.error(f"[{req_id}] 流响应队列空读取次数达到上限且未收到任何数据，可能是辅助流未启动或出错")
-                        else:
-                            logger.warning(f"[{req_id}] 流响应队列空读取次数达到上限 ({max_empty_retries})，结束读取")
-                        yield {"done": True, "reason": "internal_timeout", "body": "", "function": []}
-                        return
+                        logger.warning(f"[{req_id}] ⏰ Stream timeout reached ({max_empty_retries} attempts). Ending stream.")
+                    
+                    if not data_received:
+                        logger.error(f"[{req_id}] Stream timeout: no data received, likely auxiliary stream failed")
+                    yield {"done": True, "reason": "internal_timeout", "body": "", "function": []}
+                    return
 
                 # Periodic logging and UI checks
                 if empty_count % 50 == 0:

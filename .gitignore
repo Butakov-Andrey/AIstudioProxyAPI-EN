@@ -233,6 +233,7 @@ deprecated_javascript_version/node_modules/
 memory-bank/
 gui_config.json
 .rooignore
+.kiloignore
 
 # key
 key.txt

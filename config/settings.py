@@ -57,3 +57,6 @@ USERSCRIPT_PATH = get_environment_variable('USERSCRIPT_PATH', 'browser_utils/mor
 # --- 响应完整性验证配置 ---
 EMERGENCY_WAIT_SECONDS = get_int_env('EMERGENCY_WAIT_SECONDS', 3)
 # 注意：MODEL_CONFIG_PATH 已废弃，现在直接从油猴脚本解析模型数据
+
+# --- Thinking Budget Configuration ---
+DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE = get_boolean_env("DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE", default=True)

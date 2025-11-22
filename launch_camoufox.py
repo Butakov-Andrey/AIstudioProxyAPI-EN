@@ -260,8 +260,16 @@ def signal_handler(sig, frame):
     from config.global_state import GlobalState
     logger.info(f"Received signal {signal.Signals(sig).name} ({sig}). Setting IS_SHUTTING_DOWN event...")
     GlobalState.IS_SHUTTING_DOWN.set()
-    logger.info("Initiating exit procedure...")
-    sys.exit(0)
+    logger.info("Initiating exit procedure (Force Exit)...")
+    
+    # [FIX-ZOMBIE] Run cleanup explicitly because os._exit skips atexit
+    try:
+        cleanup()
+    except Exception as e:
+        logger.error(f"Error during cleanup in signal handler: {e}")
+
+    logger.info("Exiting with os._exit(0)")
+    os._exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 

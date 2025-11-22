@@ -960,16 +960,15 @@ async def _wait_for_response_completion(
 
         time_elapsed = time.time() - start_time
         if time_elapsed > current_timeout_seconds:
-            # UI Thinking Safety Check
+            # CRITICAL FIX: Remove UI-based timeout extension
+            # Trust Network State over UI State - force exit on timeout
             is_thinking = await page.locator('button[aria-label="Stop generating"]').is_visible()
             if is_thinking:
-                logger.info(f"[{req_id}] Timeout reached, but model is thinking (Stop button visible). Extending wait by 10s...")
-                current_timeout_seconds += 10  # Add 10 more seconds
-                continue # Continue the loop
+                logger.warning(f"[{req_id}] 🚨 TIMEOUT REACHED despite active UI! Forcing stream completion.")
             else:
-                logger.error(f"[{req_id}] (WaitV3) 等待响应完成超时 ({current_timeout_seconds:.1f}s) and UI is idle. Aborting.")
-                await save_error_snapshot(f"wait_completion_v3_overall_timeout_{req_id}")
-                return False
+                logger.warning(f"[{req_id}] ⏰ (WaitV3) 等待响应完成超时 ({current_timeout_seconds:.1f}s). Aborting.")
+            await save_error_snapshot(f"wait_completion_v3_overall_timeout_{req_id}")
+            return False
 
         try:
             check_client_disconnected_func("等待响应完成 - 超时检查后")
@@ -981,10 +980,8 @@ async def _wait_for_response_completion(
         is_thinking = await stop_button_locator.is_visible()
         if is_thinking:
             if DEBUG_LOGS_ENABLED:
-                logger.debug(f"[{req_id}] (WaitV3) Google is thinking (Stop button visible). Resetting timeout start time.")
-            start_time = time.time() # Reset timeout while Google is thinking
-            # Reset the timeout to its original calculated value, as we've just reset the timer
-            current_timeout_seconds = timeout_seconds
+                logger.debug(f"[{req_id}] (WaitV3) UI shows thinking, but NOT resetting timeout (Network State Priority)")
+            # CRITICAL FIX: Removed timeout reset logic - trust network state over UI state
 
         # --- 主要条件: 输入框空 & 提交按钮禁用 ---
         is_input_empty = await prompt_textarea_locator.input_value() == ""
