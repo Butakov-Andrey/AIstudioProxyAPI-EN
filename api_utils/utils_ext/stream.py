@@ -27,8 +27,14 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     if STREAM_QUEUE is None:
         logger.warning(f"[{req_id}] STREAM_QUEUE is None, 无法使用流响应")
         return
+        
+    # 引入 PageController 用于 DOM 兜底
+    from browser_utils.page_controller import PageController
 
     logger.info(f"[{req_id}] 开始使用流响应 (TTFB Timeout: {timeout:.2f}s)")
+
+    accumulated_body = ""
+    accumulated_reason_len = 0
 
     # Enhanced timeout settings for thinking models
     empty_count = 0
@@ -119,9 +125,60 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         if parsed_data.get("done") is True:
                             body = parsed_data.get("body", "")
                             reason = parsed_data.get("reason", "")
+                            accumulated_body += body
+                            accumulated_reason_len += len(reason)
+                            
                             if body or reason:
                                 has_content = True
                             logger.info(f"[{req_id}] 接收到JSON格式的完成标志 (body长度:{len(body)}, reason长度:{len(reason)}, 已收到项目数:{received_items_count})")
+                            
+                            # [FIX-06] Thinking-to-Answer Handover Protocol
+                            # 检测是否只输出了思考过程而没有正文 (Thinking > 0, Body == 0)
+                            if accumulated_reason_len > 0 and len(accumulated_body) == 0:
+                                logger.info(f"[{req_id}] ⚠️ 检测到 Thinking-Only 响应 (Reason: {accumulated_reason_len}, Body: 0)。启动 DOM Body-Wait 协议...")
+                                
+                                try:
+                                    if page:
+                                        pc = PageController(page, logger, req_id)
+                                        # 尝试等待正文出现，最多等 10 秒 (20 * 0.5s)
+                                        wait_attempts = 20
+                                        dom_body_found = False
+                                        
+                                        for wait_i in range(wait_attempts):
+                                            await asyncio.sleep(0.5)
+                                            # 使用新添加的 get_body_text_only_from_dom 方法
+                                            dom_text = await pc.get_body_text_only_from_dom()
+                                            
+                                            if dom_text and len(dom_text.strip()) > 0:
+                                                logger.info(f"[{req_id}] ✅ 在第 {wait_i+1} 次尝试中通过 DOM 捕获到正文: {len(dom_text)} chars")
+                                                
+                                                # [Sanity Check] Prevent Duplication
+                                                # 如果 stream 发送了部分内容（虽然这里是 body==0 的分支，但为了代码健壮性保留检查逻辑）
+                                                final_text_to_yield = dom_text
+                                                if len(accumulated_body) > 0:
+                                                    if dom_text.startswith(accumulated_body):
+                                                        final_text_to_yield = dom_text[len(accumulated_body):]
+                                                        logger.info(f"[{req_id}] 去重: 剔除已发送的 {len(accumulated_body)} 字符")
+                                                
+                                                if final_text_to_yield:
+                                                    # 构造一个新的 body chunk
+                                                    new_chunk = {
+                                                        "body": final_text_to_yield,
+                                                        "reason": "",
+                                                        "done": False
+                                                    }
+                                                    yield new_chunk
+                                                    accumulated_body += final_text_to_yield
+                                                    dom_body_found = True
+                                                    break
+                                        
+                                        if not dom_body_found:
+                                            logger.warning(f"[{req_id}] ⚠️ DOM 等待超时，仍未获取到正文。将执行 Fallback (复制思考内容或提示错误)。")
+                                    else:
+                                        logger.warning(f"[{req_id}] ⚠️ 无法执行 DOM Wait (Page 对象为空)。")
+                                except Exception as dom_wait_err:
+                                    logger.error(f"[{req_id}] ❌ DOM Body-Wait 协议执行出错: {dom_wait_err}")
+
                             if not has_content and received_items_count == 1 and not stale_done_ignored:
                                 logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
                                 stale_done_ignored = True
@@ -131,6 +188,9 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         else:
                             body = parsed_data.get("body", "")
                             reason = parsed_data.get("reason", "")
+                            accumulated_body += body
+                            accumulated_reason_len += len(reason)
+                            
                             if body or reason:
                                 has_content = True
                             stale_done_ignored = False

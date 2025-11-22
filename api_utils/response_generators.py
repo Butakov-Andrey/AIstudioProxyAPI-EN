@@ -145,6 +145,28 @@ async def gen_sse_from_aux_stream(
                 last_body_pos = len(body)
                 yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
             elif done:
+                # [FIX-07] Client Compatibility Fallback (The "Saved You" Fix)
+                # 如果到最后 body 还是空的，但有思考内容，强制填充 body 以防止客户端报错
+                if len(full_body_content) == 0 and len(full_reasoning_content) > 0:
+                    fallback_text = "\n\n(Model finished thinking but produced no text output.)"
+                    
+                    delta_content = {"role": "assistant", "content": fallback_text}
+                    choice_item = {
+                        "index": 0,
+                        "delta": delta_content,
+                        "finish_reason": None,
+                        "native_finish_reason": None,
+                    }
+                    output = {
+                        "id": chat_completion_id,
+                        "object": "chat.completion.chunk",
+                        "model": model_name_for_stream,
+                        "created": created_timestamp,
+                        "choices": [choice_item],
+                    }
+                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                    full_body_content += fallback_text
+
                 if function and len(function) > 0:
                     tool_calls_list = []
                     for func_idx, function_call_data in enumerate(function):

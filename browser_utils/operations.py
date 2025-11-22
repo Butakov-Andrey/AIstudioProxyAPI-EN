@@ -477,8 +477,13 @@ async def detect_and_extract_page_error(page: AsyncPage, req_id: str) -> Optiona
         logger.warning(f"[{req_id}]    检查页面错误时出错: {e}")
         return None
 
-async def save_error_snapshot(error_name: str = 'error'):
-    """保存错误快照"""
+async def save_error_snapshot(error_name: str = 'error', extra_context: Optional[Dict[str, Any]] = None):
+    """保存错误快照 - 增强版本，支持额外上下文信息
+    
+    Args:
+        error_name: 错误名称，用于生成文件名
+        extra_context: 额外的上下文信息，将保存为JSON文件
+    """
     import server
     name_parts = error_name.split('_')
     req_id = name_parts[-1] if len(name_parts) > 1 and len(name_parts[-1]) == 7 else None
@@ -500,13 +505,16 @@ async def save_error_snapshot(error_name: str = 'error'):
         filename_base = f"{base_error_name}_{filename_suffix}"
         screenshot_path = os.path.join(error_dir, f"{filename_base}.png")
         html_path = os.path.join(error_dir, f"{filename_base}.html")
+        context_path = os.path.join(error_dir, f"{filename_base}_context.json")
         
+        # 保存屏幕截图
         try:
             await page_to_snapshot.screenshot(path=screenshot_path, full_page=True, timeout=15000)
             logger.info(f"{log_prefix}   快照已保存到: {screenshot_path}")
         except Exception as ss_err:
             logger.error(f"{log_prefix}   保存屏幕截图失败 ({base_error_name}): {ss_err}")
         
+        # 保存HTML内容
         try:
             content = await page_to_snapshot.content()
             f = None
@@ -525,8 +533,141 @@ async def save_error_snapshot(error_name: str = 'error'):
                         logger.error(f"{log_prefix}   关闭 HTML 文件时出错: {close_err}")
         except Exception as html_err:
             logger.error(f"{log_prefix}   获取页面内容失败 ({base_error_name}): {html_err}")
+        
+        # 保存额外上下文信息
+        if extra_context:
+            try:
+                context_data = {
+                    "timestamp": timestamp,
+                    "error_name": base_error_name,
+                    "req_id": req_id,
+                    "context": extra_context,
+                    "page_url": page_to_snapshot.url if page_to_snapshot else "N/A",
+                    "user_agent": await page_to_snapshot.evaluate("navigator.userAgent") if page_to_snapshot else "N/A"
+                }
+                with open(context_path, 'w', encoding='utf-8') as f:
+                    json.dump(context_data, f, indent=2, ensure_ascii=False)
+                logger.info(f"{log_prefix}   上下文信息已保存到: {context_path}")
+            except Exception as context_err:
+                logger.error(f"{log_prefix}   保存上下文信息失败 ({base_error_name}): {context_err}")
+                
     except Exception as dir_err:
         logger.error(f"{log_prefix}   创建错误目录或保存快照时发生其他错误 ({base_error_name}): {dir_err}")
+
+
+async def capture_response_state_for_debug(req_id: str, captured_content: str = "", detection_method: str = "") -> Dict[str, Any]:
+    """捕获响应状态用于调试 - 专门用于分析响应完整性问题
+    
+    Args:
+        req_id: 请求ID
+        captured_content: 已捕获的内容
+        detection_method: 检测方法描述
+    
+    Returns:
+        Dict[str, Any]: 包含页面状态的调试信息
+    """
+    import server
+    page = server.page_instance
+    
+    if not page or page.is_closed():
+        return {"error": "Page not available"}
+    
+    debug_info = {
+        "req_id": req_id,
+        "timestamp": int(time.time() * 1000),
+        "detection_method": detection_method,
+        "captured_content_length": len(captured_content) if captured_content else 0,
+        "captured_content_preview": captured_content[:200] + "..." if len(captured_content) > 200 else captured_content,
+        "page_url": page.url,
+        "thinking_blocks_found": [],
+        "response_blocks_found": [],
+        "generation_status": {},
+        "ui_elements": {}
+    }
+    
+    try:
+        # 检查Thinking块
+        from config.selectors import (
+            THINKING_CONTAINER_SELECTOR,
+            THINKING_CONTENT_SELECTOR,
+            FINAL_RESPONSE_SELECTOR,
+            GENERATION_STATUS_SELECTOR,
+            COMPLETE_RESPONSE_CONTAINER_SELECTOR
+        )
+        
+        # 查找Thinking容器
+        thinking_containers = await page.locator(THINKING_CONTAINER_SELECTOR).all()
+        for i, container in enumerate(thinking_containers):
+            try:
+                is_visible = await container.is_visible(timeout=1000)
+                text_content = await container.inner_text(timeout=1000) if is_visible else ""
+                debug_info["thinking_blocks_found"].append({
+                    "index": i,
+                    "visible": is_visible,
+                    "text_length": len(text_content),
+                    "text_preview": text_content[:100] + "..." if len(text_content) > 100 else text_content
+                })
+            except Exception as e:
+                debug_info["thinking_blocks_found"].append({
+                    "index": i,
+                    "error": str(e)
+                })
+        
+        # 查找最终响应块
+        response_elements = await page.locator(FINAL_RESPONSE_SELECTOR).all()
+        for i, elem in enumerate(response_elements):
+            try:
+                is_visible = await elem.is_visible(timeout=1000)
+                text_content = await elem.inner_text(timeout=1000) if is_visible else ""
+                debug_info["response_blocks_found"].append({
+                    "index": i,
+                    "visible": is_visible,
+                    "text_length": len(text_content),
+                    "text_preview": text_content[:100] + "..." if len(text_content) > 100 else text_content
+                })
+            except Exception as e:
+                debug_info["response_blocks_found"].append({
+                    "index": i,
+                    "error": str(e)
+                })
+        
+        # 检查生成状态
+        generation_elements = await page.locator(GENERATION_STATUS_SELECTOR).all()
+        for i, elem in enumerate(generation_elements):
+            try:
+                is_visible = await elem.is_visible(timeout=1000)
+                aria_label = await elem.get_attribute("aria-label") if is_visible else ""
+                debug_info["generation_status"][f"status_{i}"] = {
+                    "visible": is_visible,
+                    "aria_label": aria_label
+                }
+            except Exception as e:
+                debug_info["generation_status"][f"status_{i}"] = {"error": str(e)}
+        
+        # 检查关键UI元素
+        from config.selectors import INPUT_SELECTOR, SUBMIT_BUTTON_SELECTOR, REGENERATE_BUTTON_SELECTOR
+        key_elements = {
+            "input_field": INPUT_SELECTOR,
+            "submit_button": SUBMIT_BUTTON_SELECTOR,
+            "regenerate_button": REGENERATE_BUTTON_SELECTOR
+        }
+        
+        for name, selector in key_elements.items():
+            try:
+                elem = page.locator(selector)
+                is_visible = await elem.is_visible(timeout=1000)
+                is_disabled = await elem.is_disabled(timeout=1000) if is_visible else False
+                debug_info["ui_elements"][name] = {
+                    "visible": is_visible,
+                    "disabled": is_disabled
+                }
+            except Exception as e:
+                debug_info["ui_elements"][name] = {"error": str(e)}
+                
+    except Exception as e:
+        debug_info["capture_error"] = str(e)
+    
+    return debug_info
 
 async def get_response_via_edit_button(
     page: AsyncPage,

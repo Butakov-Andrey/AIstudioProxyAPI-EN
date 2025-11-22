@@ -354,7 +354,7 @@ async def _handle_auxiliary_stream_response(
 async def _handle_playwright_response(req_id: str, request: ChatCompletionRequest, page: AsyncPage,
                                     context: dict, result_future: Future, submit_button_locator: Locator,
                                     check_client_disconnected: Callable, prompt_length: int, timeout: float) -> Optional[Tuple[Event, Locator, Callable]]:
-    """使用Playwright处理响应"""
+    """使用Playwright处理响应 - 增强版本，支持混合响应和完整性验证"""
     from server import logger
     
     is_streaming = request.stream
@@ -382,21 +382,50 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         
         return completion_event, submit_button_locator, check_client_disconnected
     else:
-        # 使用PageController获取响应
+        # 使用增强的PageController获取响应（支持完整性验证）
         page_controller = PageController(page, logger, req_id)
-        final_content = await page_controller.get_response(check_client_disconnected, prompt_length, timeout=timeout)
         
-        # 计算token使用统计
+        # 获取响应内容（包含完整性验证逻辑）
+        response_data = await page_controller.get_response_with_integrity_check(
+            check_client_disconnected,
+            prompt_length,
+            timeout=timeout
+        )
+        
+        final_content = response_data.get("content", "")
+        reasoning_content = response_data.get("reasoning_content", "")
+        recovery_method = response_data.get("recovery_method", "direct")
+        
+        if recovery_method == "integrity_verification":
+            logger.info(f"[{req_id}] ✅ 使用完整性验证成功恢复响应内容 ({len(final_content)} chars)")
+            # 保存调试信息
+            await save_error_snapshot(
+                f"integrity_recovery_success_{req_id}",
+                extra_context={
+                    "content_length": len(final_content),
+                    "reasoning_length": len(reasoning_content),
+                    "recovery_trigger": response_data.get("trigger_reason", "")
+                }
+            )
+        elif recovery_method == "direct":
+            logger.info(f"[{req_id}] ✅ 直接获取响应内容成功 ({len(final_content)} chars)")
+        
+        # 计算token使用统计（包含thinking content）
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages],
             final_content,
-            ""  # Playwright模式没有reasoning content
+            reasoning_content
         )
         logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
 
         # 统一使用构造器生成 OpenAI 兼容响应
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
         message_payload = {"role": "assistant", "content": final_content}
+        
+        # 如果有thinking content，添加到响应中
+        if reasoning_content:
+            message_payload["reasoning_content"] = reasoning_content
+            
         finish_reason_val = "stop"
         response_payload = build_chat_completion_response_json(
             req_id,
