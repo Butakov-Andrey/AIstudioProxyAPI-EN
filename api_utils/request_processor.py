@@ -622,7 +622,8 @@ async def _process_request_refactored(
             context['params_cache_lock'],
             context['model_id_to_use'],
             context['parsed_model_list'],
-            check_client_disconnected
+            check_client_disconnected,
+            request.stream
         )
 
         # 优化：在提交提示前再次检查客户端连接，避免不必要的后台请求

@@ -2,28 +2,15 @@ import asyncio
 import json
 import re
 import time
-from typing import Any, AsyncGenerator
-
-
 from typing import Any, AsyncGenerator, Optional, Callable
 
-# Enhanced Boundary Detection: More precise patterns to avoid false positives
-# These patterns specifically indicate genuine content transitions, not internal structure
-STRUCTURE_BOUNDARY = re.compile(r'(?:^|\n)\s*(?:```[a-zA-Z]*\n|<[a-zA-Z_]+\s+[^>]*>|<[a-zA-Z_]+>|<[a-zA-Z_]+>)')
-CODE_BLOCK_START = re.compile(r'(?:^|\n)\s*```[a-zA-Z]*\n')
-XML_TAG_START = re.compile(r'(?:^|\n)\s*(?:<[a-zA-Z_]+\s+[^>]*>|<[a-zA-Z_]+>|<[a-zA-Z_]+>)')
-
-# Content transition indicators - more sophisticated patterns
-CONTENT_TRANSITION_MARKERS = [
-    r'(?:^|\n)\s*```[a-zA-Z]*\n',           # Start of named code block
-    r'(?:^|\n)\s*<[a-zA-Z_]+\s+[^>]*>',     # XML tag with attributes (likely real content)
-    r'(?:^|\n)\s*<[a-zA-Z_]+>',              # Simple XML tag (context-dependent)
-    r'(?:^|\n)\s*<[a-zA-Z_]+>',        # HTML-escaped XML tag
-    r'(?:^|\n)\s*[:\-]\s*',                  # List indicators or formatting
-    r'(?:^|\n)\s*\*\s+',                     # Bullet points
-    r'(?:^|\n)\s*\d+\.\s+',                  # Numbered lists
-]
-CONTENT_TRANSITION_REGEX = re.compile('|'.join(CONTENT_TRANSITION_MARKERS))
+# [REFAC-01] Structural Boundary Pattern
+# Detects the inception of an XML tool block based on structure:
+# 1. Anchor: Start of string (^) or Newline (\n)
+# 2. Whitespace: Any indentation (\s*)
+# 3. Optional Fence: ``` followed by any language tag (alphanumeric) or empty, plus whitespace
+# 4. Trigger: XML Tag Start (<tagname) followed by Space (for attributes) or > (immediate close)
+TOOL_STRUCTURE_PATTERN = re.compile(r'(?:^|\n)\s*(?:```[a-zA-Z0-9]*\s*)?<[a-zA-Z0-9_\-]+(?:\s|>)')
 
 async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None) -> AsyncGenerator[Any, None]:
     """Enhanced stream response handler with UI-based generation active checks.
@@ -58,9 +45,19 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     total_reason_processed = 0
     total_body_processed = 0
     boundary_transitions = 0
+    boundary_buffer = ""  # [REFAC-03] Sliding window for boundary detection
+    
+    # [REFAC-04] Internal Accumulators for robustness
+    # We maintain full state here to ensure downstream consumers (like response_generators)
+    # receive the Cumulative data they expect, regardless of whether upstream sends Deltas or Cumulative.
+    acc_reason_state = ""
+    acc_body_state = ""
     
     # [FIX-11] Flag to track if we have forcefully switched to body mode
     force_body_mode = False
+    
+    # Track where the split happened in the accumulated reason stream
+    split_index = -1
 
     # Enhanced timeout settings for thinking models
     empty_count = 0
@@ -166,52 +163,73 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     try:
                         parsed_data = json.loads(data)
                         
-                        # Enhanced Content Boundary Detection with Smart Sequencing
+                        # [REFAC-05] Robust Accumulation & Switching Logic
                         p_reason = parsed_data.get("reason", "")
                         p_body = parsed_data.get("body", "")
                         
-                        if force_body_mode:
-                            # We already detected a boundary, treat all reason as body
-                            if p_reason:
-                                parsed_data["body"] = p_body + p_reason
-                                parsed_data["reason"] = ""
-                                logger.debug(f"[{req_id}] 🔄 Forced body mode: moved {len(p_reason)} chars from reason to body")
-                        elif p_reason:
-                             # Enhanced boundary detection with content analysis
-                             boundary_match = CONTENT_TRANSITION_REGEX.search(p_reason)
-                             if boundary_match:
-                                 boundary_text = boundary_match.group(0)
-                                 logger.info(f"[{req_id}] 🔄 Detected Content Transition: '{boundary_text.strip()}'. Analyzing transition context...")
-                                 
-                                 split_idx = boundary_match.start()
-                                 thought_part = p_reason[:split_idx].rstrip()
-                                 transition_part = p_reason[split_idx:len(boundary_match.group(0))] + p_reason[len(boundary_match.group(0)):]
-                                 
-                                 logger.info(f"[{req_id}] 📊 Boundary Analysis: Thought={len(thought_part)} chars, Transition={len(transition_part)} chars, ExistingBody={len(p_body)} chars")
-                                 
-                                 # Smart content analysis: only transition if there's substantial thinking content
-                                 # and the boundary seems genuine (not internal structure)
-                                 has_substantial_thought = len(thought_part) > 10
-                                 has_no_internal_transitions = CONTENT_TRANSITION_REGEX.search(thought_part) is None
-                                 
-                                 should_transition = (
-                                     has_substantial_thought or  # At least 10 chars of genuine thinking
-                                     has_no_internal_transitions  # No internal transitions in thinking
-                                 )
-                                 
-                                 if not should_transition:
-                                     logger.debug(f"[{req_id}] 🚫 Transition REJECTED. SubstantialThought: {has_substantial_thought}, NoInternalTransitions: {has_no_internal_transitions}")
-                                     logger.debug(f"[{req_id}]    Thought Part Preview: {thought_part[-50:]!r}")
+                        # 1. Update Accumulators (Handle Delta vs Cumulative Input)
+                        # Detect if input is cumulative (starts with current state) or delta
+                        if p_reason and acc_reason_state and p_reason.startswith(acc_reason_state):
+                             # Input is cumulative, just update state
+                             acc_reason_state = p_reason
+                             new_reason_delta = p_reason[len(acc_reason_state):] # effective delta for buffer
+                        else:
+                             # Input is delta, append to state
+                             acc_reason_state += p_reason
+                             new_reason_delta = p_reason
+                             
+                        if p_body and acc_body_state and p_body.startswith(acc_body_state):
+                             acc_body_state = p_body
+                        else:
+                             acc_body_state += p_body
 
-                                 if should_transition:
-                                     parsed_data["reason"] = thought_part
-                                     parsed_data["body"] = p_body + transition_part
-                                     force_body_mode = True
-                                     boundary_transitions += 1
-                                     logger.info(f"[{req_id}] ✅ Transitioning to body mode. Final: Reason={len(thought_part)}, Body={len(p_body + transition_part)}")
-                                 else:
-                                     logger.debug(f"[{req_id}] ⏸️ Skipping transition - boundary appears to be internal structure")
-                                     # Keep everything in reason to avoid false transitions
+                        # 2. Apply Boundary Logic
+                        if force_body_mode:
+                            # We have already split.
+                            # reason = accumulated thought up to split
+                            # body = accumulated body + (accumulated reason - thought)
+                            
+                            thought_part = acc_reason_state[:split_index]
+                            overflow_tool_part = acc_reason_state[split_index:]
+                            
+                            parsed_data["reason"] = thought_part
+                            parsed_data["body"] = acc_body_state + overflow_tool_part
+                            
+                        else:
+                            # Check for boundary in the *new* content (plus context)
+                            # We use boundary_buffer (last 100 chars) + new_reason_delta
+                            text_to_check = boundary_buffer + new_reason_delta
+                            match = TOOL_STRUCTURE_PATTERN.search(text_to_check)
+                            
+                            if match:
+                                # Found the boundary!
+                                logger.info(f"[{req_id}] 🔍 Detected Tool Structure: {match.group(0).strip()!r}")
+                                
+                                # Calculate absolute split index in acc_reason_state
+                                # match.start() is relative to text_to_check
+                                # text_to_check start corresponds to (len(acc_reason_state) - len(text_to_check))
+                                offset = len(acc_reason_state) - len(text_to_check)
+                                absolute_split_index = offset + match.start()
+                                
+                                split_index = absolute_split_index
+                                force_body_mode = True
+                                boundary_transitions += 1
+                                
+                                # Apply split immediately
+                                thought_part = acc_reason_state[:split_index]
+                                overflow_tool_part = acc_reason_state[split_index:]
+                                
+                                parsed_data["reason"] = thought_part
+                                parsed_data["body"] = acc_body_state + overflow_tool_part
+                                
+                                logger.info(f"[{req_id}] ✂️ Boundary Split Applied. Thought len: {len(thought_part)}")
+                            else:
+                                # No match, pass through accumulated states as is
+                                parsed_data["reason"] = acc_reason_state
+                                parsed_data["body"] = acc_body_state
+                                
+                                # Update sliding window buffer for next check
+                                boundary_buffer = (boundary_buffer + new_reason_delta)[-100:]
 
                         # [SYNC-FIX] CRITICAL: JSON DONE signal forces immediate exit, ignoring UI state
                         if parsed_data.get("done") is True:
@@ -318,43 +336,52 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         p_reason = data.get("reason", "")
                         p_body = data.get("body", "")
                         
-                        if force_body_mode:
-                            if p_reason:
-                                data["body"] = p_body + p_reason
-                                data["reason"] = ""
-                                logger.debug(f"[{req_id}] 🔄 Dict forced body mode: moved {len(p_reason)} chars from reason to body")
-                        elif p_reason:
-                             # Enhanced boundary detection for dict data
-                             boundary_match = CONTENT_TRANSITION_REGEX.search(p_reason)
-                             if boundary_match:
-                                 boundary_text = boundary_match.group(0)
-                                 logger.info(f"[{req_id}] 🔄 Dict Content Transition: '{boundary_text.strip()}'. Analyzing...")
-                                 
-                                 split_idx = boundary_match.start()
-                                 thought_part = p_reason[:split_idx].rstrip()
-                                 transition_part = p_reason[split_idx:len(boundary_match.group(0))] + p_reason[len(boundary_match.group(0)):]
-                                 
-                                 has_substantial_thought = len(thought_part) > 10
-                                 has_no_internal_transitions = CONTENT_TRANSITION_REGEX.search(thought_part) is None
-                                 
-                                 should_transition = (
-                                     has_substantial_thought or
-                                     has_no_internal_transitions
-                                 )
-                                 
-                                 if not should_transition:
-                                     logger.debug(f"[{req_id}] 🚫 Dict Transition REJECTED. SubstantialThought: {has_substantial_thought}, NoInternalTransitions: {has_no_internal_transitions}")
-                                     logger.debug(f"[{req_id}]    Thought Part Preview: {thought_part[-50:]!r}")
+                        # [REFAC-05] Robust Accumulation & Switching Logic (Dict)
+                        p_reason = data.get("reason", "")
+                        p_body = data.get("body", "")
+                        
+                        # 1. Update Accumulators
+                        if p_reason and acc_reason_state and p_reason.startswith(acc_reason_state):
+                             acc_reason_state = p_reason
+                             new_reason_delta = p_reason[len(acc_reason_state):]
+                        else:
+                             acc_reason_state += p_reason
+                             new_reason_delta = p_reason
+                             
+                        if p_body and acc_body_state and p_body.startswith(acc_body_state):
+                             acc_body_state = p_body
+                        else:
+                             acc_body_state += p_body
 
-                                 if should_transition:
-                                     data["reason"] = thought_part
-                                     data["body"] = p_body + transition_part
-                                     force_body_mode = True
-                                     boundary_transitions += 1
-                                     logger.info(f"[{req_id}] ✅ Dict transition to body mode. Final: Reason={len(thought_part)}, Body={len(p_body + transition_part)}")
-                                 else:
-                                     logger.debug(f"[{req_id}] ⏸️ Dict skipping transition - boundary appears internal")
-                                     # Keep everything in reason to avoid false transitions
+                        # 2. Apply Boundary Logic
+                        if force_body_mode:
+                            thought_part = acc_reason_state[:split_index]
+                            overflow_tool_part = acc_reason_state[split_index:]
+                            
+                            data["reason"] = thought_part
+                            data["body"] = acc_body_state + overflow_tool_part
+                        else:
+                            text_to_check = boundary_buffer + new_reason_delta
+                            match = TOOL_STRUCTURE_PATTERN.search(text_to_check)
+                            
+                            if match:
+                                offset = len(acc_reason_state) - len(text_to_check)
+                                absolute_split_index = offset + match.start()
+                                
+                                split_index = absolute_split_index
+                                force_body_mode = True
+                                boundary_transitions += 1
+                                
+                                thought_part = acc_reason_state[:split_index]
+                                overflow_tool_part = acc_reason_state[split_index:]
+                                
+                                data["reason"] = thought_part
+                                data["body"] = acc_body_state + overflow_tool_part
+                                logger.info(f"[{req_id}] ✂️ Dict Boundary Split Applied.")
+                            else:
+                                data["reason"] = acc_reason_state
+                                data["body"] = acc_body_state
+                                boundary_buffer = (boundary_buffer + new_reason_delta)[-100:]
 
                         body = data.get("body", "")
                         reason = data.get("reason", "")

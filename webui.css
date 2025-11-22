@@ -1092,6 +1092,7 @@ html.dark-mode #lightModeIcon {
     flex-direction: column;
     height: 100%;
     overflow: hidden;
+    position: relative;
 }
 
 
@@ -1575,4 +1576,26 @@ html.dark-mode code {
 .full-width-button {
     width: 100%;
     margin-top: 10px;
+}
+
+/* --- Transient Status Indicator --- */
+#transientStatusIndicator {
+    position: absolute;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(var(--primary-rgb), 0.9);
+    color: var(--on-primary);
+    padding: 8px 16px;
+    border-radius: var(--border-radius-md);
+    font-size: 0.9em;
+    z-index: 10;
+    box-shadow: var(--shadow-md);
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    text-align: center;
+    max-width: 80%;
+    white-space: pre-wrap;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }

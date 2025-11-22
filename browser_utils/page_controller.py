@@ -57,7 +57,7 @@ from .operations import (
     check_quota_limit,
     save_error_snapshot,
 )
-from .thinking_normalizer import format_directive_log, normalize_reasoning_effort
+from .thinking_normalizer import format_directive_log, normalize_reasoning_effort_with_stream_check
 
 
 class PageController:
@@ -83,6 +83,7 @@ class PageController:
         model_id_to_use: Optional[str],
         parsed_model_list: List[Dict[str, Any]],
         check_client_disconnected: Callable,
+        is_streaming: bool = True,
     ):
         """调整所有请求参数。"""
         self.logger.info(f"[{self.req_id}] 开始调整所有请求参数...")
@@ -140,9 +141,9 @@ class PageController:
         else:
             self.logger.info(f"[{self.req_id}] URL Context 功能已禁用，跳过调整。")
 
-        # 调整“思考预算”
+        # 调整"思考预算"
         await self._handle_thinking_budget(
-            request_params, model_id_to_use, check_client_disconnected
+            request_params, model_id_to_use, check_client_disconnected, is_streaming
         )
 
         # 调整 Google Search 开关
@@ -153,34 +154,19 @@ class PageController:
         request_params: Dict[str, Any],
         model_id_to_use: Optional[str],
         check_client_disconnected: Callable,
+        is_streaming: bool = True,
     ):
         """处理思考模式和预算的调整逻辑。"""
         reasoning_effort = request_params.get("reasoning_effort")
 
-        directive = normalize_reasoning_effort(reasoning_effort)
+        directive = normalize_reasoning_effort_with_stream_check(reasoning_effort, is_streaming)
         self.logger.info(f"[{self.req_id}] 思考模式指令: {format_directive_log(directive)}")
 
         uses_level = self._uses_thinking_level(
             model_id_to_use
         ) and await self._has_thinking_dropdown()
 
-        def _should_enable_from_raw(rv: Any) -> bool:
-            try:
-                if isinstance(rv, str):
-                    rs = rv.strip().lower()
-                    if rs in ["high", "low", "none", "-1"]:
-                        return True
-                    v = int(rs)
-                    return v > 0
-                if isinstance(rv, int):
-                    return rv > 0 or rv == -1
-            except Exception:
-                return False
-            return False
-
-        desired_enabled = directive.thinking_enabled or _should_enable_from_raw(
-            reasoning_effort
-        )
+        desired_enabled = directive.thinking_enabled
 
         has_main_toggle = self._model_has_main_thinking_toggle(model_id_to_use)
         if has_main_toggle:
