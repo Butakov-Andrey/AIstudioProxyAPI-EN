@@ -308,7 +308,17 @@ async def _handle_auxiliary_stream_response(
              raise HTTPException(status_code=502, detail=f"[{req_id}] 辅助流完成但未提供内容")
 
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
-        message_payload = {"role": "assistant", "content": content}
+        
+        # Consolidate reasoning content with body content
+        consolidated_content = ""
+        if reasoning_content and reasoning_content.strip():
+            consolidated_content += reasoning_content.strip()
+        if content and content.strip():
+            if consolidated_content:
+                consolidated_content += "\n\n"
+            consolidated_content += content.strip()
+        
+        message_payload = {"role": "assistant", "content": consolidated_content}
         finish_reason_val = "stop"
 
         if functions and len(functions) > 0:
@@ -327,13 +337,10 @@ async def _handle_auxiliary_stream_response(
             finish_reason_val = "tool_calls"
             message_payload["content"] = None
 
-        if reasoning_content:
-            message_payload["reasoning_content"] = reasoning_content
-
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages],
-            content or "",
-            reasoning_content,
+            consolidated_content or "",
+            "",  # No separate reasoning content since it's consolidated
         )
         
         # Update global token count
@@ -357,7 +364,21 @@ async def _handle_auxiliary_stream_response(
         )
 
         if not result_future.done():
-            result_future.set_result(JSONResponse(content=response_payload))
+            # Check if response is large and needs efficient chunking
+            response_json_str = json.dumps(response_payload, ensure_ascii=False)
+            if len(response_json_str) > 10000:  # 10KB threshold
+                logger.info(f"[{req_id}] Large response detected ({len(response_json_str)} chars), using efficient chunking")
+                
+                async def generate_json_chunks():
+                    chunk_size = 8192  # 8KB chunks
+                    for i in range(0, len(response_json_str), chunk_size):
+                        chunk = response_json_str[i:i + chunk_size]
+                        yield chunk
+                        await asyncio.sleep(0.01)  # Small delay to prevent overwhelming clients
+                
+                result_future.set_result(StreamingResponse(generate_json_chunks(), media_type="application/json"))
+            else:
+                result_future.set_result(JSONResponse(content=response_payload))
         return response_payload
 
 
@@ -420,11 +441,20 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         elif recovery_method == "direct":
             logger.info(f"[{req_id}] ✅ 直接获取响应内容成功 ({len(final_content)} chars)")
         
-        # 计算token使用统计（包含thinking content）
+        # Consolidate reasoning content with body content for usage stats
+        consolidated_content_for_usage = ""
+        if reasoning_content and reasoning_content.strip():
+            consolidated_content_for_usage += reasoning_content.strip()
+        if final_content and final_content.strip():
+            if consolidated_content_for_usage:
+                consolidated_content_for_usage += "\n\n"
+            consolidated_content_for_usage += final_content.strip()
+        
+        # 计算token使用统计（使用consolidated content）
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages],
-            final_content,
-            reasoning_content
+            consolidated_content_for_usage,
+            ""  # No separate reasoning content since it's consolidated
         )
         logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
         
@@ -439,12 +469,17 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
 
         # 统一使用构造器生成 OpenAI 兼容响应
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
-        message_payload = {"role": "assistant", "content": final_content}
         
-        # 如果有thinking content，添加到响应中
-        if reasoning_content:
-            message_payload["reasoning_content"] = reasoning_content
-            
+        # Consolidate reasoning content with body content
+        consolidated_content = ""
+        if reasoning_content and reasoning_content.strip():
+            consolidated_content += reasoning_content.strip()
+        if final_content and final_content.strip():
+            if consolidated_content:
+                consolidated_content += "\n\n"
+            consolidated_content += final_content.strip()
+        
+        message_payload = {"role": "assistant", "content": consolidated_content}
         finish_reason_val = "stop"
         response_payload = build_chat_completion_response_json(
             req_id,
@@ -463,8 +498,22 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
             if "choices" in response_payload and len(response_payload["choices"]) > 0:
                  content_len = len(response_payload["choices"][0]["message"].get("content", "") or "")
                  logger.info(f"[{req_id}] [DEBUG] Payload content length: {content_len}")
-            
-            result_future.set_result(JSONResponse(content=response_payload))
+             
+            # Check if response is large and needs efficient chunking
+            response_json_str = json.dumps(response_payload, ensure_ascii=False)
+            if len(response_json_str) > 10000:  # 10KB threshold
+                logger.info(f"[{req_id}] Large response detected ({len(response_json_str)} chars), using efficient chunking")
+                
+                async def generate_json_chunks():
+                    chunk_size = 8192  # 8KB chunks
+                    for i in range(0, len(response_json_str), chunk_size):
+                        chunk = response_json_str[i:i + chunk_size]
+                        yield chunk
+                        await asyncio.sleep(0.01)  # Small delay to prevent overwhelming clients
+                
+                result_future.set_result(StreamingResponse(generate_json_chunks(), media_type="application/json"))
+            else:
+                result_future.set_result(JSONResponse(content=response_payload))
         else:
             from server import logger
             logger.warning(f"[{req_id}] [DEBUG] Could not set result, future already done/cancelled.")

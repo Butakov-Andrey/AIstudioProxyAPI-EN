@@ -11,7 +11,11 @@ from playwright.async_api import Page, TimeoutError
 
 
 from config.global_state import GlobalState
-from config.settings import HIGH_TRAFFIC_QUEUE_THRESHOLD, ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC
+from config.settings import (
+    HIGH_TRAFFIC_QUEUE_THRESHOLD, 
+    ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC,
+    AUTO_ROTATE_AUTH_PROFILE
+)
 from config.timeouts import RATE_LIMIT_COOLDOWN_SECONDS, QUOTA_EXCEEDED_COOLDOWN_SECONDS
 from config import AI_STUDIO_URL_PATTERN
 from config.selectors import PROMPT_TEXTAREA_SELECTOR
@@ -148,6 +152,8 @@ async def _perform_canary_test(page: Page) -> bool:
 async def perform_auth_rotation() -> bool:
     """
     Performs the authentication profile rotation with a soft-swap and canary test.
+    
+    Checks AUTO_ROTATE_AUTH_PROFILE environment variable to determine if rotation should proceed.
 
     1. Acquires Hard Lock (stops requests).
     2. Enters a loop to find a healthy profile.
@@ -157,6 +163,13 @@ async def perform_auth_rotation() -> bool:
     6. If healthy, breaks the loop and releases the lock.
     7. If unhealthy, adds the profile to cooldown and repeats.
     """
+    
+    # Check if auto-rotation is enabled via environment variable
+    if not AUTO_ROTATE_AUTH_PROFILE:
+        logger.info("🔒 Auth rotation is disabled via AUTO_ROTATE_AUTH_PROFILE environment variable")
+        logger.info("♻️ ROTATION SKIPPED - Auto-rotation disabled")
+        logger.info("♻️ =========================================")
+        return False
     
     # [OBS-04] Explicit Rotation Logging with Visual Separators
     logger.info("♻️ =========================================")

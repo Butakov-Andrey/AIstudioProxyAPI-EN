@@ -127,6 +127,7 @@ class TestAuthRotationLogic(unittest.TestCase):
         from browser_utils import auth_rotation
         auth_rotation._ROTATION_TIMESTAMPS.clear()
 
+    @patch('builtins.open', new_callable=unittest.mock.mock_open, read_data='{"cookies": []}')
     @patch('os.path.exists')
     @patch('browser_utils.auth_rotation.save_cooldown_profiles')
     @patch('browser_utils.auth_rotation._perform_canary_test')
@@ -134,15 +135,17 @@ class TestAuthRotationLogic(unittest.TestCase):
     @patch('browser_utils.auth_rotation.GlobalState')
     @patch('browser_utils.auth_rotation.server')
     @patch('browser_utils.auth_rotation.time.time')
-    def test_successful_rotation(self, mock_time, mock_server, mock_global_state, mock_get_profile, mock_canary_test, mock_save_cooldown, mock_exists):
+    def test_successful_rotation(self, mock_time, mock_server, mock_global_state, mock_get_profile, mock_canary_test, mock_save_cooldown, mock_exists, mock_open):
         """Test a standard successful auth rotation."""
         async def run_test():
             # Arrange
             mock_time.return_value = time.time()
             mock_exists.return_value = True
-            mock_server.page_instance = AsyncMock()
-            mock_server.page_instance.is_closed.return_value = False
-            mock_server.page_instance.context = AsyncMock()
+            # Use a regular Mock for is_closed to avoid async issues
+            mock_page = AsyncMock()
+            mock_page.is_closed = Mock(return_value=False)
+            mock_page.context = AsyncMock()
+            mock_server.page_instance = mock_page
             mock_server.current_auth_profile_path = "profiles/old.json"
 
             mock_get_profile.return_value = "profiles/new.json"
@@ -166,6 +169,7 @@ class TestAuthRotationLogic(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    @patch('builtins.open', new_callable=unittest.mock.mock_open, read_data='{"cookies": []}')
     @patch('os.path.exists')
     @patch('browser_utils.auth_rotation.save_cooldown_profiles')
     @patch('browser_utils.auth_rotation._perform_canary_test')
@@ -173,15 +177,17 @@ class TestAuthRotationLogic(unittest.TestCase):
     @patch('browser_utils.auth_rotation.GlobalState')
     @patch('browser_utils.auth_rotation.server')
     @patch('browser_utils.auth_rotation.time.time')
-    def test_rotation_fails_after_max_retries(self, mock_time, mock_server, mock_global_state, mock_get_profile, mock_canary_test, mock_save_cooldown, mock_exists):
+    def test_rotation_fails_after_max_retries(self, mock_time, mock_server, mock_global_state, mock_get_profile, mock_canary_test, mock_save_cooldown, mock_exists, mock_open):
         """Test that rotation fails if no healthy profile is found after max retries."""
         async def run_test():
             # Arrange
             mock_time.return_value = time.time()
             mock_exists.return_value = True
-            mock_server.page_instance = AsyncMock()
-            mock_server.page_instance.is_closed.return_value = False
-            mock_server.page_instance.context = AsyncMock()
+            # Use a regular Mock for is_closed to avoid async issues
+            mock_page = AsyncMock()
+            mock_page.is_closed = Mock(return_value=False)
+            mock_page.context = AsyncMock()
+            mock_server.page_instance = mock_page
             mock_server.current_auth_profile_path = "profiles/old.json"
 
             mock_get_profile.side_effect = [f"profiles/new_{i}.json" for i in range(5)]
@@ -204,32 +210,40 @@ class TestAuthRotationLogic(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    @patch('browser_utils.auth_rotation._find_best_profile_in_dirs')
     @patch('browser_utils.auth_rotation.GlobalState')
     @patch('browser_utils.auth_rotation.server')
-    @patch('browser_utils.auth_rotation.time.time')
-    def test_depletion_guard_stops_rotation(self, mock_time, mock_server, mock_global_state):
-        """Test that the depletion guard prevents rotation if too many attempts occurred recently."""
+    def test_depletion_guard_stops_rotation(self, mock_server, mock_global_state, mock_find_profile):
+        """Test that the depletion guard triggers emergency mode when too many rotations occur."""
         async def run_test():
             # Arrange
             from browser_utils import auth_rotation
+            # Use actual time.time() to get real float values
             current_time = time.time()
-            mock_time.return_value = current_time
+            # Add 4 timestamps within the rotation window to trigger depletion
+            auth_rotation._ROTATION_TIMESTAMPS.clear()
             auth_rotation._ROTATION_TIMESTAMPS.extend([current_time - i for i in range(4)])
             
-            mock_server.page_instance = AsyncMock()
+            # No emergency profiles available
+            mock_find_profile.return_value = None
+            
+            mock_page = AsyncMock()
+            mock_page.is_closed = Mock(return_value=False)
+            mock_server.page_instance = mock_page
             mock_server.browser_instance = AsyncMock()
             
             mock_global_state.AUTH_ROTATION_LOCK = asyncio.Event()
             mock_global_state.AUTH_ROTATION_LOCK.set()
             mock_global_state.queued_request_count = 1
+            mock_global_state.DEPLOYMENT_EMERGENCY_MODE = False
 
             # Act
             result = await perform_auth_rotation()
 
-            # Assert
+            # Assert - Verify emergency mode was activated and rotation failed
             self.assertFalse(result)
-            mock_server.page_instance.close.assert_called_once()
-            mock_server.browser_instance.close.assert_called_once()
+            self.assertTrue(mock_global_state.DEPLOYMENT_EMERGENCY_MODE)
+            # Lock should NOT be released (left cleared) in emergency mode
             self.assertFalse(mock_global_state.AUTH_ROTATION_LOCK.is_set())
 
         asyncio.run(run_test())

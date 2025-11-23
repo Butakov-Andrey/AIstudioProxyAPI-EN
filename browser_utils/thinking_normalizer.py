@@ -8,7 +8,12 @@
 from typing import Optional, Any, Dict
 from dataclasses import dataclass
 from config import ENABLE_THINKING_BUDGET, DEFAULT_THINKING_BUDGET
-from config.settings import DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE
+from config.settings import (
+    DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE, 
+    THINKING_BUDGET_LOW, 
+    THINKING_BUDGET_MEDIUM, 
+    THINKING_BUDGET_HIGH
+)
 
 
 @dataclass
@@ -157,11 +162,11 @@ def _parse_budget_value(reasoning_effort: Any) -> Optional[int]:
     if isinstance(reasoning_effort, str):
         effort_str = reasoning_effort.strip().lower()
 
-        # 预设值映射
+        # 预设值映射 - 使用环境变量配置的值
         effort_map = {
-            "low": 10923,
-            "medium": 21845,
-            "high": 32768,
+            "low": THINKING_BUDGET_LOW,
+            "medium": THINKING_BUDGET_MEDIUM,
+            "high": THINKING_BUDGET_HIGH,
         }
 
         # 先尝试预设值

@@ -66,4 +66,32 @@ PROACTIVE_ROTATION_TOKEN_LIMIT = get_int_env('PROACTIVE_ROTATION_TOKEN_LIMIT', 5
 
 # --- Dynamic Rotation Guard Configuration ---
 HIGH_TRAFFIC_QUEUE_THRESHOLD = get_int_env('HIGH_TRAFFIC_QUEUE_THRESHOLD', 5)
+# --- Dynamic Rotation Guard Configuration ---
+HIGH_TRAFFIC_QUEUE_THRESHOLD = get_int_env('HIGH_TRAFFIC_QUEUE_THRESHOLD', 5)
+ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC = get_int_env('ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC', 10)
+
+# --- Granular Configuration for Auth and Budget ---
+# Auto Rotate Auth Profile Configuration
+AUTO_ROTATE_AUTH_PROFILE = get_boolean_env('AUTO_ROTATE_AUTH_PROFILE', True)
+
+# Thinking Budget Level Values Configuration with validation
+def _get_thinking_budget_value(env_key: str, default: int, level_name: str) -> int:
+    """Get thinking budget value with validation and logging"""
+    try:
+        value = get_int_env(env_key, default)
+        if value <= 0:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️ Invalid {level_name} thinking budget value: {value} (must be positive). Using default: {default}")
+            return default
+        return value
+    except (ValueError, TypeError):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"⚠️ Invalid {level_name} thinking budget value (not an integer). Using default: {default}")
+        return default
+
+THINKING_BUDGET_LOW = _get_thinking_budget_value('THINKING_BUDGET_LOW', 8000, "LOW")
+THINKING_BUDGET_MEDIUM = _get_thinking_budget_value('THINKING_BUDGET_MEDIUM', 16000, "MEDIUM")
+THINKING_BUDGET_HIGH = _get_thinking_budget_value('THINKING_BUDGET_HIGH', 32000, "HIGH")
 ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC = get_int_env('ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC', 10)

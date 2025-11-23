@@ -251,3 +251,4 @@ browser_utils/generated_*.js
 docker/.env
 docker/my_*.json
 config/profile_usage.json
+config/cooldown_status.json
