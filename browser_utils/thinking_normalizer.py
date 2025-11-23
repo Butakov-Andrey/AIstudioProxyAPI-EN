@@ -8,6 +8,12 @@
 from typing import Optional, Any, Dict
 from dataclasses import dataclass
 from config import ENABLE_THINKING_BUDGET, DEFAULT_THINKING_BUDGET
+from config.settings import (
+    DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE, 
+    THINKING_BUDGET_LOW, 
+    THINKING_BUDGET_MEDIUM, 
+    THINKING_BUDGET_HIGH
+)
 
 
 @dataclass
@@ -26,7 +32,7 @@ class ThinkingDirective:
     original_value: Any
 
 
-def normalize_reasoning_effort(reasoning_effort: Optional[Any]) -> ThinkingDirective:
+def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bool = True) -> ThinkingDirective:
     """将 reasoning_effort 参数归一化为标准化的思考指令
 
     参数:
@@ -36,6 +42,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any]) -> ThinkingDirec
             - 正整数: 开启思考，设置具体预算值
             - "low"/"medium"/"high": 开启思考，使用预设预算
             - "none"或"-1"或-1: 开启思考，不限制预算
+        is_streaming: 是否为流式请求（影响 DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE 配置）
 
     返回:
         ThinkingDirective: 标准化的思考指令
@@ -110,6 +117,34 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any]) -> ThinkingDirec
     )
 
 
+def normalize_reasoning_effort_with_stream_check(reasoning_effort: Optional[Any], is_streaming: bool = True) -> ThinkingDirective:
+    """带流式检查的思考指令归一化
+    
+    根据 DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE 配置决定是否在非流式模式下禁用思考预算
+    
+    参数:
+        reasoning_effort: API请求中的reasoning_effort参数
+        is_streaming: 是否为流式请求
+        
+    返回:
+        ThinkingDirective: 标准化的思考指令
+    """
+    # 首先获取基础的思考指令
+    directive = normalize_reasoning_effort(reasoning_effort, is_streaming)
+    
+    # 如果不是流式请求且配置为禁用思考预算，则禁用
+    if not is_streaming and DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE:
+        return ThinkingDirective(
+            thinking_enabled=False,
+            budget_enabled=False,
+            budget_value=None,
+            original_value=reasoning_effort
+        )
+    
+    # 否则返回原始指令（允许思考预算在非流式模式下保持启用）
+    return directive
+
+
 def _parse_budget_value(reasoning_effort: Any) -> Optional[int]:
     """解析预算值
 
@@ -127,11 +162,11 @@ def _parse_budget_value(reasoning_effort: Any) -> Optional[int]:
     if isinstance(reasoning_effort, str):
         effort_str = reasoning_effort.strip().lower()
 
-        # 预设值映射
+        # 预设值映射 - 使用环境变量配置的值
         effort_map = {
-            "low": 10923,
-            "medium": 21845,
-            "high": 32768,
+            "low": THINKING_BUDGET_LOW,
+            "medium": THINKING_BUDGET_MEDIUM,
+            "high": THINKING_BUDGET_HIGH,
         }
 
         # 先尝试预设值

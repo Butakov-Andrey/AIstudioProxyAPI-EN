@@ -11,6 +11,8 @@ INPUT_SELECTOR2 = PROMPT_TEXTAREA_SELECTOR
 # --- 按钮选择器 ---
 # 发送按钮：优先匹配 aria-label="Run" 的按钮；如页面结构变更，可退化到容器内的提交按钮。
 SUBMIT_BUTTON_SELECTOR = 'button[aria-label="Run"].run-button, ms-run-button button[type="submit"].run-button'
+# 重新生成按钮 (Regenerate draft) - 用于判断生成是否真正结束
+REGENERATE_BUTTON_SELECTOR = 'button[aria-label="Regenerate draft"], button[aria-label="Regenerate response"]'
 CLEAR_CHAT_BUTTON_SELECTOR = 'button[data-test-clear="outside"][aria-label="New chat"], button[aria-label="New chat"]'
 CLEAR_CHAT_CONFIRM_BUTTON_SELECTOR = (
     'button.ms-button-primary:has-text("Discard and continue")'
@@ -54,6 +56,27 @@ TEMPERATURE_INPUT_SELECTOR = 'ms-slider input[type="number"][max="2"]'
 USE_URL_CONTEXT_SELECTOR = 'button[aria-label="Browse the url context"]'
 
 # --- 思考模式相关选择器 ---
+# 思考过程内容容器 (Thinking Content)
+THINKING_CONTAINER_SELECTOR = "ms-thought-accordion, ms-thought-chunk, [data-testid*='thinking'], [data-testid*='reasoning']"
+THINKING_HEADER_SELECTOR = "ms-thought-accordion .header, ms-thought-chunk .header, [data-testid*='thinking'] .header, [data-testid*='reasoning'] .header"
+# [FIX-12] Updated to include ms-thought-chunk .mat-expansion-panel-body
+THINKING_CONTENT_SELECTOR = "ms-thought-chunk .mat-expansion-panel-body, ms-thought-accordion .content, ms-thought-accordion .markdown-content, [data-testid*='thinking'] .content, [data-testid*='reasoning'] .content"
+# 兼容性选择器：有时候 thinking block 可能只是一个带有特定 class 的 div
+THINKING_DIV_SELECTOR = "div.thinking-process, div.reasoning-process, [class*='thinking'], [class*='reasoning'], [class*='analysis']"
+# 新增：AI Studio 最新版的 thinking 块选择器
+THINKING_ACCORDION_SELECTOR = "ms-thought-accordion, ms-thought-chunk, [data-testid*='accordion'], [class*='accordion'][data-testid*='thinking'], [class*='accordion'][class*='thinking']"
+# 最终响应内容选择器 (Excluding Thinking)
+# [FIX-12] Updated to target ms-text-chunk and exclude thinking components
+FINAL_RESPONSE_SELECTOR = "ms-text-chunk:not(:has(ms-thought-chunk)), ms-cmark-node.cmark-node:not(ms-thought-accordion .content):not(ms-thought-chunk .mat-expansion-panel-body), [data-testid*='response'], [class*='response-content'], .chat-response"
+# 仅针对回答部分的明确选择器 (AI Studio Update)
+ANSWER_TEXT_SELECTOR = "ms-cmark-node.cmark-node"
+
+# 完整响应容器（包括 thinking + response）
+COMPLETE_RESPONSE_CONTAINER_SELECTOR = "ms-chat-turn .chat-turn-container.model, [data-testid*='chat-turn'], [class*='chat-turn']"
+# AI Studio 状态指示器
+GENERATION_STATUS_SELECTOR = "button[aria-label*='Stop'], button[aria-label*='Generating'], [data-testid*='generating']"
+REGENERATE_BUTTON_SELECTOR = 'button[aria-label="Regenerate draft"], button[aria-label="Regenerate response"], [data-testid*="regenerate"]'
+
 # 主思考开关：控制是否启用思考模式（总开关）
 ENABLE_THINKING_MODE_TOGGLE_SELECTOR = (
     'mat-slide-toggle[data-test-toggle="enable-thinking"] button[role="switch"].mdc-switch, '
@@ -80,3 +103,8 @@ THINKING_LEVEL_OPTION_HIGH_SELECTOR = '[role="listbox"][aria-label="Thinking Lev
 GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR = (
     'div[data-test-id="searchAsAToolTooltip"] mat-slide-toggle button'
 )
+
+# --- 滚动相关选择器 ---
+SCROLL_CONTAINER_SELECTOR = "ms-autoscroll-container"
+CHAT_SESSION_CONTENT_SELECTOR = ".chat-session-content"
+LAST_CHAT_TURN_SELECTOR = "ms-chat-turn:last-of-type"

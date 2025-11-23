@@ -40,6 +40,7 @@ from .utils import (
     calculate_usage_stats,
     maybe_execute_tools,
 )
+from api_utils.utils_ext.usage_tracker import increment_profile_usage
 from browser_utils.page_controller import PageController
 from .context_types import RequestContext
 from .response_generators import gen_sse_from_aux_stream, gen_sse_from_playwright
@@ -225,24 +226,19 @@ async def _handle_auxiliary_stream_response(
     check_client_disconnected: Callable,
     timeout: float,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
-    """辅助流响应处理路径：负责将 STREAM_QUEUE 的数据转换为 OpenAI 兼容 SSE/JSON。
-
-    - 流式模式：返回 StreamingResponse，逐步推送 delta 与最终 usage。
-    - 非流式模式：聚合最终内容与函数调用，返回 JSONResponse。
-    """
+    """辅助流响应处理路径"""
     from server import logger
     
     is_streaming = request.stream
     current_ai_studio_model_id = context.get('current_ai_studio_model_id')
     
-    # 兼容旧逻辑的随机ID函数移除，统一使用 _random_id()
-
     if is_streaming:
         try:
             completion_event = Event()
-            # 使用生成器作为响应体，交由 FastAPI 进行 SSE 推送
-            # 使用生成器作为响应体，交由 FastAPI 进行 SSE 推送
             page = context['page']
+            
+            # [FIXED] Removed duplicate call.
+            # Ensure we use the one that passes 'page=page'
             stream_gen_func = gen_sse_from_aux_stream(
                 req_id,
                 request,
@@ -250,16 +246,9 @@ async def _handle_auxiliary_stream_response(
                 check_client_disconnected,
                 completion_event,
                 timeout=timeout,
-                page=page,
+                page=page,  # <--- CRITICAL: This enables the auto-scroll logic in stream.py
             )
-            stream_gen_func = gen_sse_from_aux_stream(
-                req_id,
-                request,
-                current_ai_studio_model_id or MODEL_NAME,
-                check_client_disconnected,
-                completion_event,
-                timeout=timeout,
-            )
+            
             if not result_future.done():
                 result_future.set_result(StreamingResponse(stream_gen_func, media_type="text/event-stream"))
             else:
@@ -270,24 +259,24 @@ async def _handle_auxiliary_stream_response(
 
         except Exception as e:
             logger.error(f"[{req_id}] 从队列获取流式数据时出错: {e}", exc_info=True)
-        page = context['page']
-        # 非流式：消费辅助队列的最终结果并组装 JSON 响应
-        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
-            if completion_event and not completion_event.is_set():
-                completion_event.set()
+            # Fallback to non-streaming if stream setup fails...
+            page = context['page']
+            async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
+                if completion_event and not completion_event.is_set():
+                    completion_event.set()
             raise
 
-    else:  # 非流式
+    else:  # Non-streaming logic
         content = None
         reasoning_content = None
         functions = None
         final_data_from_aux_stream = None
 
-        # 非流式：消费辅助队列的最终结果并组装 JSON 响应
-        async for raw_data in use_stream_response(req_id, check_client_disconnected=check_client_disconnected):
+        # Pass page here too for non-streaming requests so they don't time out
+        page = context['page']
+        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
             check_client_disconnected(f"非流式辅助流 - 循环中 ({req_id}): ")
             
-            # 确保 data 是字典类型
             if isinstance(raw_data, str):
                 try:
                     data = json.loads(raw_data)
@@ -297,12 +286,9 @@ async def _handle_auxiliary_stream_response(
             elif isinstance(raw_data, dict):
                 data = raw_data
             else:
-                logger.warning(f"[{req_id}] 非流式未知数据类型: {type(raw_data)}")
                 continue
             
-            # 确保数据是字典类型
             if not isinstance(data, dict):
-                logger.warning(f"[{req_id}] 非流式数据不是字典类型: {data}")
                 continue
                 
             final_data_from_aux_stream = data
@@ -312,6 +298,7 @@ async def _handle_auxiliary_stream_response(
                 functions = data.get("function")
                 break
         
+        # ... (Rest of non-streaming logic remains unchanged) ...
         if final_data_from_aux_stream and final_data_from_aux_stream.get("reason") == "internal_timeout":
             logger.error(f"[{req_id}] 非流式请求通过辅助流失败: 内部超时")
             raise HTTPException(status_code=502, detail=f"[{req_id}] 辅助流处理错误 (内部超时)")
@@ -321,7 +308,17 @@ async def _handle_auxiliary_stream_response(
              raise HTTPException(status_code=502, detail=f"[{req_id}] 辅助流完成但未提供内容")
 
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
-        message_payload = {"role": "assistant", "content": content}
+        
+        # Consolidate reasoning content with body content
+        consolidated_content = ""
+        if reasoning_content and reasoning_content.strip():
+            consolidated_content += reasoning_content.strip()
+        if content and content.strip():
+            if consolidated_content:
+                consolidated_content += "\n\n"
+            consolidated_content += content.strip()
+        
+        message_payload = {"role": "assistant", "content": consolidated_content}
         finish_reason_val = "stop"
 
         if functions and len(functions) > 0:
@@ -340,14 +337,20 @@ async def _handle_auxiliary_stream_response(
             finish_reason_val = "tool_calls"
             message_payload["content"] = None
 
-        if reasoning_content:
-            message_payload["reasoning_content"] = reasoning_content
-
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages],
-            content or "",
-            reasoning_content,
+            consolidated_content or "",
+            "",  # No separate reasoning content since it's consolidated
         )
+        
+        # Update global token count
+        total_tokens = usage_stats.get("total_tokens", 0)
+        GlobalState.increment_token_count(total_tokens)
+
+        # Update profile usage stats
+        import server
+        if hasattr(server, 'current_auth_profile_path') and server.current_auth_profile_path:
+            await increment_profile_usage(server.current_auth_profile_path, total_tokens)
 
         response_payload = build_chat_completion_response_json(
             req_id,
@@ -361,14 +364,28 @@ async def _handle_auxiliary_stream_response(
         )
 
         if not result_future.done():
-            result_future.set_result(JSONResponse(content=response_payload))
-        return None
+            # Check if response is large and needs efficient chunking
+            response_json_str = json.dumps(response_payload, ensure_ascii=False)
+            if len(response_json_str) > 10000:  # 10KB threshold
+                logger.info(f"[{req_id}] Large response detected ({len(response_json_str)} chars), using efficient chunking")
+                
+                async def generate_json_chunks():
+                    chunk_size = 8192  # 8KB chunks
+                    for i in range(0, len(response_json_str), chunk_size):
+                        chunk = response_json_str[i:i + chunk_size]
+                        yield chunk
+                        await asyncio.sleep(0.01)  # Small delay to prevent overwhelming clients
+                
+                result_future.set_result(StreamingResponse(generate_json_chunks(), media_type="application/json"))
+            else:
+                result_future.set_result(JSONResponse(content=response_payload))
+        return response_payload
 
 
 async def _handle_playwright_response(req_id: str, request: ChatCompletionRequest, page: AsyncPage,
                                     context: dict, result_future: Future, submit_button_locator: Locator,
                                     check_client_disconnected: Callable, prompt_length: int, timeout: float) -> Optional[Tuple[Event, Locator, Callable]]:
-    """使用Playwright处理响应"""
+    """使用Playwright处理响应 - 增强版本，支持混合响应和完整性验证"""
     from server import logger
     
     is_streaming = request.stream
@@ -396,21 +413,73 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         
         return completion_event, submit_button_locator, check_client_disconnected
     else:
-        # 使用PageController获取响应
+        # 使用增强的PageController获取响应（支持完整性验证）
         page_controller = PageController(page, logger, req_id)
-        final_content = await page_controller.get_response(check_client_disconnected, prompt_length, timeout=timeout)
         
-        # 计算token使用统计
+        # 获取响应内容（包含完整性验证逻辑）
+        response_data = await page_controller.get_response_with_integrity_check(
+            check_client_disconnected,
+            prompt_length,
+            timeout=timeout
+        )
+        
+        final_content = response_data.get("content", "")
+        reasoning_content = response_data.get("reasoning_content", "")
+        recovery_method = response_data.get("recovery_method", "direct")
+        
+        if recovery_method == "integrity_verification":
+            logger.info(f"[{req_id}] ✅ 使用完整性验证成功恢复响应内容 ({len(final_content)} chars)")
+            # 保存调试信息
+            await save_error_snapshot(
+                f"integrity_recovery_success_{req_id}",
+                extra_context={
+                    "content_length": len(final_content),
+                    "reasoning_length": len(reasoning_content),
+                    "recovery_trigger": response_data.get("trigger_reason", "")
+                }
+            )
+        elif recovery_method == "direct":
+            logger.info(f"[{req_id}] ✅ 直接获取响应内容成功 ({len(final_content)} chars)")
+        
+        # Consolidate reasoning content with body content for usage stats
+        consolidated_content_for_usage = ""
+        if reasoning_content and reasoning_content.strip():
+            consolidated_content_for_usage += reasoning_content.strip()
+        if final_content and final_content.strip():
+            if consolidated_content_for_usage:
+                consolidated_content_for_usage += "\n\n"
+            consolidated_content_for_usage += final_content.strip()
+        
+        # 计算token使用统计（使用consolidated content）
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages],
-            final_content,
-            ""  # Playwright模式没有reasoning content
+            consolidated_content_for_usage,
+            ""  # No separate reasoning content since it's consolidated
         )
         logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
+        
+        # Update global token count
+        total_tokens = usage_stats.get("total_tokens", 0)
+        GlobalState.increment_token_count(total_tokens)
+
+        # Update profile usage stats
+        import server
+        if hasattr(server, 'current_auth_profile_path') and server.current_auth_profile_path:
+            await increment_profile_usage(server.current_auth_profile_path, total_tokens)
 
         # 统一使用构造器生成 OpenAI 兼容响应
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
-        message_payload = {"role": "assistant", "content": final_content}
+        
+        # Consolidate reasoning content with body content
+        consolidated_content = ""
+        if reasoning_content and reasoning_content.strip():
+            consolidated_content += reasoning_content.strip()
+        if final_content and final_content.strip():
+            if consolidated_content:
+                consolidated_content += "\n\n"
+            consolidated_content += final_content.strip()
+        
+        message_payload = {"role": "assistant", "content": consolidated_content}
         finish_reason_val = "stop"
         response_payload = build_chat_completion_response_json(
             req_id,
@@ -424,9 +493,32 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         )
         
         if not result_future.done():
-            result_future.set_result(JSONResponse(content=response_payload))
+            from server import logger
+            logger.info(f"[{req_id}] [DEBUG] Setting non-stream result on future. Payload keys: {list(response_payload.keys())}")
+            if "choices" in response_payload and len(response_payload["choices"]) > 0:
+                 content_len = len(response_payload["choices"][0]["message"].get("content", "") or "")
+                 logger.info(f"[{req_id}] [DEBUG] Payload content length: {content_len}")
+             
+            # Check if response is large and needs efficient chunking
+            response_json_str = json.dumps(response_payload, ensure_ascii=False)
+            if len(response_json_str) > 10000:  # 10KB threshold
+                logger.info(f"[{req_id}] Large response detected ({len(response_json_str)} chars), using efficient chunking")
+                
+                async def generate_json_chunks():
+                    chunk_size = 8192  # 8KB chunks
+                    for i in range(0, len(response_json_str), chunk_size):
+                        chunk = response_json_str[i:i + chunk_size]
+                        yield chunk
+                        await asyncio.sleep(0.01)  # Small delay to prevent overwhelming clients
+                
+                result_future.set_result(StreamingResponse(generate_json_chunks(), media_type="application/json"))
+            else:
+                result_future.set_result(JSONResponse(content=response_payload))
+        else:
+            from server import logger
+            logger.warning(f"[{req_id}] [DEBUG] Could not set result, future already done/cancelled.")
         
-        return None
+        return response_payload
 
 
 async def _cleanup_request_resources(req_id: str, disconnect_check_task: Optional[asyncio.Task], 
@@ -598,7 +690,8 @@ async def _process_request_refactored(
             context['params_cache_lock'],
             context['model_id_to_use'],
             context['parsed_model_list'],
-            check_client_disconnected
+            check_client_disconnected,
+            request.stream
         )
 
         # 优化：在提交提示前再次检查客户端连接，避免不必要的后台请求
@@ -625,8 +718,15 @@ async def _process_request_refactored(
         )
         
         if response_result:
-            completion_event, _, _ = response_result
-        
+            # [FIX] Handle dictionary return (non-streaming payload)
+            if isinstance(response_result, dict):
+                return response_result, submit_button_locator, check_client_disconnected
+            
+            # Handle tuple return (streaming event/loc/checker)
+            if isinstance(response_result, tuple):
+                completion_event, _, _ = response_result
+                return completion_event, submit_button_locator, check_client_disconnected
+
         return completion_event, submit_button_locator, check_client_disconnected
         
     except ClientDisconnectedError as disco_err:
@@ -644,7 +744,7 @@ async def _process_request_refactored(
         # We let the Watchdog handle the rotation to ensure the flag is managed correctly.
         # We simply ensure the flag is set (in case it wasn't already) and return 503.
         if not GlobalState.IS_QUOTA_EXCEEDED:
-             GlobalState.set_quota_exceeded()
+             GlobalState.set_quota_exceeded(message=str(quota_err))
             
         if not result_future.done():
             result_future.set_exception(

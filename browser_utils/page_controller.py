@@ -6,7 +6,7 @@ import asyncio
 import base64
 import mimetypes
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from playwright.async_api import Page as AsyncPage
 from playwright.async_api import TimeoutError
@@ -57,7 +57,7 @@ from .operations import (
     check_quota_limit,
     save_error_snapshot,
 )
-from .thinking_normalizer import format_directive_log, normalize_reasoning_effort
+from .thinking_normalizer import format_directive_log, normalize_reasoning_effort_with_stream_check
 
 
 class PageController:
@@ -83,6 +83,7 @@ class PageController:
         model_id_to_use: Optional[str],
         parsed_model_list: List[Dict[str, Any]],
         check_client_disconnected: Callable,
+        is_streaming: bool = True,
     ):
         """调整所有请求参数。"""
         self.logger.info(f"[{self.req_id}] 开始调整所有请求参数...")
@@ -140,9 +141,9 @@ class PageController:
         else:
             self.logger.info(f"[{self.req_id}] URL Context 功能已禁用，跳过调整。")
 
-        # 调整“思考预算”
+        # 调整"思考预算"
         await self._handle_thinking_budget(
-            request_params, model_id_to_use, check_client_disconnected
+            request_params, model_id_to_use, check_client_disconnected, is_streaming
         )
 
         # 调整 Google Search 开关
@@ -153,34 +154,19 @@ class PageController:
         request_params: Dict[str, Any],
         model_id_to_use: Optional[str],
         check_client_disconnected: Callable,
+        is_streaming: bool = True,
     ):
         """处理思考模式和预算的调整逻辑。"""
         reasoning_effort = request_params.get("reasoning_effort")
 
-        directive = normalize_reasoning_effort(reasoning_effort)
+        directive = normalize_reasoning_effort_with_stream_check(reasoning_effort, is_streaming)
         self.logger.info(f"[{self.req_id}] 思考模式指令: {format_directive_log(directive)}")
 
         uses_level = self._uses_thinking_level(
             model_id_to_use
         ) and await self._has_thinking_dropdown()
 
-        def _should_enable_from_raw(rv: Any) -> bool:
-            try:
-                if isinstance(rv, str):
-                    rs = rv.strip().lower()
-                    if rs in ["high", "low", "none", "-1"]:
-                        return True
-                    v = int(rs)
-                    return v > 0
-                if isinstance(rv, int):
-                    return rv > 0 or rv == -1
-            except Exception:
-                return False
-            return False
-
-        desired_enabled = directive.thinking_enabled or _should_enable_from_raw(
-            reasoning_effort
-        )
+        desired_enabled = directive.thinking_enabled
 
         has_main_toggle = self._model_has_main_thinking_toggle(model_id_to_use)
         if has_main_toggle:
@@ -741,7 +727,18 @@ class PageController:
 
         try:
             toggle_locator = self.page.locator(toggle_selector)
-            await expect_async(toggle_locator).to_be_visible(timeout=5000)
+
+            # [Robustness] 检查可见性，如果不可见且期望为关闭，则直接返回
+            try:
+                await expect_async(toggle_locator).to_be_visible(timeout=3000)
+            except Exception:
+                if not should_be_checked:
+                    self.logger.info(f"[{self.req_id}] 'Thinking Budget' 开关不可见，假定已禁用/不适用。")
+                    return
+                else:
+                    self.logger.warning(f"[{self.req_id}] ⚠️ 'Thinking Budget' 开关不可见，无法执行开启操作。")
+                    return
+
             try:
                 await toggle_locator.scroll_into_view_if_needed()
             except Exception:
@@ -2090,7 +2087,7 @@ class PageController:
             return False
 
     async def get_response(self, check_client_disconnected: Callable, prompt_length: int, timeout: Optional[float] = None) -> str:
-        """获取响应内容。"""
+        """获取响应内容 - 增强版本，包含完整性验证"""
         self.logger.info(f"[{self.req_id}] 等待并获取响应...")
 
         try:
@@ -2134,17 +2131,588 @@ class PageController:
                 self.page, self.req_id, check_client_disconnected
             )
 
+            # === 核心修复：响应完整性验证 ===
             if not final_content or not final_content.strip():
-                self.logger.warning(f"[{self.req_id}] ⚠️ 获取到的响应内容为空")
-                await save_error_snapshot(f"empty_response_{self.req_id}")
-                # 不抛出异常，返回空内容让上层处理
-                return ""
-
-            self.logger.info(f"[{self.req_id}] ✅ 成功获取响应内容 ({len(final_content)} chars)")
-            return final_content
+                self.logger.warning(f"[{self.req_id}] ⚠️ 主方法获取到的响应内容为空，启动稳定性等待和完整性验证...")
+                
+                # 1. 首先执行稳定性等待，防止假阴性
+                stability_success = await self._emergency_stability_wait(check_client_disconnected)
+                
+                if stability_success:
+                    self.logger.info(f"[{self.req_id}] ✅ 稳定性等待成功，重新尝试获取响应...")
+                    # 稳定性等待成功后，重新尝试获取内容
+                    final_content = await _get_final_response_content(
+                        self.page, self.req_id, check_client_disconnected
+                    )
+                    
+                    if final_content and final_content.strip():
+                        self.logger.info(f"[{self.req_id}] ✅ 稳定性等待后成功获取响应内容: {len(final_content)} chars")
+                        return final_content
+                
+                # 2. 稳定性等待失败或仍无内容，启动完整性验证
+                debug_info = await capture_response_state_for_debug(
+                    self.req_id,
+                    captured_content="",
+                    detection_method="主方法返回空内容后的验证"
+                )
+                
+                # 尝试完整性验证
+                verified_data = await self.verify_response_integrity(
+                    check_client_disconnected,
+                    "主方法返回空内容"
+                )
+                
+                if verified_data and verified_data.get("content", "").strip():
+                    verified_content = verified_data["content"]
+                    self.logger.info(f"[{self.req_id}] ✅ 完整性验证成功！DOM中存在响应内容: {len(verified_content)} chars")
+                    # 保存调试快照以记录这个问题
+                    await save_error_snapshot(
+                        f"response_integrity_recovered_{self.req_id}",
+                        extra_context={
+                            "original_method": "get_response",
+                            "verification_method": "verify_response_integrity",
+                            "recovered_content_length": len(verified_content),
+                            "debug_info": debug_info,
+                            "stability_wait_attempted": stability_success
+                        }
+                    )
+                    return verified_content
+                else:
+                    self.logger.error(f"[{self.req_id}] ❌ 稳定性等待和完整性验证均失败，DOM中确实没有响应内容")
+                    await save_error_snapshot(
+                        f"empty_response_verified_{self.req_id}",
+                        extra_context={
+                            "method": "get_response + stability_wait + verify_response_integrity",
+                            "debug_info": debug_info,
+                            "stability_wait_attempted": stability_success
+                        }
+                    )
+                    return ""
+            else:
+                self.logger.info(f"[{self.req_id}] ✅ 成功获取响应内容 ({len(final_content)} chars)")
+                return final_content
 
         except Exception as e:
             self.logger.error(f"[{self.req_id}] ❌ 获取响应时出错: {e}")
             if not isinstance(e, ClientDisconnectedError):
                 await save_error_snapshot(f"get_response_error_{self.req_id}")
             raise
+
+    async def verify_response_integrity(self, check_client_disconnected: Callable, trigger_reason: str = "") -> Dict[str, str]:
+        """响应完整性验证 - 核心修复方法
+        
+        当流式拦截或主方法无法获取内容时，通过DOM直接验证并提取响应。
+        这是解决"浏览器显示内容但API返回空"问题的关键方法。
+        
+        Args:
+            check_client_disconnected: 客户端断开检查函数
+            trigger_reason: 触发验证的原因描述
+            
+        Returns:
+            Dict[str, str]: 包含content和reasoning_content的字典，如果失败则返回空字典
+        """
+        self.logger.info(f"[{self.req_id}] 开始响应完整性验证 (原因: {trigger_reason})")
+        
+        try:
+            await self._check_disconnect(check_client_disconnected, "完整性验证开始")
+            
+            # 1. 检查生成是否真正完成
+            regenerate_button_locator = self.page.locator('button[aria-label="Regenerate draft"], button[aria-label="Regenerate response"]')
+            regenerate_visible = await regenerate_button_locator.is_visible(timeout=2000)
+            
+            if regenerate_visible:
+                self.logger.info(f"[{self.req_id}] 检测到Regenerate按钮，响应应该已完成")
+            else:
+                self.logger.warning(f"[{self.req_id}] 未检测到Regenerate按钮，响应可能未完成，但继续验证...")
+            
+            # 2. 强制等待DOM稳定 (500ms稳定性检查)
+            self.logger.info(f"[{self.req_id}] 执行DOM稳定性检查...")
+            stability_content = ""
+            stability_check_count = 0
+            max_stability_checks = 5
+            
+            while stability_check_count < max_stability_checks:
+                await asyncio.sleep(0.1)  # 100ms间隔
+                current_content = await self._extract_dom_content()
+                
+                if current_content and current_content.strip():
+                    if current_content == stability_content:
+                        # 内容稳定，增加稳定性计数
+                        stability_check_count += 1
+                        self.logger.debug(f"[{self.req_id}] DOM内容稳定性检查 {stability_check_count}/{max_stability_checks}")
+                    else:
+                        # 内容变化，重置稳定性计数
+                        stability_content = current_content
+                        stability_check_count = 0
+                        self.logger.debug(f"[{self.req_id}] DOM内容发生变化，重置稳定性计数")
+                else:
+                    stability_check_count = 0
+                    stability_content = ""
+                
+                await self._check_disconnect(check_client_disconnected, f"稳定性检查 {stability_check_count}")
+            
+            if not stability_content or not stability_content.strip():
+                self.logger.warning(f"[{self.req_id}] DOM稳定性检查后仍无内容")
+                return {}
+            
+            self.logger.info(f"[{self.req_id}] ✅ DOM内容已稳定，包含 {len(stability_content)} 字符")
+            
+            # 3. 深度内容提取
+            final_content = await self._extract_complete_response_content()
+            
+            if final_content and final_content.strip():
+                self.logger.info(f"[{self.req_id}] ✅ 完整性验证成功！提取到 {len(final_content)} 字符的响应内容")
+                
+                # 分离thinking content和最终回答
+                content, reasoning = self._separate_thinking_and_response(final_content)
+                
+                return {
+                    "content": content,
+                    "reasoning_content": reasoning,
+                    "trigger_reason": trigger_reason
+                }
+            else:
+                self.logger.warning(f"[{self.req_id}] 完整性验证失败，无法从DOM中提取有效内容")
+                return {}
+                
+        except ClientDisconnectedError:
+            self.logger.info(f"[{self.req_id}] 客户端在完整性验证过程中断开连接")
+            raise
+        except Exception as e:
+            self.logger.error(f"[{self.req_id}] 完整性验证过程中发生错误: {e}")
+            await save_error_snapshot(f"integrity_verification_error_{self.req_id}")
+            return {}
+
+    async def get_response_with_integrity_check(self, check_client_disconnected: Callable, prompt_length: int, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """获取响应内容 - 增强版本，包含完整性验证和混合响应支持
+        
+        这是主要的响应获取方法，集成了完整性验证逻辑，能够处理：
+        1. 直接获取（正常情况）
+        2. 完整性验证恢复（当直接获取失败时）
+        3. Thinking content和最终回答的分离处理
+        
+        Returns:
+            Dict[str, Any]: 包含content、reasoning_content、recovery_method等信息的字典
+        """
+        try:
+            # 首先尝试直接获取响应
+            direct_content = await self.get_response(check_client_disconnected, prompt_length, timeout)
+            
+            if direct_content and direct_content.strip():
+                # 直接获取成功
+                content, reasoning = self._separate_thinking_and_response(direct_content)
+                return {
+                    "content": content,
+                    "reasoning_content": reasoning,
+                    "recovery_method": "direct",
+                    "trigger_reason": ""
+                }
+            else:
+                # 直接获取失败，启动完整性验证
+                self.logger.warning(f"[{self.req_id}] 直接获取响应失败，启动完整性验证...")
+                
+                verified_data = await self.verify_response_integrity(
+                    check_client_disconnected,
+                    "直接get_response返回空内容"
+                )
+                
+                if verified_data and verified_data.get("content"):
+                    # 完整性验证成功
+                    return {
+                        "content": verified_data["content"],
+                        "reasoning_content": verified_data.get("reasoning_content", ""),
+                        "recovery_method": "integrity_verification",
+                        "trigger_reason": verified_data.get("trigger_reason", "")
+                    }
+                else:
+                    # 完整性验证也失败
+                    return {
+                        "content": "",
+                        "reasoning_content": "",
+                        "recovery_method": "failed",
+                        "trigger_reason": "所有方法均失败"
+                    }
+                    
+        except Exception as e:
+            self.logger.error(f"[{self.req_id}] 获取响应时发生错误: {e}")
+            return {
+                "content": "",
+                "reasoning_content": "",
+                "recovery_method": "error",
+                "trigger_reason": f"异常: {str(e)}"
+            }
+
+    def _separate_thinking_and_response(self, content: str) -> Tuple[str, str]:
+        """分离thinking content和最终回答
+        
+        Args:
+            content: 原始内容，可能包含thinking和回答
+            
+        Returns:
+            Tuple[str, str]: (最终回答, thinking内容)
+        """
+        if not content:
+            return "", ""
+        
+        # 尝试匹配thinking标记
+        thinking_pattern = r'\[THINKING\](.*?)\[/THINKING\]'
+        thinking_matches = re.findall(thinking_pattern, content, re.DOTALL)
+        
+        if thinking_matches:
+            # 找到thinking内容，提取最终回答
+            reasoning = "\n".join(thinking_matches).strip()
+            
+            # 移除thinking标记和内容，得到最终回答
+            final_content = re.sub(thinking_pattern, '', content, flags=re.DOTALL).strip()
+            
+            return final_content, reasoning
+        else:
+            # 没有找到thinking标记，整个作为最终回答
+            return content.strip(), ""
+
+    async def _emergency_stability_wait(self, check_client_disconnected: Callable) -> bool:
+        """紧急稳定性等待 - 防止假阴性错误
+        
+        当主方法返回空内容时，等待一段时间观察页面状态变化，
+        防止因为DOM更新延迟导致的假阴性判断。
+        
+        Returns:
+            bool: 是否在等待期间检测到内容变化
+        """
+        from config.settings import EMERGENCY_WAIT_SECONDS
+        
+        emergency_wait_seconds = EMERGENCY_WAIT_SECONDS
+        
+        self.logger.info(f"[{self.req_id}] 开始紧急稳定性等待 ({emergency_wait_seconds}s)...")
+        
+        last_content_length = 0
+        stability_detected = False
+        retries = 3
+        
+        for attempt in range(retries):
+            try:
+                await self._check_disconnect(check_client_disconnected, f"稳定性等待尝试 {attempt + 1}")
+                
+                # 检查生成状态
+                generation_active = await self._check_generation_activity()
+                if generation_active:
+                    self.logger.info(f"[{self.req_id}] 检测到生成仍在进行中，继续等待...")
+                    await asyncio.sleep(1)
+                    continue
+                
+                # 检查DOM内容变化
+                current_content = await self._extract_dom_content()
+                current_length = len(current_content.strip())
+                
+                if current_length > last_content_length:
+                    self.logger.info(f"[{self.req_id}] 检测到内容增长: {last_content_length} -> {current_length}")
+                    last_content_length = current_length
+                    stability_detected = True
+                elif current_length > 0 and current_length == last_content_length:
+                    # 内容稳定且有内容
+                    self.logger.info(f"[{self.req_id}] 检测到稳定内容，长度: {current_length}")
+                    stability_detected = True
+                    break
+                
+                await asyncio.sleep(1)  # 每秒检查一次
+                
+            except Exception as e:
+                self.logger.warning(f"[{self.req_id}] 稳定性等待第 {attempt + 1} 次尝试出错: {e}")
+                continue
+        
+        if stability_detected:
+            self.logger.info(f"[{self.req_id}] ✅ 紧急稳定性等待成功，检测到内容变化")
+        else:
+            self.logger.warning(f"[{self.req_id}] ❌ 紧急稳定性等待失败，未检测到内容变化")
+        
+        return stability_detected
+
+    async def _check_generation_activity(self) -> bool:
+        """检查生成活动状态
+        
+        Returns:
+            bool: 如果检测到生成仍在进行则返回True
+        """
+        try:
+            # 检查停止按钮（表示正在生成）
+            stop_button = self.page.locator('button[aria-label="Stop generating"]')
+            if await stop_button.is_visible(timeout=1000):
+                return True
+            
+            # 检查输入框状态（生成时输入框通常为空且提交按钮禁用）
+            input_field = self.page.locator(PROMPT_TEXTAREA_SELECTOR)
+            submit_button = self.page.locator(SUBMIT_BUTTON_SELECTOR)
+            
+            input_value = await input_field.input_value(timeout=1000) if await input_field.is_visible(timeout=1000) else ""
+            is_submit_disabled = await submit_button.is_disabled(timeout=1000) if await submit_button.is_visible(timeout=1000) else False
+            
+            # 如果输入框为空且提交按钮禁用，可能表示正在生成
+            if not input_value.strip() and is_submit_disabled:
+                return True
+                
+            return False
+            
+        except Exception:
+            # 如果检查失败，假设没有生成活动
+            return False
+
+    async def _emergency_stability_wait(self, check_client_disconnected: Callable) -> bool:
+        """紧急稳定性等待 - 防止假阴性错误
+        
+        当主方法返回空内容时，等待一段时间观察页面状态变化，
+        防止因为DOM更新延迟导致的假阴性判断。
+        
+        Returns:
+            bool: 是否在等待期间检测到内容变化
+        """
+        from config import EMERGENCY_WAIT_SECONDS
+        
+        emergency_wait_seconds = getattr(EMERGENCY_WAIT_SECONDS, 'value', 3)
+        
+        self.logger.info(f"[{self.req_id}] 开始紧急稳定性等待 ({emergency_wait_seconds}s)...")
+        
+        last_content_length = 0
+        stability_detected = False
+        retries = 3
+        
+        for attempt in range(retries):
+            try:
+                await self._check_disconnect(check_client_disconnected, f"稳定性等待尝试 {attempt + 1}")
+                
+                # 检查生成状态
+                generation_active = await self._check_generation_activity()
+                if generation_active:
+                    self.logger.info(f"[{self.req_id}] 检测到生成仍在进行中，继续等待...")
+                    await asyncio.sleep(1)
+                    continue
+                
+                # 检查DOM内容变化
+                current_content = await self._extract_dom_content()
+                current_length = len(current_content.strip())
+                
+                if current_length > last_content_length:
+                    self.logger.info(f"[{self.req_id}] 检测到内容增长: {last_content_length} -> {current_length}")
+                    last_content_length = current_length
+                    stability_detected = True
+                elif current_length > 0 and current_length == last_content_length:
+                    # 内容稳定且有内容
+                    self.logger.info(f"[{self.req_id}] 检测到稳定内容，长度: {current_length}")
+                    stability_detected = True
+                    break
+                
+                await asyncio.sleep(1)  # 每秒检查一次
+                
+            except Exception as e:
+                self.logger.warning(f"[{self.req_id}] 稳定性等待第 {attempt + 1} 次尝试出错: {e}")
+                continue
+        
+        if stability_detected:
+            self.logger.info(f"[{self.req_id}] ✅ 紧急稳定性等待成功，检测到内容变化")
+        else:
+            self.logger.warning(f"[{self.req_id}] ❌ 紧急稳定性等待失败，未检测到内容变化")
+        
+        return stability_detected
+
+    async def _check_generation_activity(self) -> bool:
+        """检查生成活动状态
+        
+        Returns:
+            bool: 如果检测到生成仍在进行则返回True
+        """
+        try:
+            # 检查停止按钮（表示正在生成）
+            stop_button = self.page.locator('button[aria-label="Stop generating"]')
+            if await stop_button.is_visible(timeout=1000):
+                return True
+            
+            # 检查输入框状态（生成时输入框通常为空且提交按钮禁用）
+            input_field = self.page.locator(PROMPT_TEXTAREA_SELECTOR)
+            submit_button = self.page.locator(SUBMIT_BUTTON_SELECTOR)
+            
+            input_value = await input_field.input_value(timeout=1000) if await input_field.is_visible(timeout=1000) else ""
+            is_submit_disabled = await submit_button.is_disabled(timeout=1000) if await submit_button.is_visible(timeout=1000) else False
+            
+            # 如果输入框为空且提交按钮禁用，可能表示正在生成
+            if not input_value.strip() and is_submit_disabled:
+                return True
+                
+            return False
+            
+        except Exception:
+            # 如果检查失败，假设没有生成活动
+            return False
+
+    async def _extract_dom_content(self) -> str:
+        """从DOM中提取原始内容"""
+        try:
+            # 使用改进的选择器提取内容
+            from config.selectors import (
+                THINKING_CONTAINER_SELECTOR,
+                THINKING_CONTENT_SELECTOR,
+                FINAL_RESPONSE_SELECTOR,
+                COMPLETE_RESPONSE_CONTAINER_SELECTOR
+            )
+            
+            all_content_parts = []
+            
+            # 1. 提取Thinking内容（如果存在）
+            thinking_containers = self.page.locator(THINKING_CONTAINER_SELECTOR)
+            thinking_count = await thinking_containers.count()
+            
+            for i in range(thinking_count):
+                try:
+                    container = thinking_containers.nth(i)
+                    if await container.is_visible(timeout=1000):
+                        content_elem = container.locator(THINKING_CONTENT_SELECTOR)
+                        if await content_elem.count() > 0:
+                            thinking_text = await content_elem.first.inner_text(timeout=1000)
+                            if thinking_text and thinking_text.strip():
+                                all_content_parts.append(f"[THINKING]{thinking_text.strip()}[/THINKING]")
+                except Exception:
+                    continue
+            
+            # 2. 提取最终响应内容
+            response_elements = self.page.locator(FINAL_RESPONSE_SELECTOR)
+            response_count = await response_elements.count()
+            
+            for i in range(response_count):
+                try:
+                    elem = response_elements.nth(i)
+                    if await elem.is_visible(timeout=1000):
+                        response_text = await elem.inner_text(timeout=1000)
+                        if response_text and response_text.strip():
+                            all_content_parts.append(response_text.strip())
+                except Exception:
+                    continue
+            
+            # 3. 备用方法：直接从完整容器提取
+            if not all_content_parts:
+                complete_containers = self.page.locator(COMPLETE_RESPONSE_CONTAINER_SELECTOR)
+                container_count = await complete_containers.count()
+                
+                for i in range(container_count):
+                    try:
+                        container = complete_containers.nth(i)
+                        if await container.is_visible(timeout=1000):
+                            # 尝试提取所有文本内容
+                            full_text = await container.inner_text(timeout=1000)
+                            if full_text and len(full_text.strip()) > 50:  # 过滤掉太短的内容
+                                all_content_parts.append(full_text.strip())
+                                break
+                    except Exception:
+                        continue
+            
+            return "\n".join(all_content_parts) if all_content_parts else ""
+            
+        except Exception as e:
+            self.logger.warning(f"[{self.req_id}] DOM内容提取失败: {e}")
+            return ""
+
+    async def get_body_text_only_from_dom(self) -> str:
+        """
+        专门用于 'Thinking-to-Answer Handover' 协议。
+        仅提取最终回答的文本内容，严格排除 Thinking 块。
+        """
+        try:
+            # 使用 evaluate 执行更复杂的 DOM 排除逻辑
+            return await self.page.evaluate("""() => {
+                const thinkingSelectors = [
+                    'ms-thought-accordion',
+                    '[data-testid*="thinking"]',
+                    '[data-testid*="reasoning"]',
+                    '.thinking-process'
+                ];
+                
+                const responseSelectors = [
+                    'ms-cmark-node.cmark-node',
+                    '.chat-response',
+                    '[data-testid*="response"]'
+                ];
+                
+                // 找到最后一个响应容器
+                const turns = document.querySelectorAll('ms-chat-turn');
+                if (!turns.length) return "";
+                const lastTurn = turns[turns.length - 1];
+                
+                // 在最后一个 turn 中查找响应内容
+                // 优先尝试找到明确的 text body
+                let candidates = [];
+                for (let sel of responseSelectors) {
+                    candidates = Array.from(lastTurn.querySelectorAll(sel));
+                    if (candidates.length > 0) break;
+                }
+                
+                if (!candidates.length) {
+                    // 如果没找到明确的 class，尝试找 chat-turn-container model
+                    const container = lastTurn.querySelector('.chat-turn-container.model');
+                    if (container) candidates = [container];
+                    else candidates = [lastTurn]; // Fallback to whole turn
+                }
+                
+                let fullText = "";
+                
+                candidates.forEach(el => {
+                    // 克隆节点以避免修改页面
+                    let clone = el.cloneNode(true);
+                    
+                    // 移除所有 thinking 相关的元素
+                    thinkingSelectors.forEach(ts => {
+                        const thoughts = clone.querySelectorAll(ts);
+                        thoughts.forEach(t => t.remove());
+                    });
+
+                    // [Markdown Preservation] 处理代码块
+                    // 查找 pre 元素或带有 code-block 类的元素，将其内容用 ``` 包裹
+                    const codeBlocks = clone.querySelectorAll('pre, .code-block, .hljs');
+                    codeBlocks.forEach(cb => {
+                        // 尝试获取语言标识
+                        let lang = '';
+                        const classList = cb.className || '';
+                        const match = classList.match(/language-(\\w+)/);
+                        if (match) lang = match[1];
+                        
+                        // 如果内部有 code 标签，优先取 code 的内容
+                        const codeInner = cb.querySelector('code');
+                        const textContent = codeInner ? codeInner.innerText : cb.innerText;
+                        
+                        // 用 markdown 围栏替换元素内容 (注意：这只改变 Clone)
+                        cb.innerText = "\\n```" + lang + "\\n" + textContent + "\\n```\\n";
+                    });
+                    
+                    // 提取剩余文本
+                    fullText += clone.innerText + "\\n";
+                });
+                
+                return fullText.trim();
+            }""")
+        except Exception as e:
+            self.logger.warning(f"[{self.req_id}] get_body_text_only_from_dom 失败: {e}")
+            return ""
+
+    async def _extract_complete_response_content(self) -> str:
+        """提取完整的响应内容，包括Thinking和最终回答"""
+        try:
+            # 方法1：尝试通过编辑按钮获取（最可靠）
+            edit_content = await get_response_via_edit_button(
+                self.page, self.req_id, lambda x: None
+            )
+            if edit_content and edit_content.strip():
+                return edit_content.strip()
+            
+            # 方法2：尝试通过复制按钮获取
+            copy_content = await get_response_via_copy_button(
+                self.page, self.req_id, lambda x: None
+            )
+            if copy_content and copy_content.strip():
+                return copy_content.strip()
+            
+            # 方法3：直接DOM提取
+            dom_content = await self._extract_dom_content()
+            if dom_content and dom_content.strip():
+                return dom_content.strip()
+            
+            return ""
+            
+        except Exception as e:
+            self.logger.error(f"[{self.req_id}] 完整响应内容提取失败: {e}")
+            return ""

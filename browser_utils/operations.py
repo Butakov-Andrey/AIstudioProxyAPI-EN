@@ -20,6 +20,9 @@ from config import (
     CLICK_TIMEOUT_MS,
     RESPONSE_COMPLETION_TIMEOUT,
     INITIAL_WAIT_MS_BEFORE_POLLING,
+    SCROLL_CONTAINER_SELECTOR,
+    CHAT_SESSION_CONTENT_SELECTOR,
+    LAST_CHAT_TURN_SELECTOR,
 )
 from config.global_state import GlobalState
 from models import ClientDisconnectedError, QuotaExceededError
@@ -40,7 +43,7 @@ async def check_quota_limit(page: AsyncPage, req_id: str) -> None:
                 text = await element.text_content()
                 if text and "user has exceeded quota" in text.lower():
                     logger.critical(f"[{req_id}] ❌ Quota Limit Detected via UI! Text: {text}")
-                    GlobalState.set_quota_exceeded()
+                    GlobalState.set_quota_exceeded(message=text)
                     raise QuotaExceededError(f"Quota exceeded detected via UI: {text}")
 
         # 3. Check UI for Quota Error (Old Selector - Legacy Fallback)
@@ -48,7 +51,7 @@ async def check_quota_limit(page: AsyncPage, req_id: str) -> None:
         if await page.locator(quota_selector).count() > 0:
             if await page.locator(quota_selector).first.is_visible(timeout=500):
                 logger.critical(f"[{req_id}] ❌ Quota Limit Detected (Legacy)! Account is out of free generations.")
-                GlobalState.set_quota_exceeded()
+                GlobalState.set_quota_exceeded(message="AI Studio Account is out of free generations")
                 raise QuotaExceededError("AI Studio Account is out of free generations.")
                 
     except QuotaExceededError:
@@ -62,22 +65,33 @@ async def get_raw_text_content(response_element: Locator, previous_text: str, re
     raw_text = previous_text
     try:
         await response_element.wait_for(state='attached', timeout=1000)
+        
+        # [FIX-SELECTOR] Ensure element is in viewport for DOM virtualization
+        try:
+            await response_element.scroll_into_view_if_needed(timeout=1000)
+        except Exception:
+            pass
+
         pre_element = response_element.locator('pre').last
         pre_found_and_visible = False
         try:
             await pre_element.wait_for(state='visible', timeout=250)
             pre_found_and_visible = True
-        except PlaywrightAsyncError: 
+        except PlaywrightAsyncError:
             pass
         
         if pre_found_and_visible:
             try:
+                # [FIX-SELECTOR] Ensure pre element is in viewport
+                await pre_element.scroll_into_view_if_needed(timeout=500)
                 raw_text = await pre_element.inner_text(timeout=500)
             except PlaywrightAsyncError as pre_err:
                 if DEBUG_LOGS_ENABLED:
                     logger.debug(f"[{req_id}] (获取原始文本) 获取 pre 元素内部文本失败: {pre_err}")
         else:
             try:
+                # [FIX-SELECTOR] Ensure response element is in viewport
+                await response_element.scroll_into_view_if_needed(timeout=500)
                 raw_text = await response_element.inner_text(timeout=500)
             except PlaywrightAsyncError as e_parent:
                 if DEBUG_LOGS_ENABLED:
@@ -463,8 +477,13 @@ async def detect_and_extract_page_error(page: AsyncPage, req_id: str) -> Optiona
         logger.warning(f"[{req_id}]    检查页面错误时出错: {e}")
         return None
 
-async def save_error_snapshot(error_name: str = 'error'):
-    """保存错误快照"""
+async def save_error_snapshot(error_name: str = 'error', extra_context: Optional[Dict[str, Any]] = None):
+    """保存错误快照 - 增强版本，支持额外上下文信息
+    
+    Args:
+        error_name: 错误名称，用于生成文件名
+        extra_context: 额外的上下文信息，将保存为JSON文件
+    """
     import server
     name_parts = error_name.split('_')
     req_id = name_parts[-1] if len(name_parts) > 1 and len(name_parts[-1]) == 7 else None
@@ -486,13 +505,16 @@ async def save_error_snapshot(error_name: str = 'error'):
         filename_base = f"{base_error_name}_{filename_suffix}"
         screenshot_path = os.path.join(error_dir, f"{filename_base}.png")
         html_path = os.path.join(error_dir, f"{filename_base}.html")
+        context_path = os.path.join(error_dir, f"{filename_base}_context.json")
         
+        # 保存屏幕截图
         try:
             await page_to_snapshot.screenshot(path=screenshot_path, full_page=True, timeout=15000)
             logger.info(f"{log_prefix}   快照已保存到: {screenshot_path}")
         except Exception as ss_err:
             logger.error(f"{log_prefix}   保存屏幕截图失败 ({base_error_name}): {ss_err}")
         
+        # 保存HTML内容
         try:
             content = await page_to_snapshot.content()
             f = None
@@ -511,8 +533,141 @@ async def save_error_snapshot(error_name: str = 'error'):
                         logger.error(f"{log_prefix}   关闭 HTML 文件时出错: {close_err}")
         except Exception as html_err:
             logger.error(f"{log_prefix}   获取页面内容失败 ({base_error_name}): {html_err}")
+        
+        # 保存额外上下文信息
+        if extra_context:
+            try:
+                context_data = {
+                    "timestamp": timestamp,
+                    "error_name": base_error_name,
+                    "req_id": req_id,
+                    "context": extra_context,
+                    "page_url": page_to_snapshot.url if page_to_snapshot else "N/A",
+                    "user_agent": await page_to_snapshot.evaluate("navigator.userAgent") if page_to_snapshot else "N/A"
+                }
+                with open(context_path, 'w', encoding='utf-8') as f:
+                    json.dump(context_data, f, indent=2, ensure_ascii=False)
+                logger.info(f"{log_prefix}   上下文信息已保存到: {context_path}")
+            except Exception as context_err:
+                logger.error(f"{log_prefix}   保存上下文信息失败 ({base_error_name}): {context_err}")
+                
     except Exception as dir_err:
         logger.error(f"{log_prefix}   创建错误目录或保存快照时发生其他错误 ({base_error_name}): {dir_err}")
+
+
+async def capture_response_state_for_debug(req_id: str, captured_content: str = "", detection_method: str = "") -> Dict[str, Any]:
+    """捕获响应状态用于调试 - 专门用于分析响应完整性问题
+    
+    Args:
+        req_id: 请求ID
+        captured_content: 已捕获的内容
+        detection_method: 检测方法描述
+    
+    Returns:
+        Dict[str, Any]: 包含页面状态的调试信息
+    """
+    import server
+    page = server.page_instance
+    
+    if not page or page.is_closed():
+        return {"error": "Page not available"}
+    
+    debug_info = {
+        "req_id": req_id,
+        "timestamp": int(time.time() * 1000),
+        "detection_method": detection_method,
+        "captured_content_length": len(captured_content) if captured_content else 0,
+        "captured_content_preview": captured_content[:200] + "..." if len(captured_content) > 200 else captured_content,
+        "page_url": page.url,
+        "thinking_blocks_found": [],
+        "response_blocks_found": [],
+        "generation_status": {},
+        "ui_elements": {}
+    }
+    
+    try:
+        # 检查Thinking块
+        from config.selectors import (
+            THINKING_CONTAINER_SELECTOR,
+            THINKING_CONTENT_SELECTOR,
+            FINAL_RESPONSE_SELECTOR,
+            GENERATION_STATUS_SELECTOR,
+            COMPLETE_RESPONSE_CONTAINER_SELECTOR
+        )
+        
+        # 查找Thinking容器
+        thinking_containers = await page.locator(THINKING_CONTAINER_SELECTOR).all()
+        for i, container in enumerate(thinking_containers):
+            try:
+                is_visible = await container.is_visible(timeout=1000)
+                text_content = await container.inner_text(timeout=1000) if is_visible else ""
+                debug_info["thinking_blocks_found"].append({
+                    "index": i,
+                    "visible": is_visible,
+                    "text_length": len(text_content),
+                    "text_preview": text_content[:100] + "..." if len(text_content) > 100 else text_content
+                })
+            except Exception as e:
+                debug_info["thinking_blocks_found"].append({
+                    "index": i,
+                    "error": str(e)
+                })
+        
+        # 查找最终响应块
+        response_elements = await page.locator(FINAL_RESPONSE_SELECTOR).all()
+        for i, elem in enumerate(response_elements):
+            try:
+                is_visible = await elem.is_visible(timeout=1000)
+                text_content = await elem.inner_text(timeout=1000) if is_visible else ""
+                debug_info["response_blocks_found"].append({
+                    "index": i,
+                    "visible": is_visible,
+                    "text_length": len(text_content),
+                    "text_preview": text_content[:100] + "..." if len(text_content) > 100 else text_content
+                })
+            except Exception as e:
+                debug_info["response_blocks_found"].append({
+                    "index": i,
+                    "error": str(e)
+                })
+        
+        # 检查生成状态
+        generation_elements = await page.locator(GENERATION_STATUS_SELECTOR).all()
+        for i, elem in enumerate(generation_elements):
+            try:
+                is_visible = await elem.is_visible(timeout=1000)
+                aria_label = await elem.get_attribute("aria-label") if is_visible else ""
+                debug_info["generation_status"][f"status_{i}"] = {
+                    "visible": is_visible,
+                    "aria_label": aria_label
+                }
+            except Exception as e:
+                debug_info["generation_status"][f"status_{i}"] = {"error": str(e)}
+        
+        # 检查关键UI元素
+        from config.selectors import INPUT_SELECTOR, SUBMIT_BUTTON_SELECTOR, REGENERATE_BUTTON_SELECTOR
+        key_elements = {
+            "input_field": INPUT_SELECTOR,
+            "submit_button": SUBMIT_BUTTON_SELECTOR,
+            "regenerate_button": REGENERATE_BUTTON_SELECTOR
+        }
+        
+        for name, selector in key_elements.items():
+            try:
+                elem = page.locator(selector)
+                is_visible = await elem.is_visible(timeout=1000)
+                is_disabled = await elem.is_disabled(timeout=1000) if is_visible else False
+                debug_info["ui_elements"][name] = {
+                    "visible": is_visible,
+                    "disabled": is_disabled
+                }
+            except Exception as e:
+                debug_info["ui_elements"][name] = {"error": str(e)}
+                
+    except Exception as e:
+        debug_info["capture_error"] = str(e)
+    
+    return debug_info
 
 async def get_response_via_edit_button(
     page: AsyncPage,
@@ -723,12 +878,33 @@ async def _wait_for_response_completion(
     """等待响应完成"""
     from playwright.async_api import TimeoutError
     
-    # 1. Dynamic Timeout
+    # [FIX-03] Dynamic TTFB Timeout - Rotation Aware
     if timeout is None:
-        # Fallback to old logic if timeout is not provided, but use the safer 1000 chars/sec
-        timeout_seconds = 5 + (prompt_length / 1000.0)
+        # Base calculation: 5s + 1s per 1000 chars (safer than before)
+        base_timeout_seconds = 5 + (prompt_length / 1000.0)
+        
+        # Rotation-aware adjustments
+        if GlobalState.IS_QUOTA_EXCEEDED:
+            # During rotation, extend timeout significantly
+            # Account for browser restart time (~10-15s) + model initialization
+            rotation_overhead = 20  # 20 second overhead for rotation
+            timeout_seconds = max(base_timeout_seconds + rotation_overhead, 30)  # Minimum 30s during rotation
+            logger.info(f"[{req_id}] (WaitV3) Rotation detected - applying extended timeout: {timeout_seconds:.2f}s")
+        else:
+            # Normal operation - use calculated timeout with reasonable bounds
+            timeout_seconds = max(base_timeout_seconds, 10)  # Minimum 10s for complex prompts
+            timeout_seconds = min(timeout_seconds, 120)  # Maximum 2 minutes
+            
+            # Add extra time for large prompts (more complex responses)
+            if prompt_length > 5000:  # Large prompts often need more time
+                timeout_seconds *= 1.5
+                logger.info(f"[{req_id}] (WaitV3) Large prompt detected - extending timeout by 50%: {timeout_seconds:.2f}s")
     else:
+        # User-provided timeout - respect it but add rotation awareness
         timeout_seconds = timeout
+        if GlobalState.IS_QUOTA_EXCEEDED and timeout_seconds < 30:
+            timeout_seconds = 30  # Ensure minimum timeout during rotation
+            logger.info(f"[{req_id}] (WaitV3) Rotation detected - enforcing minimum timeout: {timeout_seconds:.2f}s")
     
     timeout_ms = timeout_seconds * 1000
 
@@ -743,6 +919,36 @@ async def _wait_for_response_completion(
     current_timeout_seconds = timeout_seconds
 
     while True:
+        # [FIX-SCROLL] Active Viewport Tracking (Auto-Scroll)
+        # Force the viewport to the bottom to prevent DOM virtualization from unloading elements
+        try:
+            await page.evaluate("""([scrollSel, contentSel, lastTurnSel]) => {
+                // 1. Target the specific AI Studio scroll container (Primary)
+                const scrollContainer = document.querySelector(scrollSel);
+                if (scrollContainer) {
+                    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                }
+
+                // 2. Target the specific chat turn container (Backup)
+                const sessionContent = document.querySelector(contentSel);
+                if (sessionContent) {
+                     // Some versions might scroll this wrapper instead
+                     sessionContent.scrollTop = sessionContent.scrollHeight;
+                }
+                
+                // 3. Force the absolute last turn into view (Crucial for Virtual Scroll)
+                // This tells the virtualizer "I am looking at the bottom, please render these elements"
+                const lastTurn = document.querySelector(lastTurnSel);
+                if (lastTurn) {
+                    lastTurn.scrollIntoView({behavior: "instant", block: "end"});
+                }
+                
+                // 4. Generic Window scroll (Safety net)
+                window.scrollTo(0, document.body.scrollHeight);
+            }""", [SCROLL_CONTAINER_SELECTOR, CHAT_SESSION_CONTENT_SELECTOR, LAST_CHAT_TURN_SELECTOR])
+        except Exception:
+            pass
+
         # A. Check for Quota Error (You already did this ✅)
         await check_quota_limit(page, req_id)
 
@@ -754,16 +960,15 @@ async def _wait_for_response_completion(
 
         time_elapsed = time.time() - start_time
         if time_elapsed > current_timeout_seconds:
-            # UI Thinking Safety Check
+            # CRITICAL FIX: Remove UI-based timeout extension
+            # Trust Network State over UI State - force exit on timeout
             is_thinking = await page.locator('button[aria-label="Stop generating"]').is_visible()
             if is_thinking:
-                logger.info(f"[{req_id}] Timeout reached, but model is thinking (Stop button visible). Extending wait by 10s...")
-                current_timeout_seconds += 10  # Add 10 more seconds
-                continue # Continue the loop
+                logger.warning(f"[{req_id}] 🚨 TIMEOUT REACHED despite active UI! Forcing stream completion.")
             else:
-                logger.error(f"[{req_id}] (WaitV3) 等待响应完成超时 ({current_timeout_seconds:.1f}s) and UI is idle. Aborting.")
-                await save_error_snapshot(f"wait_completion_v3_overall_timeout_{req_id}")
-                return False
+                logger.warning(f"[{req_id}] ⏰ (WaitV3) 等待响应完成超时 ({current_timeout_seconds:.1f}s). Aborting.")
+            await save_error_snapshot(f"wait_completion_v3_overall_timeout_{req_id}")
+            return False
 
         try:
             check_client_disconnected_func("等待响应完成 - 超时检查后")
@@ -775,10 +980,8 @@ async def _wait_for_response_completion(
         is_thinking = await stop_button_locator.is_visible()
         if is_thinking:
             if DEBUG_LOGS_ENABLED:
-                logger.debug(f"[{req_id}] (WaitV3) Google is thinking (Stop button visible). Resetting timeout start time.")
-            start_time = time.time() # Reset timeout while Google is thinking
-            # Reset the timeout to its original calculated value, as we've just reset the timer
-            current_timeout_seconds = timeout_seconds
+                logger.debug(f"[{req_id}] (WaitV3) UI shows thinking, but NOT resetting timeout (Network State Priority)")
+            # CRITICAL FIX: Removed timeout reset logic - trust network state over UI state
 
         # --- 主要条件: 输入框空 & 提交按钮禁用 ---
         is_input_empty = await prompt_textarea_locator.input_value() == ""
