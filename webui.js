@@ -7,7 +7,7 @@ let chatbox, userInput, sendButton, clearButton, sidebarPanel, toggleSidebarButt
     temperatureValue, maxOutputTokensSlider, maxOutputTokensValue, topPSlider,
     topPValue, stopSequencesInput, saveModelSettingsButton, resetModelSettingsButton,
     settingsStatusElement, apiKeyStatus, newApiKeyInput, toggleApiKeyVisibilityButton,
-    testApiKeyButton, apiKeyList, transientStatusIndicator,
+    testApiKeyButton, apiKeyList,
     enableThinkingToggle, thinkingLevelSelector, enableManualBudgetToggle, thinkingBudgetSlider, thinkingBudgetValue,
     thinkingBudgetControlsContainer,
     thinkingModeGroup, thinkingLevelGroup, manualBudgetGroup, thinkingBudgetGroup,
@@ -68,18 +68,6 @@ function initializeDOMReferences() {
     toggleApiKeyVisibilityButton = document.getElementById('toggleApiKeyVisibility');
     testApiKeyButton = document.getElementById('testApiKeyButton');
     apiKeyList = document.getElementById('apiKeyList');
-    transientStatusIndicator = document.getElementById('transientStatusIndicator');
-}
-
-function updateTransientStatus(message, isDone) {
-    if (!transientStatusIndicator) return;
-    if (isDone) {
-        transientStatusIndicator.style.display = 'none';
-        transientStatusIndicator.textContent = '';
-    } else if (message) {
-        transientStatusIndicator.textContent = message;
-        transientStatusIndicator.style.display = 'block';
-    }
 }
 
 function modelUsesThinkingLevel(modelId) {
@@ -576,9 +564,6 @@ async function sendMessage() {
         chatbox.scrollTop = chatbox.scrollHeight;
 
         let fullResponse = '';
-        let currentToolCallFunction = null;
-        let accumulatedStatusText = '';
-
         const requestBody = {
             messages: conversationHistory,
             model: SELECTED_MODEL,
@@ -649,24 +634,7 @@ async function sendMessage() {
                     try {
                         const chunk = JSON.parse(data);
                         if (chunk.error) throw new Error(chunk.error.message || "Unknown stream error");
-
-                        const deltaObj = chunk.choices?.[0]?.delta;
-                        
-                        // Handle tool_calls for status updates
-                        if (deltaObj?.tool_calls) {
-                            const toolCall = deltaObj.tool_calls[0];
-                            if (toolCall.function?.name) {
-                                currentToolCallFunction = toolCall.function.name;
-                                accumulatedStatusText = ''; // Reset on new function
-                            }
-                            
-                            if (currentToolCallFunction === 'system_status_update' && toolCall.function?.arguments) {
-                                accumulatedStatusText += toolCall.function.arguments;
-                                updateTransientStatus(accumulatedStatusText, false);
-                            }
-                        }
-
-                        const delta = deltaObj?.content || '';
+                        const delta = chunk.choices?.[0]?.delta?.content || '';
                         if (delta) {
                             fullResponse += delta;
                             const isScrolledToBottom = chatbox.scrollHeight - chatbox.clientHeight <= chatbox.scrollTop + 25;
@@ -714,7 +682,6 @@ async function sendMessage() {
         if (finalAssistantMsg) finalAssistantMsg.classList.remove('streaming');
         userInput.focus();
         chatbox.scrollTop = chatbox.scrollHeight;
-        updateTransientStatus('', true);
     }
 }
 
