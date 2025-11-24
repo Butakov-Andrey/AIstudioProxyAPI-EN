@@ -41,6 +41,10 @@ async def gen_sse_from_aux_stream(
     data_receiving = False
     is_response_finalized = False  # [FIX] State flag to enforce one-response rule
 
+    # [ID-01] Latch & Backfill State Variables
+    has_started_body = False
+    has_sent_reasoning = False
+
     try:
         async for raw_data in use_stream_response(req_id, timeout=timeout, page=page, check_client_disconnected=check_client_disconnected):
             # [FIX] Check state flag before processing
@@ -93,9 +97,41 @@ async def gen_sse_from_aux_stream(
             if body:
                 full_body_content = body
 
-            # Enhanced content sequencing: Send thinking first, then body content
+            # [ID-01] The Latch: Reasoning Handling
             if len(reason) > last_reason_pos:
                 reason_delta = reason[last_reason_pos:]
+                if has_started_body:
+                    # Drop reasoning if body has started
+                    logger.debug(f"[{req_id}] 🛑 Latch active: Dropping late reasoning: {len(reason_delta)} chars")
+                else:
+                    output = {
+                        "id": chat_completion_id,
+                        "object": "chat.completion.chunk",
+                        "model": model_name_for_stream,
+                        "created": created_timestamp,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {
+                                "role": "assistant",
+                                "content": None,
+                                "reasoning_content": reason_delta,
+                            },
+                            "finish_reason": None,
+                            "native_finish_reason": None,
+                        }],
+                    }
+                    has_sent_reasoning = True
+                    logger.debug(f"[{req_id}] 🧠 Sent reasoning content: {len(reason_delta)} chars")
+                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                
+                last_reason_pos = len(reason)
+
+            # [ID-01] The Latch: Body Handling
+            if len(body) > last_body_pos:
+                body_delta = body[last_body_pos:]
+                has_started_body = True
+                
+                # Yield content immediately
                 output = {
                     "id": chat_completion_id,
                     "object": "chat.completion.chunk",
@@ -105,115 +141,43 @@ async def gen_sse_from_aux_stream(
                         "index": 0,
                         "delta": {
                             "role": "assistant",
-                            "content": None,
-                            "reasoning_content": reason_delta,
+                            "content": body_delta,
                         },
                         "finish_reason": None,
                         "native_finish_reason": None,
                     }],
                 }
-                last_reason_pos = len(reason)
-                logger.debug(f"[{req_id}] 🧠 Sent reasoning content: {len(reason_delta)} chars")
+                last_body_pos = len(body)
+                logger.debug(f"[{req_id}] 📝 Sent body content: {len(body_delta)} chars")
                 yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
-            # Smart body content sequencing - only send after thinking is complete
-            if len(body) > last_body_pos:
-                body_delta = body[last_body_pos:]
-                finish_reason_val = None
-                if done:
-                    finish_reason_val = "stop"
-
-                # Only send body content if we have substantial body content or we're done
-                should_send_body = len(body_delta) > 0 and (
-                    len(full_reasoning_content) == 0 or  # No thinking content, safe to send
-                    last_reason_pos >= len(reason)       # Thinking content is up to date
-                )
-                
-                if should_send_body:
-                    delta_content = {"role": "assistant", "content": body_delta}
-                    choice_item = {
-                        "index": 0,
-                        "delta": delta_content,
-                        "finish_reason": finish_reason_val,
-                        "native_finish_reason": finish_reason_val,
-                    }
-
-                    if done and function and len(function) > 0:
-                        tool_calls_list = []
-                        for func_idx, function_call_data in enumerate(function):
-                            tool_calls_list.append({
-                                "id": f"call_{random_id()}",
-                                "index": func_idx,
-                                "type": "function",
-                                "function": {
-                                    "name": function_call_data["name"],
-                                    "arguments": json.dumps(function_call_data["params"]),
-                                },
-                            })
-                        delta_content["tool_calls"] = tool_calls_list
-                        choice_item["finish_reason"] = "tool_calls"
-                        choice_item["native_finish_reason"] = "tool_calls"
-                        delta_content["content"] = None
-
+            if done:
+                # [ID-02] The Backfill: Synthetic Content if no body
+                if not has_started_body:
+                    fallback_text = "\n\n*(Model finished thinking but generated no code/text output.)*"
+                    logger.info(f"[{req_id}] ⚠️ Backfill triggered: Sending synthetic content.")
+                    
                     output = {
                         "id": chat_completion_id,
                         "object": "chat.completion.chunk",
                         "model": model_name_for_stream,
                         "created": created_timestamp,
-                        "choices": [choice_item],
-                    }
-                    last_body_pos = len(body)
-                    logger.debug(f"[{req_id}] 📝 Sent body content: {len(body_delta)} chars")
-                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
-                else:
-                    # Accumulate body content for later transmission
-                    logger.debug(f"[{req_id}] ⏸️ Holding body content ({len(body_delta)} chars) until thinking complete")
-            elif done:
-                # Enhanced body content flushing when thinking is complete
-                if len(full_body_content) > last_body_pos:
-                    # Flush any remaining body content
-                    remaining_body = full_body_content[last_body_pos:]
-                    if remaining_body:
-                        logger.info(f"[{req_id}] 📨 Flushing accumulated body content: {len(remaining_body)} chars")
-                        delta_content = {"role": "assistant", "content": remaining_body}
-                        choice_item = {
+                        "choices": [{
                             "index": 0,
-                            "delta": delta_content,
+                            "delta": {
+                                "role": "assistant",
+                                "content": fallback_text,
+                            },
                             "finish_reason": None,
                             "native_finish_reason": None,
-                        }
-                        output = {
-                            "id": chat_completion_id,
-                            "object": "chat.completion.chunk",
-                            "model": model_name_for_stream,
-                            "created": created_timestamp,
-                            "choices": [choice_item],
-                        }
-                        yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
-                        last_body_pos = len(full_body_content)
-                
-                # [FIX-07] Client Compatibility Fallback (The "Saved You" Fix)
-                # 如果到最后 body 还是空的，但有思考内容，强制填充 body 以防止客户端报错
-                if len(full_body_content) == 0 and len(full_reasoning_content) > 0:
-                    fallback_text = "\n\n(Model finished thinking but produced no text output.)"
-                    
-                    delta_content = {"role": "assistant", "content": fallback_text}
-                    choice_item = {
-                        "index": 0,
-                        "delta": delta_content,
-                        "finish_reason": None,
-                        "native_finish_reason": None,
-                    }
-                    output = {
-                        "id": chat_completion_id,
-                        "object": "chat.completion.chunk",
-                        "model": model_name_for_stream,
-                        "created": created_timestamp,
-                        "choices": [choice_item],
+                        }],
                     }
                     yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
                     full_body_content += fallback_text
+                    # Mark as started so we don't do it again if logic changes
+                    has_started_body = True
 
+                # Handle Tool Calls or Stop
                 if function and len(function) > 0:
                     tool_calls_list = []
                     for func_idx, function_call_data in enumerate(function):
@@ -249,10 +213,6 @@ async def gen_sse_from_aux_stream(
                     "choices": [choice_item],
                 }
                 yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
-                
-                # [FIX] Mark response as finalized
-                is_response_finalized = True
-                logger.info(f"[{req_id}] ✅ Response finalized. Subsequent messages will be ignored.")
                 
                 # [FIX] Mark response as finalized
                 is_response_finalized = True

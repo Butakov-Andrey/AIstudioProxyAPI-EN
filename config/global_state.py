@@ -2,7 +2,7 @@ import asyncio
 import threading
 import time
 import logging
-from config.settings import PROACTIVE_ROTATION_TOKEN_LIMIT
+from config.settings import QUOTA_SOFT_LIMIT, QUOTA_HARD_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +12,7 @@ class GlobalState:
     """
     _instance = None
     IS_QUOTA_EXCEEDED = False
+    NEEDS_ROTATION = False # [GR-01] Soft Signal Flag
     QUOTA_EXCEEDED_TIMESTAMP = 0.0
     
     # Global Event for holding requests during auth rotation
@@ -84,6 +85,7 @@ class GlobalState:
         Resets the global quota exceeded flag.
         """
         cls.IS_QUOTA_EXCEEDED = False
+        cls.NEEDS_ROTATION = False # Reset soft flag too
         cls.QUOTA_EXCEEDED_TIMESTAMP = 0.0
         cls.last_error_type = None
         cls.QUOTA_EXCEEDED_EVENT.clear()
@@ -93,13 +95,24 @@ class GlobalState:
     def increment_token_count(cls, count: int):
         """
         Increments the token count for the current profile and checks if it exceeds the limit.
+        [GR-01] Implements Graceful Rotation logic.
         """
         if count <= 0:
             return
             
         cls.current_profile_token_count += count
-        logger.info(f"📊 Token usage updated: +{count} => {cls.current_profile_token_count}/{PROACTIVE_ROTATION_TOKEN_LIMIT}")
         
-        if cls.current_profile_token_count >= PROACTIVE_ROTATION_TOKEN_LIMIT:
-            logger.warning(f"⚠️ Proactive Rotation Triggered: Token limit exceeded ({cls.current_profile_token_count} >= {PROACTIVE_ROTATION_TOKEN_LIMIT})")
-            cls.set_quota_exceeded()
+        # Check Hard Limit (Emergency Kill)
+        if cls.current_profile_token_count >= QUOTA_HARD_LIMIT:
+            logger.critical(f"⛔ HARD LIMIT REACHED: {cls.current_profile_token_count} >= {QUOTA_HARD_LIMIT}. Triggering immediate kill.")
+            cls.set_quota_exceeded() # Triggers the Watchdog Event
+            return
+
+        # Check Soft Limit (Graceful Signal)
+        if cls.current_profile_token_count >= QUOTA_SOFT_LIMIT and not cls.NEEDS_ROTATION:
+            logger.warning(f"🔄 SOFT LIMIT REACHED: {cls.current_profile_token_count} >= {QUOTA_SOFT_LIMIT}. Setting NEEDS_ROTATION flag.")
+            cls.NEEDS_ROTATION = True
+        
+        # Log status
+        limit_str = f"{QUOTA_SOFT_LIMIT}(Soft)/{QUOTA_HARD_LIMIT}(Hard)"
+        logger.info(f"📊 Token usage updated: +{count} => {cls.current_profile_token_count} (Limits: {limit_str}) | Rotation Pending: {cls.NEEDS_ROTATION}")

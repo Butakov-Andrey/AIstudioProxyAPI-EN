@@ -62,7 +62,13 @@ EMERGENCY_WAIT_SECONDS = get_int_env('EMERGENCY_WAIT_SECONDS', 3)
 DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE = get_boolean_env("DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE", default=True)
 
 # --- Proactive Rotation Configuration ---
-PROACTIVE_ROTATION_TOKEN_LIMIT = get_int_env('PROACTIVE_ROTATION_TOKEN_LIMIT', 500000)
+# [GR-04] Graceful Rotation Thresholds
+# Soft Limit: Triggers "Rotation Pending" flag (Graceful)
+QUOTA_SOFT_LIMIT = get_int_env('QUOTA_SOFT_LIMIT', 450000)
+# Hard Limit: Triggers immediate "Kill Signal" (Emergency)
+QUOTA_HARD_LIMIT = get_int_env('QUOTA_HARD_LIMIT', 550000)
+
+PROACTIVE_ROTATION_TOKEN_LIMIT = QUOTA_HARD_LIMIT # Backwards compatibility alias
 
 # --- Dynamic Rotation Guard Configuration ---
 HIGH_TRAFFIC_QUEUE_THRESHOLD = get_int_env('HIGH_TRAFFIC_QUEUE_THRESHOLD', 5)

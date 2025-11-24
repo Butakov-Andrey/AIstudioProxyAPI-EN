@@ -110,12 +110,15 @@ async def queue_worker() -> None:
                 for item in items_to_requeue:
                     await request_queue.put(item)
             
-            # [CRIT-01] Gatekeeper Check: BEFORE getting next request, check quota exceeded
-            if GlobalState.IS_QUOTA_EXCEEDED:
-                logger.info("⏸️ Pausing worker for Auth Rotation...")
+            # [CRIT-01] Gatekeeper Check: BEFORE getting next request, check quota exceeded OR Soft Rotation
+            # [GR-03] Pre-Flight Rotation Check
+            if GlobalState.IS_QUOTA_EXCEEDED or GlobalState.NEEDS_ROTATION:
+                reason = "Quota Exceeded" if GlobalState.IS_QUOTA_EXCEEDED else "Graceful Rotation Pending"
+                logger.info(f"⏸️ Pausing worker for Auth Rotation ({reason})...")
                 from browser_utils.auth_rotation import perform_auth_rotation
                 rotation_success = await perform_auth_rotation()
                 if rotation_success:
+                    GlobalState.NEEDS_ROTATION = False
                     logger.info("✅ Auth rotation completed successfully. Resuming request processing.")
                 else:
                     logger.error("❌ Auth rotation failed. System may be exhausted.")
@@ -414,6 +417,18 @@ async def queue_worker() -> None:
                             result_future.set_exception(server_error(req_id, f"Request processing error: {process_err}"))
             
             logger.info(f"[{req_id}] (Worker) 释放处理锁。")
+
+            # [GR-02] Post-Request Graceful Rotation Check
+            # Must happen AFTER releasing the lock but BEFORE processing next request
+            if GlobalState.NEEDS_ROTATION:
+                logger.info(f"[{req_id}] 🔄 Graceful Rotation Triggered after request completion.")
+                from browser_utils.auth_rotation import perform_auth_rotation
+                rotation_success = await perform_auth_rotation()
+                if rotation_success:
+                    GlobalState.NEEDS_ROTATION = False
+                    logger.info(f"[{req_id}] ✅ Graceful Rotation completed.")
+                else:
+                    logger.error(f"[{req_id}] ❌ Graceful Rotation failed. Flag remains set for next retry.")
 
             # 在释放处理锁后立即执行清空操作
             try:

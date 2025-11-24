@@ -572,6 +572,15 @@ async def _process_request_refactored(
         await GlobalState.AUTH_ROTATION_LOCK.wait()
         logger.info(f"[{req_id}] ▶️ Resuming after Auth Rotation.")
 
+    # [GR-03] Pre-Flight Graceful Rotation Check
+    # Handles edge case where limit was hit while server was idle
+    if GlobalState.NEEDS_ROTATION:
+        logger.info(f"[{req_id}] 🔄 Graceful Rotation Pending. Initiating rotation before processing request...")
+        from browser_utils.auth_rotation import perform_auth_rotation
+        if await perform_auth_rotation():
+             GlobalState.NEEDS_ROTATION = False
+             logger.info(f"[{req_id}] ✅ Pre-flight rotation complete.")
+
     is_connected = await _test_client_connection(req_id, http_request)
     if not is_connected:
         logger.info(f"[{req_id}] ✅ 核心处理前检测到客户端断开，提前退出节省资源")
