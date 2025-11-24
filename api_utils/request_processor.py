@@ -274,7 +274,7 @@ async def _handle_auxiliary_stream_response(
 
         # Pass page here too for non-streaming requests so they don't time out
         page = context['page']
-        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
+        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected, timeout=timeout):
             check_client_disconnected(f"非流式辅助流 - 循环中 ({req_id}): ")
             
             if isinstance(raw_data, str):

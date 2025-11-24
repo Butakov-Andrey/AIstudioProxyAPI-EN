@@ -605,3 +605,35 @@ export TRACE_LOGS_ENABLED=true
 - [脚本注入指南](script_injection_guide.md) - 脚本注入功能详细说明
 - [日志控制指南](logging-control.md)
 - [高级配置指南](advanced-configuration.md)
+
+---
+
+## Authentication Rotation Failures
+
+### Error: "Rotation Failed: No available auth profiles found"
+
+**Symptom:**
+The server log shows a critical error `Rotation Failed: No available auth profiles found`, and the system may enter "Emergency Operation Mode." This typically happens after a series of token limit, quota, or rate limit errors.
+
+**Cause:**
+This error is not a bug in the rotation logic. It means the system has run out of healthy, usable authentication profiles. The "smart rotation" mechanism has scanned all profile directories (`auth_profiles/saved`, `auth_profiles/active`, and `auth_profiles/emergency`) and found that every single profile is currently in a "cooldown" state.
+
+A profile is put into cooldown if:
+1.  It has just hit a rate limit or quota limit.
+2.  It failed a "canary test," meaning it was selected for rotation but was found to be unhealthy or expired.
+
+**Strategic Solution: Managing Profile Pools**
+
+You are correct that simply copying the same profile into all three directories (`saved`, `active`, `emergency`) will **not** solve the problem. The cooldown is tied to the profile's file path and, more importantly, to the underlying account that is rate-limited.
+
+The directories are meant to hold **different, unique** profiles to create layers of resilience:
+
+1.  **`auth_profiles/saved` (Primary Pool):** This should be your main collection of healthy, unique profiles. The system will primarily use these.
+2.  **`auth_profiles/emergency` (Backup Pool):** This should contain a separate, smaller set of unique profiles that are *only* used when the primary pool is completely exhausted. Do not duplicate profiles from the `saved` directory here.
+3.  **`auth_profiles/active`:** This directory is for internal state management of the currently active profile. You should not place files here manually.
+
+**How to Fix and Prevent This Error:**
+
+1.  **Immediate Action: Wait.** The system will automatically recover once the cooldown timers on the profiles expire. You can see the cooldown duration in the logs when a profile is placed on cooldown.
+2.  **Long-Term Solution: Increase Profile Diversity.** The most effective way to prevent this is to increase the total number of **unique** authentication profiles in your `auth_profiles/saved` and `auth_profiles/emergency` directories. A larger and more diverse pool of profiles makes it statistically much less likely that all of them will be on cooldown at the same time.
+3.  **Review Cooldown Timers:** If this happens frequently, you can review the `RATE_LIMIT_COOLDOWN_SECONDS` and `QUOTA_EXCEEDED_COOLDOWN_SECONDS` settings in the `config/timeouts.py` file, but the primary solution should be to add more profiles.

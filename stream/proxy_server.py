@@ -233,10 +233,14 @@ class ProxyServer:
         client_buffer = bytearray()
         server_buffer = bytearray()
         should_sniff = False
+        
+        # Use a dict to share state between closures, as nonlocal only works for simple variables
+        request_context = {"request_ts": 0.0}
 
         # Parse HTTP headers from client
         async def _process_client_data():
             nonlocal client_buffer, should_sniff
+            import time
             
             try:
                 while True:
@@ -268,6 +272,7 @@ class ProxyServer:
                         # Check if we should intercept this request
                         if 'GenerateContent' in path:
                             should_sniff = True
+                            request_context['request_ts'] = time.time()
                             # Process the request body
                             processed_body = await self.interceptor.process_request(
                                 body_data, host, path
@@ -340,7 +345,12 @@ class ProxyServer:
                                 )
 
                                 if self.queue is not None:
-                                    self.queue.put(json.dumps(resp))
+                                    # Put wrapped payload with timestamp
+                                    payload = {
+                                        "ts": request_context.get("request_ts", 0),
+                                        "data": resp
+                                    }
+                                    self.queue.put(json.dumps(payload))
                             except Exception as e:
                                 # --- FIX: Log the unused exception variable ---
                                 self.logger.error(f"Error during response interception: {e}")

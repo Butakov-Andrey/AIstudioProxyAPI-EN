@@ -221,6 +221,8 @@ auth_profiles/active/*
 !auth_profiles/active/.gitkeep
 auth_profiles/saved/*
 !auth_profiles/saved/.gitkeep
+auth_profiles/emergency/*
+!auth_profiles/emergency/.gitkeep
 
 # Camoufox/Playwright Profile Data (Assume these are generated/temporary)
 camoufox_profile/

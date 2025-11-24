@@ -39,9 +39,15 @@ async def gen_sse_from_aux_stream(
     full_reasoning_content = ""
     full_body_content = ""
     data_receiving = False
+    is_response_finalized = False  # [FIX] State flag to enforce one-response rule
 
     try:
         async for raw_data in use_stream_response(req_id, timeout=timeout, page=page, check_client_disconnected=check_client_disconnected):
+            # [FIX] Check state flag before processing
+            if is_response_finalized:
+                logger.warning(f"[{req_id}] ⚠️ Extraneous message received after response finalization. Ignoring.")
+                continue
+
             if GlobalState.IS_QUOTA_EXCEEDED:
                 logger.error(f"[{req_id}] ⛔ Quota exceeded detected during stream! Aborting.")
                 yield generate_sse_chunk("\n\n[SYSTEM: Quota Exceeded. Stopping.]", req_id, model_name_for_stream)
@@ -243,6 +249,14 @@ async def gen_sse_from_aux_stream(
                     "choices": [choice_item],
                 }
                 yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                
+                # [FIX] Mark response as finalized
+                is_response_finalized = True
+                logger.info(f"[{req_id}] ✅ Response finalized. Subsequent messages will be ignored.")
+                
+                # [FIX] Mark response as finalized
+                is_response_finalized = True
+                logger.info(f"[{req_id}] ✅ Response finalized. Subsequent messages will be ignored.")
 
     except ClientDisconnectedError:
         logger.info(f"[{req_id}] 流式生成器中检测到客户端断开连接")

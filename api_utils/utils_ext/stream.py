@@ -12,7 +12,7 @@ from typing import Any, AsyncGenerator, Optional, Callable
 # 4. Trigger: XML Tag Start (<tagname) followed by Space (for attributes) or > (immediate close)
 TOOL_STRUCTURE_PATTERN = re.compile(r'(?:^|\n)\s*(?:```[a-zA-Z0-9]*\s*)?<[a-zA-Z0-9_\-]+(?:\s|>)')
 
-async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None) -> AsyncGenerator[Any, None]:
+async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None, stream_start_time: float = 0.0) -> AsyncGenerator[Any, None]:
     """Enhanced stream response handler with UI-based generation active checks.
     
     Args:
@@ -20,6 +20,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
         timeout: TTFB timeout in seconds
         page: Playwright page instance for UI state checks
         check_client_disconnected: Optional callback to check if client disconnected
+        stream_start_time: Timestamp when this specific stream request was initiated. Used to filter out stale queue data.
     """
     from server import STREAM_QUEUE, logger
     from models import ClientDisconnectedError, QuotaExceededError
@@ -38,7 +39,10 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     # 引入 PageController 用于 DOM 兜底
     from browser_utils.page_controller import PageController
 
-    logger.info(f"[{req_id}] 开始使用流响应 (TTFB Timeout: {timeout:.2f}s)")
+    if stream_start_time == 0.0:
+        stream_start_time = time.time() - 10.0 # Fallback: 10s buffer if not provided
+
+    logger.info(f"[{req_id}] 开始使用流响应 (TTFB Timeout: {timeout:.2f}s, Start Time: {stream_start_time})")
 
     accumulated_body = ""
     accumulated_reason_len = 0
@@ -159,11 +163,146 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 last_packet_time = time.time()
                 logger.debug(f"[{req_id}] 接收到流数据[#{received_items_count}]: {type(data)} - {str(data)[:200]}...")
 
+                # [FIX-TIMESTAMP] Handle wrapped data with timestamp
+                actual_data = data
+                data_ts = 0.0
+                
+                if isinstance(data, str):
+                    try:
+                        parsed_wrapper = json.loads(data)
+                        # Check if it's the new wrapped format: {"ts": float, "data": ...}
+                        if isinstance(parsed_wrapper, dict) and "ts" in parsed_wrapper and "data" in parsed_wrapper:
+                            data_ts = parsed_wrapper["ts"]
+                            # Filter out stale data from previous requests
+                            if data_ts < stream_start_time:
+                                logger.warning(f"[{req_id}] 🗑️ Ignoring stale stream data (Timestamp: {data_ts} < Start: {stream_start_time})")
+                                continue
+                            actual_data = parsed_wrapper["data"]
+                        else:
+                            # Legacy format (direct data) - accept but warn? Or just accept.
+                            actual_data = parsed_wrapper
+                    except json.JSONDecodeError:
+                        pass # Handle as raw string below if needed
+
+                # Process the actual data payload
+                if isinstance(actual_data, dict):
+                    # It was already a dict (from wrapper or raw dict in queue)
+                    parsed_data = actual_data
+                    
+                    # [REFAC-05] Robust Accumulation & Switching Logic (Dict)
+                    p_reason = parsed_data.get("reason", "")
+                    p_body = parsed_data.get("body", "")
+                    
+                    # 1. Update Accumulators
+                    if p_reason and acc_reason_state and p_reason.startswith(acc_reason_state):
+                            acc_reason_state = p_reason
+                            new_reason_delta = p_reason[len(acc_reason_state):]
+                    else:
+                            acc_reason_state += p_reason
+                            new_reason_delta = p_reason
+                            
+                    if p_body and acc_body_state and p_body.startswith(acc_body_state):
+                            acc_body_state = p_body
+                    else:
+                            acc_body_state += p_body
+
+                    # 2. Apply Boundary Logic
+                    if force_body_mode:
+                        thought_part = acc_reason_state[:split_index]
+                        overflow_tool_part = acc_reason_state[split_index:]
+                        
+                        parsed_data["reason"] = thought_part
+                        parsed_data["body"] = acc_body_state + overflow_tool_part
+                    else:
+                        text_to_check = boundary_buffer + new_reason_delta
+                        match = TOOL_STRUCTURE_PATTERN.search(text_to_check)
+                        
+                        if match:
+                            offset = len(acc_reason_state) - len(text_to_check)
+                            absolute_split_index = offset + match.start()
+                            
+                            split_index = absolute_split_index
+                            force_body_mode = True
+                            boundary_transitions += 1
+                            
+                            thought_part = acc_reason_state[:split_index]
+                            overflow_tool_part = acc_reason_state[split_index:]
+                            
+                            parsed_data["reason"] = thought_part
+                            parsed_data["body"] = acc_body_state + overflow_tool_part
+                            logger.info(f"[{req_id}] ✂️ Dict Boundary Split Applied.")
+                        else:
+                            parsed_data["reason"] = acc_reason_state
+                            parsed_data["body"] = acc_body_state
+                            boundary_buffer = (boundary_buffer + new_reason_delta)[-100:]
+
+                    body = parsed_data.get("body", "")
+                    reason = parsed_data.get("reason", "")
+                    
+                    # Update totals with detailed logging
+                    body_increment = len(body)
+                    reason_increment = len(reason)
+                    accumulated_body += body
+                    accumulated_reason_len += len(reason)
+                    total_body_processed += body_increment
+                    total_reason_processed += reason_increment
+                    
+                    if body or reason:
+                        has_content = True
+                    stale_done_ignored = False
+                    
+                    yield parsed_data
+                    
+                    # [SYNC-FIX] CRITICAL: Dict DONE signal forces immediate exit, ignoring UI state
+                    if parsed_data.get("done") is True:
+                        logger.info(f"[{req_id}] 🔴 CRITICAL: Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing immediate stream completion.")
+                        
+                        # [FIX-06] Thinking-to-Answer Handover Protocol (Copied from string branch)
+                        if accumulated_reason_len > 0 and len(accumulated_body) == 0:
+                             logger.info(f"[{req_id}] ⚠️ [Dict Path] 检测到 Thinking-Only 响应. 启动 DOM Body-Wait 协议...")
+                             try:
+                                if page:
+                                    pc = PageController(page, logger, req_id)
+                                    wait_attempts = 20
+                                    dom_body_found = False
+                                    for wait_i in range(wait_attempts):
+                                        await asyncio.sleep(0.5)
+                                        dom_text = await pc.get_body_text_only_from_dom()
+                                        if dom_text and len(dom_text.strip()) > 0:
+                                            logger.info(f"[{req_id}] ✅ [Dict Path] DOM 捕获到正文: {len(dom_text)} chars")
+                                            yield {"body": dom_text, "reason": "", "done": False}
+                                            dom_body_found = True
+                                            break
+                                    if not dom_body_found:
+                                        logger.warning(f"[{req_id}] ⚠️ [Dict Path] DOM 等待超时。")
+                             except Exception as e:
+                                 logger.error(f"[{req_id}] ❌ [Dict Path] DOM Wait Error: {e}")
+
+                        if not has_content and received_items_count == 1 and not stale_done_ignored:
+                            logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
+                            stale_done_ignored = True
+                            continue
+                        break
+                    else:
+                        stale_done_ignored = False
+                        
+                elif isinstance(actual_data, str):
+                    # Fallback for string data that wasn't JSON or wasn't handled above
+                    # (This branch is mostly legacy/fallback now as everything comes as dict or wrapped dict)
+                    pass
+
+                # Removed the large duplicate 'if isinstance(data, str)' block as we handle it via parsing above
+                # and treating result as dict.
+                
+                continue # Loop back for next item
+
+                # [Legacy Code Block - Kept for reference but unreachable due to 'continue' above and logic refactor]
+                # The following block was the original string handling logic.
+                # We have integrated it into the unified flow above.
+                
                 if isinstance(data, str):
                     try:
                         parsed_data = json.loads(data)
-                        
-                        # [REFAC-05] Robust Accumulation & Switching Logic
                         p_reason = parsed_data.get("reason", "")
                         p_body = parsed_data.get("body", "")
                         
