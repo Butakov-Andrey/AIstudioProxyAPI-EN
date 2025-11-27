@@ -1259,8 +1259,9 @@ if __name__ == "__main__":
                     current_files = set(os.listdir(SAVED_AUTH_DIR))
                     new_files = current_files - initial_files
                     if new_files:
-                        logger.info(f"Detected new saved auth files: {', '.join(new_files)}. Triggering shutdown in 3 seconds...")
-                        time.sleep(3)
+                        sleep_time = float(os.getenv("POLLING_INTERVAL_STREAM", 500)) / 1000
+                        logger.info(f"Detected new saved auth files: {', '.join(new_files)}. Triggering shutdown in {sleep_time} seconds...")
+                        time.sleep(sleep_time)
                         server.should_exit = True
                         logger.info("Shutdown signal sent to Uvicorn server.")
                         break

@@ -60,6 +60,8 @@ async def queue_worker() -> None:
         result_future = None
         req_id = "UNKNOWN"
         completion_event = None
+        submit_btn_loc = None
+        client_disco_checker = None
         
         try:
             # [SHUTDOWN-02] Check shutdown status immediately at loop start

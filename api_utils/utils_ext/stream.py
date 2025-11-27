@@ -263,7 +263,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     
                     # [SYNC-FIX] CRITICAL: Dict DONE signal forces immediate exit, ignoring UI state
                     if parsed_data.get("done") is True:
-                        logger.info(f"[{req_id}] 🔴 CRITICAL: Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing immediate stream completion.")
+                        logger.info(f"[{req_id}] ✅ [Latch] Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing stream completion (Intentional).")
                         
                         # [FIX-06] Thinking-to-Answer Handover Protocol (Copied from string branch)
                         if accumulated_reason_len > 0 and len(accumulated_body) == 0:
@@ -539,7 +539,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         
                         # [SYNC-FIX] CRITICAL: Dict DONE signal forces immediate exit, ignoring UI state
                         if data.get("done") is True:
-                            logger.info(f"[{req_id}] 🔴 CRITICAL: Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing immediate stream completion.")
+                            logger.info(f"[{req_id}] ✅ [Latch] Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing stream completion (Intentional).")
                             if not has_content and received_items_count == 1 and not stale_done_ignored:
                                 logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
                                 stale_done_ignored = True
