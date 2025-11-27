@@ -36,6 +36,9 @@ CLIPBOARD_READ_TIMEOUT_MS = int(os.environ.get('CLIPBOARD_READ_TIMEOUT_MS', '300
 # --- Element Wait Timeout ---
 WAIT_FOR_ELEMENT_TIMEOUT_MS = int(os.environ.get('WAIT_FOR_ELEMENT_TIMEOUT_MS', '10000'))  # Timeout for waiting for elements like overlays
 
+# --- UI Generation Wait Configuration ---
+UI_GENERATION_WAIT_TIMEOUT_MS = int(os.environ.get('UI_GENERATION_WAIT_TIMEOUT_MS', '3000'))
+
 # --- Adaptive Cooldown Configuration ---
 # Rate Limit (429) - Shorter cooldown (default 5 minutes)
 RATE_LIMIT_COOLDOWN_SECONDS = int(os.environ.get('RATE_LIMIT_COOLDOWN_SECONDS', '300'))

@@ -352,6 +352,8 @@ async def queue_worker() -> None:
                                 logger.info(f"[{req_id}] (Worker) Client disconnected early, attempting to stop generation...")
                                 if submit_btn_loc:
                                     try:
+                                        # [AUTO-01] Harden Stop Button Logic
+                                        # Use try/except block to handle potential UI changes or detachments
                                         is_button_enabled = await submit_btn_loc.is_enabled(timeout=2000)
                                         if is_button_enabled:
                                             logger.info(f"[{req_id}] (Worker) Stop button found enabled, clicking to abort generation...")
@@ -377,6 +379,7 @@ async def queue_worker() -> None:
                                         # Check if button is still enabled, if so click stop directly
                                         logger.info(f"[{req_id}] (Worker) Checking send button status...")
                                         try:
+                                            # [AUTO-01] Harden Submit Button Logic
                                             is_button_enabled = await submit_btn_loc.is_enabled(timeout=2000)
                                             logger.info(f"[{req_id}] (Worker) Send button enabled status: {is_button_enabled}")
 
@@ -430,12 +433,14 @@ async def queue_worker() -> None:
 
             # [GR-02] Post-Request Graceful Rotation Check
             # Must happen AFTER releasing the lock but BEFORE processing next request
+            just_rotated = False
             if GlobalState.NEEDS_ROTATION:
                 logger.info(f"[{req_id}] 🔄 Graceful Rotation Triggered after request completion.")
                 from browser_utils.auth_rotation import perform_auth_rotation
                 rotation_success = await perform_auth_rotation()
                 if rotation_success:
                     GlobalState.NEEDS_ROTATION = False
+                    just_rotated = True
                     logger.info(f"[{req_id}] ✅ Graceful Rotation completed.")
                 else:
                     logger.error(f"[{req_id}] ❌ Graceful Rotation failed. Flag remains set for next retry.")
@@ -449,6 +454,8 @@ async def queue_worker() -> None:
                 # [FIX-03] Worker Cleanup Short-Circuit - Enhanced browser shutdown detection
                 if GlobalState.IS_QUOTA_EXCEEDED:
                     logger.warning(f"[{req_id}] (Worker) ⛔ Quota Exceeded flag detected! Skipping chat history cleanup to allow immediate rotation.")
+                elif just_rotated:
+                    logger.info(f"[{req_id}] (Worker) 🔄 Just rotated credentials. Skipping chat history cleanup (session is fresh).")
                 elif GlobalState.IS_SHUTTING_DOWN.is_set():
                     logger.warning(f"[{req_id}] (Worker) 🚨 Shutdown detected, skipping all browser operations.")
                 elif submit_btn_loc and client_disco_checker:

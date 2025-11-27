@@ -912,7 +912,10 @@ async def _wait_for_response_completion(
     await asyncio.sleep(initial_wait_ms / 1000) # Initial brief wait
     
     start_time = time.time()
-    wait_timeout_ms_short = 3000 # 3 seconds for individual element checks
+    
+    # [AUTO-02] Use configured UI generation timeout
+    from config import UI_GENERATION_WAIT_TIMEOUT_MS
+    wait_timeout_ms_short = UI_GENERATION_WAIT_TIMEOUT_MS
     
     consecutive_empty_input_submit_disabled_count = 0
     

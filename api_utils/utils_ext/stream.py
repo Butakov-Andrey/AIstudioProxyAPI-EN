@@ -29,6 +29,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
         SCROLL_CONTAINER_SELECTOR,
         CHAT_SESSION_CONTENT_SELECTOR,
         LAST_CHAT_TURN_SELECTOR,
+        UI_GENERATION_WAIT_TIMEOUT_MS,
     )
     import queue
 
@@ -72,7 +73,9 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     received_items_count = 0
     stale_done_ignored = False
     last_ui_check_time = 0
-    ui_check_interval = 30  # Check UI state every 30 empty reads (3 seconds)
+    # [CONF-01] Use configured interval instead of hardcoded 30
+    ui_check_interval = int(UI_GENERATION_WAIT_TIMEOUT_MS / 100)  # Check UI state based on config (loop is 0.1s)
+    if ui_check_interval <= 0: ui_check_interval = 1
     
     # [LOGIC-FIX] Last Packet Watchdog for silence detection
     last_packet_time = time.time()

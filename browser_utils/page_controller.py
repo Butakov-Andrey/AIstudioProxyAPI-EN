@@ -1153,10 +1153,18 @@ class PageController:
             )
             overlay_locator = self.page.locator(OVERLAY_SELECTOR)
 
+            # [CTX-01] Ensure input area is ready (interactive) before attempting to clear
+            try:
+                prompt_area = self.page.locator(PROMPT_TEXTAREA_SELECTOR)
+                await expect_async(prompt_area).to_be_editable(timeout=5000)
+            except Exception:
+                self.logger.warning(f"[{self.req_id}] Input area not editable yet, but proceeding to check clear button...")
+
             can_attempt_clear = False
             try:
+                # [CTX-01] Increased timeout for Clear Chat button to account for UI latency
                 await expect_async(clear_chat_button_locator).to_be_enabled(
-                    timeout=3000
+                    timeout=5000
                 )
                 can_attempt_clear = True
                 self.logger.info(f'[{self.req_id}] "Clear Chat" button enabled, proceeding.')
@@ -2479,9 +2487,10 @@ class PageController:
         Returns:
             bool: 是否在等待期间检测到内容变化
         """
-        from config import EMERGENCY_WAIT_SECONDS
+        from config.settings import EMERGENCY_WAIT_SECONDS
         
-        emergency_wait_seconds = getattr(EMERGENCY_WAIT_SECONDS, 'value', 3)
+        # [CONF-01] Removed incorrect getattr usage. EMERGENCY_WAIT_SECONDS is an int.
+        emergency_wait_seconds = EMERGENCY_WAIT_SECONDS
         
         self.logger.info(f"[{self.req_id}] 开始紧急稳定性等待 ({emergency_wait_seconds}s)...")
         

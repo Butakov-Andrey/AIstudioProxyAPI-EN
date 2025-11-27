@@ -20,7 +20,7 @@ from config import (
     MODEL_NAME,
     SUBMIT_BUTTON_SELECTOR,
 )
-from config import ONLY_COLLECT_CURRENT_USER_ATTACHMENTS, UPLOAD_FILES_DIR
+from config import ONLY_COLLECT_CURRENT_USER_ATTACHMENTS, UPLOAD_FILES_DIR, RESPONSE_COMPLETION_TIMEOUT
 from config.global_state import GlobalState
 
 # --- models Module Imports ---
@@ -717,8 +717,15 @@ async def _process_request_refactored(
 
         # DYNAMIC TIMEOUT: Calculate timeout based on prompt length
         # Formula: 5s base + 1s for every 1000 characters
-        dynamic_timeout = 5.0 + (len(prepared_prompt) / 1000.0)
-        logger.info(f"[{req_id}] Calculated dynamic TTFB timeout: {dynamic_timeout:.2f}s")
+        calc_timeout = 5.0 + (len(prepared_prompt) / 1000.0)
+        
+        # [CONF-01] Enforce Configuration Precedence
+        # Ensure the timeout is at least as long as the configured response completion timeout
+        # to prevent premature TTFB timeouts on slow models/long prompts.
+        config_timeout = RESPONSE_COMPLETION_TIMEOUT / 1000.0
+        dynamic_timeout = max(calc_timeout, config_timeout)
+        
+        logger.info(f"[{req_id}] Calculated dynamic TTFB timeout: {dynamic_timeout:.2f}s (Calc: {calc_timeout:.2f}s, Config: {config_timeout:.2f}s)")
 
         # Response processing is still needed here as it determines if it's streaming or non-streaming, and sets future
         response_result = await _handle_response_processing(
@@ -745,10 +752,12 @@ async def _process_request_refactored(
         context['logger'].info(f"[{req_id}] Caught client disconnection signal: {disco_err}")
         if not result_future.done():
              result_future.set_exception(client_disconnected(req_id, "Client disconnected during processing."))
+        return completion_event, submit_button_locator, check_client_disconnected
     except HTTPException as http_err:
         context['logger'].warning(f"[{req_id}] Caught HTTP exception: {http_err.status_code} - {http_err.detail}")
         if not result_future.done():
             result_future.set_exception(http_err)
+        return completion_event, submit_button_locator, check_client_disconnected
     except QuotaExceededError as quota_err:
         context['logger'].warning(f"[{req_id}] 🚫 Quota Exceeded detected: {quota_err}. Waiting for Watchdog to rotate...")
         
@@ -766,15 +775,18 @@ async def _process_request_refactored(
                     headers={"Retry-After": "5"}
                 )
             )
+        return completion_event, submit_button_locator, check_client_disconnected
     except PlaywrightAsyncError as pw_err:
         context['logger'].error(f"[{req_id}] Caught Playwright error: {pw_err}")
         await save_error_snapshot(f"process_playwright_error_{req_id}")
         if not result_future.done():
             result_future.set_exception(upstream_error(req_id, f"Playwright interaction failed: {pw_err}"))
+        return completion_event, submit_button_locator, check_client_disconnected
     except Exception as e:
         context['logger'].exception(f"[{req_id}] Caught unexpected error")
         await save_error_snapshot(f"process_unexpected_error_{req_id}")
         if not result_future.done():
             result_future.set_exception(server_error(req_id, f"Unexpected server error: {e}"))
+        return completion_event, submit_button_locator, check_client_disconnected
     finally:
         await _cleanup_request_resources(req_id, disconnect_check_task, completion_event, result_future, request.stream)
