@@ -173,6 +173,8 @@ def ensure_auth_dirs_exist():
         logger.info(f"  ✓ Active auth directory ready: {ACTIVE_AUTH_DIR}")
         os.makedirs(SAVED_AUTH_DIR, exist_ok=True)
         logger.info(f"  ✓ Saved auth directory ready: {SAVED_AUTH_DIR}")
+        os.makedirs(EMERGENCY_AUTH_DIR, exist_ok=True)
+        logger.info(f"  ✓ Emergency auth directory ready: {EMERGENCY_AUTH_DIR}")
     except Exception as e:
         logger.error(f"  ❌ Failed to create auth directories: {e}", exc_info=True)
         sys.exit(1)

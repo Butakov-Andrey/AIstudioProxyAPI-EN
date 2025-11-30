@@ -122,8 +122,11 @@ async def queue_worker() -> None:
                 GlobalState.start_recovery()
                 
                 try:
+                    # Get current model ID for smart rotation
+                    import server
+                    current_model_id = getattr(server, 'current_ai_studio_model_id', None)
                     from browser_utils.auth_rotation import perform_auth_rotation
-                    rotation_success = await perform_auth_rotation()
+                    rotation_success = await perform_auth_rotation(target_model_id=current_model_id)
                     if rotation_success:
                         GlobalState.NEEDS_ROTATION = False
                         logger.info("✅ Auth rotation completed successfully. Resuming request processing.")
@@ -162,13 +165,27 @@ async def queue_worker() -> None:
             http_request = request_item["http_request"]
             result_future = request_item["result_future"]
 
+            # [CONCURRENCY-FIX] Set the current active request ID
+            # This invalidates any previous stream consumers still running
+            GlobalState.CURRENT_STREAM_REQ_ID = req_id
+            logger.info(f"[{req_id}] (Worker) Set GLOBAL CURRENT_STREAM_REQ_ID. Previous streams should terminate.")
+
             # [CRIT-01] Secondary quota check after getting request (defense in depth)
             if GlobalState.IS_QUOTA_EXCEEDED:
-                logger.warning(f"[{req_id}] (Worker) ⛔ Quota exceeded flag detected after getting request. Rejecting queued request.")
-                if not result_future.done():
-                    result_future.set_exception(HTTPException(status_code=429, detail="Quota exceeded. Please restart with a new profile."))
-                request_queue.task_done()
-                continue
+                logger.warning(f"[{req_id}] (Worker) ⛔ Quota exceeded flag detected after getting request. Re-queueing request to hold for rotation.")
+                # Re-queue the request to the front (or back) to be processed after rotation
+                # We use items_to_requeue logic or just put it back
+                try:
+                     await request_queue.put(request_item)
+                     request_queue.task_done()
+                     # Trigger rotation logic immediately in next loop iteration
+                     continue
+                except Exception as requeue_err:
+                    logger.error(f"[{req_id}] Failed to re-queue request during quota hold: {requeue_err}")
+                    if not result_future.done():
+                        result_future.set_exception(HTTPException(status_code=429, detail="Quota exceeded. Please restart with a new profile."))
+                    request_queue.task_done()
+                    continue
 
             if request_item.get("cancelled", False):
                 logger.info(f"[{req_id}] (Worker) Request cancelled, skipping.")
@@ -480,6 +497,9 @@ async def queue_worker() -> None:
                                 except asyncio.CancelledError:
                                     pass
 
+                    except QuotaExceededError as qe:
+                        # Re-raise to be caught by the handler below which handles re-queueing
+                        raise qe
                     except Exception as process_err:
                         logger.error(f"[{req_id}] (Worker) _process_request_refactored execution error: {process_err}")
                         if not result_future.done():
@@ -492,8 +512,11 @@ async def queue_worker() -> None:
             just_rotated = False
             if GlobalState.NEEDS_ROTATION:
                 logger.info(f"[{req_id}] 🔄 Graceful Rotation Triggered after request completion.")
+                # Get current model ID for smart rotation
+                import server
+                current_model_id = getattr(server, 'current_ai_studio_model_id', None)
                 from browser_utils.auth_rotation import perform_auth_rotation
-                rotation_success = await perform_auth_rotation()
+                rotation_success = await perform_auth_rotation(target_model_id=current_model_id)
                 if rotation_success:
                     GlobalState.NEEDS_ROTATION = False
                     just_rotated = True
@@ -570,10 +593,21 @@ async def queue_worker() -> None:
             break
         except QuotaExceededError as qe:
             logger.error(f"[{req_id}] ⛔ CRITICAL: {qe}")
+            # [FINAL-FIX] If QuotaExceededError bubbles up here, it means it happened MID-PROCESSING.
+            # The user wants to HOLD connection, not fail.
+            # Re-queue request to retry after rotation.
             if result_future and not result_future.done():
-                # Mark this auth profile as 'exhausted' (optional future task).
-                # Return 429 (Too Many Requests) to the client.
-                result_future.set_exception(HTTPException(status_code=429, detail="Account quota exceeded. Please try a different account."))
+                logger.info(f"[{req_id}] 🔄 Re-queueing failed request due to Quota Exceeded mid-processing...")
+                try:
+                    request_queue.put_nowait(request_item)
+                    # IMPORTANT: Do NOT set exception on future, keep it pending!
+                    # The client is still connected and waiting on this future.
+                    # By putting it back in queue, it will be picked up again by worker loop
+                    # which will then see GlobalState.IS_QUOTA_EXCEEDED and hold it until rotation.
+                except Exception as requeue_err:
+                    logger.error(f"[{req_id}] Failed to re-queue mid-processing request: {requeue_err}")
+                    result_future.set_exception(HTTPException(status_code=429, detail="Quota exceeded. Please retry."))
+            
         except Exception as e:
             logger.error(f"[{req_id}] (Worker) ❌ Unexpected error processing request: {e}", exc_info=True)
             if result_future and not result_future.done():

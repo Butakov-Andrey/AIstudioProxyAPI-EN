@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import threading
 from datetime import datetime
@@ -31,6 +32,12 @@ def load_cooldown_profiles():
                         except (ValueError, TypeError):
                             continue
                     if model_cooldowns:
+                        # Clean up redundant "default" entries when specific models exist
+                        has_specific_models = any(model_id != "default" for model_id in model_cooldowns.keys())
+                        if has_specific_models and "default" in model_cooldowns:
+                            logger = logging.getLogger("CooldownManager")
+                            logger.info(f"🧹 Cleaning up redundant 'default' entry for profile {os.path.basename(profile)}")
+                            del model_cooldowns["default"]
                         profiles[profile] = model_cooldowns
                 else:
                     # Handle legacy/global cooldowns

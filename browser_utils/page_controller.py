@@ -1347,8 +1347,23 @@ class PageController:
             )
 
     async def _dismiss_backdrops(self):
-        """尝试关闭可能残留的 cdk 透明遮罩层以避免点击被拦截。"""
+        """尝试关闭可能残留的 cdk 透明遮罩层以避免点击被拦截，以及移除干扰的 iframe (如 google-hats-survey)。"""
         try:
+            # 1. 移除 Google Survey Iframe
+            try:
+                survey_iframe = self.page.locator('iframe[id*="google-hats-survey"], iframe[src*="google_hats"]')
+                if await survey_iframe.count() > 0:
+                    self.logger.info(f"[{self.req_id}] 检测到 Google Survey iframe，尝试移除...")
+                    await self.page.evaluate("""
+                        () => {
+                            const iframes = document.querySelectorAll('iframe[id*="google-hats-survey"], iframe[src*="google_hats"]');
+                            iframes.forEach(el => el.remove());
+                        }
+                    """)
+            except Exception as e_survey:
+                self.logger.warning(f"[{self.req_id}] 移除 Survey iframe 时出错 (非致命): {e_survey}")
+
+            # 2. 处理 CDK 遮罩层
             backdrop = self.page.locator(
                 "div.cdk-overlay-backdrop.cdk-overlay-backdrop-showing, div.cdk-overlay-backdrop.cdk-overlay-transparent-backdrop.cdk-overlay-backdrop-showing"
             )
@@ -1707,6 +1722,8 @@ class PageController:
                         # Immediate Check: Call check_quota_limit() immediately after clicking.
                         await check_quota_limit(self.page, self.req_id)
 
+                    except QuotaExceededError:
+                        raise
                     except Exception as click_err:
                         # 降级为 Warning，因为我们有后续的备用方案 (Enter/Combo)
                         self.logger.warning(f"[{self.req_id}] ⚠️ 提交按钮点击尝试失败 (将尝试备用方案): {click_err}")

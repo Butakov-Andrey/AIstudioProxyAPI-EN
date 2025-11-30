@@ -255,3 +255,5 @@ docker/my_*.json
 config/profile_usage.json
 config/cooldown_status.json
 auth_profiles/locked
+auth_profilesBackup
+.kilocodeignore

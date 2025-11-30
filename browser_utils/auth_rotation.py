@@ -39,6 +39,34 @@ _ROTATION_TIMESTAMPS = []
 _ROTATION_LIMIT_WINDOW = 60 # seconds
 _ROTATION_LIMIT_COUNT = 3   # max attempts per window
 
+def _normalize_model_id(model_id: str) -> str:
+    """
+    Normalize model ID to match cooldown key format.
+    Converts "gemini 3 pro preview" to "gemini-3-pro-preview"
+    """
+    if not model_id:
+        return "default"
+    
+    # Convert to lowercase and replace spaces/dots with hyphens
+    normalized = model_id.lower()
+    normalized = normalized.replace(" ", "-")
+    normalized = normalized.replace(".", "-")
+    
+    # Handle specific model patterns
+    if "gemini" in normalized:
+        # Ensure consistent gemini model naming
+        if "gemini-1-5-pro" in normalized:
+            return "gemini-1.5-pro"
+        elif "gemini-2-5-pro" in normalized:
+            return "gemini-2.5-pro"
+        elif "gemini-3-pro-preview" in normalized:
+            return "gemini-3-pro-preview"
+        elif "gemini-pro" in normalized:
+            return "gemini-pro"
+    
+    return normalized
+
+
 def _find_best_profile_in_dirs(directories: list[str], target_model_id: str = None) -> Optional[str]:
     """
     Finds the best available profile within a given list of directories.
@@ -62,6 +90,10 @@ def _find_best_profile_in_dirs(directories: list[str], target_model_id: str = No
     if not all_profiles:
         logger.warning(f"[DEBUG] No profiles found in {directories}")
         return None
+
+    # Normalize target model ID for cooldown checking
+    normalized_target_model = _normalize_model_id(target_model_id) if target_model_id else None
+    logger.info(f"[DEBUG] Target model: {target_model_id} -> Normalized: {normalized_target_model}")
 
     # Filter out profiles that don't exist or are in cooldown
     valid_profiles = []
@@ -87,13 +119,16 @@ def _find_best_profile_in_dirs(directories: list[str], target_model_id: str = No
                          is_cooldown_active = True
                 
                 # Check Specific Model Cooldown
-                if not is_cooldown_active and target_model_id:
-                     model_key = target_model_id.lower()
-                     if model_key in cooldown_data:
-                         ts = cooldown_data[model_key]
-                         ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
-                         if ts_val > now:
-                             is_cooldown_active = True
+                if not is_cooldown_active and normalized_target_model:
+                     # Try both the normalized model ID and the original
+                     for model_key in [normalized_target_model, target_model_id.lower() if target_model_id else None]:
+                         if model_key and model_key in cooldown_data:
+                             ts = cooldown_data[model_key]
+                             ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                             if ts_val > now:
+                                 is_cooldown_active = True
+                                 logger.info(f"[DEBUG] Profile {os.path.basename(p)} is in cooldown for model '{model_key}'")
+                                 break
             else:
                 # Legacy Format: timestamp direct
                 if cooldown_data:
@@ -142,7 +177,11 @@ def _get_next_profile(target_model_id: str = None) -> Optional[str]:
 
     # --- Tier 1: Standard Profiles ---
     logger.info(f"Tier 1: Searching for standard profiles... (Target Model: {target_model_id or 'Any'})")
-    standard_dirs = ["auth_profiles/saved", "auth_profiles/active"]
+    # [FIX] Explicitly include emergency profiles in standard rotation scan if they are healthy
+    # This ensures we don't artificially ignore valid profiles just because they are in the 'emergency' folder
+    # The 'emergency' fallback logic (Tier 2) below is still useful for specific logging or aggressive fallback if needed,
+    # but primarily we want to treat all available profiles as candidates.
+    standard_dirs = ["auth_profiles/saved", "auth_profiles/active", "auth_profiles/emergency"]
     best_profile = _find_best_profile_in_dirs(standard_dirs, target_model_id)
 
     if best_profile:
@@ -331,22 +370,29 @@ async def perform_auth_rotation(target_model_id: str = None) -> bool:
                          
                          # 1. Identify models to cooldown
                          models_to_cooldown = set(GlobalState.current_profile_exhausted_models)
+                         logger.info(f"🔍 Model cooldown analysis: exhausted_models={GlobalState.current_profile_exhausted_models}, target_model={target_model_id}")
                          
                          # 2. Ensure target/current model is included if appropriate
                          # If a specific target was requested, it's likely the one failing
                          if target_model_id:
                              models_to_cooldown.add(target_model_id.lower())
                          
-                         # 3. Fallback: If no models identified yet (e.g. UI detection triggered rotation before token count update),
-                         # fallback to the currently active model on the server.
+                         # 3. Fallback: Only use "default" as absolute last resort
+                         # Prioritize target_model_id and avoid unnecessary "default" entries
                          if not models_to_cooldown:
-                             if server.current_ai_studio_model_id:
+                             if target_model_id:
+                                 models_to_cooldown.add(target_model_id.lower())
+                                 logger.info(f"🔍 Using target_model_id as fallback: {target_model_id}")
+                             elif server.current_ai_studio_model_id:
                                  models_to_cooldown.add(server.current_ai_studio_model_id.lower())
+                                 logger.info(f"🔍 Using server.current_ai_studio_model_id as fallback: {server.current_ai_studio_model_id}")
                              else:
-                                 # Last resort
+                                 # Only use "default" if we truly cannot identify any model
+                                 logger.warning(f"⚠️ Unable to identify specific model, falling back to 'default'. This should be rare.")
                                  models_to_cooldown.add("default")
 
                          # 4. Apply cooldowns
+                         logger.info(f"🎯 Applying cooldown to models: {list(models_to_cooldown)}")
                          for m_id in models_to_cooldown:
                              _COOLDOWN_PROFILES[old_profile][m_id] = expiry_ts
                              logger.info(f"❄️ Placing profile in cooldown for model '{m_id}' for {QUOTA_EXCEEDED_COOLDOWN_SECONDS}s.")

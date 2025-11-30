@@ -48,6 +48,10 @@ class GlobalState:
     # [FIX-RACE] Track last rotation timestamp to handle race conditions
     LAST_ROTATION_TIMESTAMP = 0.0
 
+    # [CONCURRENCY-FIX] Track the currently active stream request ID
+    # Used to gate consumers and prevent zombie streams from processing data
+    CURRENT_STREAM_REQ_ID = None
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(GlobalState, cls).__new__(cls)
@@ -82,10 +86,11 @@ class GlobalState:
         logger.info("🔐 Global Auth Rotation Lock initialized (OPEN).")
 
     @classmethod
-    def set_quota_exceeded(cls, message: str = ""):
+    def set_quota_exceeded(cls, message: str = "", model_id: str = None):
         """
         Sets the global quota exceeded flag and logs a critical warning.
         Also determines the error type based on the message for adaptive cooldowns.
+        Optionally accepts a model_id to flag specific model exhaustion.
         """
         if not cls.IS_QUOTA_EXCEEDED:
             cls.IS_QUOTA_EXCEEDED = True
@@ -111,6 +116,11 @@ class GlobalState:
             else:
                  # Default fallback if unknown
                  cls.last_error_type = 'QUOTA_EXCEEDED'
+            
+            # [FIX] If model_id is provided, immediately mark it as exhausted so rotation logic knows
+            if model_id and cls.last_error_type == 'QUOTA_EXCEEDED':
+                cls.current_profile_exhausted_models.add(model_id.lower())
+                logger.warning(f"⛔ Identified specific model exhaustion: {model_id}")
 
             logger.critical(f"⛔ GLOBAL ALERT: Quota Exceeded! Type: {cls.last_error_type} (Event Signal Sent)")
 

@@ -47,6 +47,12 @@ async def gen_sse_from_aux_stream(
 
     try:
         async for raw_data in use_stream_response(req_id, timeout=timeout, page=page, check_client_disconnected=check_client_disconnected):
+            # [CONCURRENCY-FIX] Zombie Kill Switch
+            # If the global active request ID has changed, this generator is a zombie. Die immediately.
+            if GlobalState.CURRENT_STREAM_REQ_ID and GlobalState.CURRENT_STREAM_REQ_ID != req_id:
+                logger.warning(f"[{req_id}] 🧟 Zombie Stream Detected! Current Global ID: {GlobalState.CURRENT_STREAM_REQ_ID}. Terminating.")
+                break
+
             # [FIX] Check state flag before processing
             if is_response_finalized:
                 logger.warning(f"[{req_id}] ⚠️ Extraneous message received after response finalization. Ignoring.")
@@ -100,13 +106,14 @@ async def gen_sse_from_aux_stream(
                  if GlobalState.IS_RECOVERING:
                      continue # Loop back to hit the holding pattern above
                  
-                 # If still no recovery after wait, fail gracefully
-                 logger.error(f"[{req_id}] ⛔ Quota exceeded and no recovery initiated. Aborting.")
-                 yield generate_sse_chunk("\n\n[SYSTEM: Quota Exceeded. Stopping.]", req_id, model_name_for_stream)
-                 yield generate_sse_stop_chunk(req_id, model_name_for_stream)
-                 if not event_to_set.is_set():
-                    event_to_set.set()
-                 break
+                 # [FIX-HOLD] Even if recovery hasn't started yet (race condition), we should NOT abort.
+                 # We should signal the worker (via exception or event) to take over, OR we just hold.
+                 # Aborting here breaks the "infinite hold" requirement.
+                 logger.warning(f"[{req_id}] ⛔ Quota exceeded, waiting for worker to pick up signal...")
+                 # Yield nothing, just loop. The worker watchdog will eventually see the flag and kill/restart us or handle it.
+                 # But to prevent tight loop, sleep.
+                 await asyncio.sleep(2)
+                 continue
 
             data_receiving = True
 
@@ -208,8 +215,27 @@ async def gen_sse_from_aux_stream(
                 is_recovering = GlobalState.IS_RECOVERING
                 
                 # [ID-02] The Backfill: Synthetic Content if no body
-                # Only trigger backfill if NOT recovering.
-                if not has_started_body and not is_recovering:
+                # Only trigger backfill if NOT recovering AND Quota is not exceeded.
+                is_quota_exceeded = GlobalState.IS_QUOTA_EXCEEDED
+                
+                # [FIX-RACE] Add a small delay and re-check for quota flag on empty responses
+                # to mitigate race conditions where 'done' arrives before the quota flag is processed.
+                if done and not has_started_body and not is_recovering and not is_quota_exceeded:
+                    # [FIX-QUOTA-RACE] Force a check for quota limit before giving up
+                    try:
+                        from browser_utils.operations import check_quota_limit
+                        if page:
+                            await check_quota_limit(page, req_id)
+                    except Exception as e:
+                        # check_quota_limit raises QuotaExceededError if detected, which sets the Global flag
+                        # We just catch generic Exception to be safe and proceed to re-check flags
+                        logger.warning(f"[{req_id}] Quota check during done-handling triggered exception: {e}")
+
+                    await asyncio.sleep(0.5) # 500ms grace period
+                    is_quota_exceeded = GlobalState.IS_QUOTA_EXCEEDED # Re-check
+                    is_recovering = GlobalState.IS_RECOVERING # Re-check recovery status too
+
+                if not has_started_body and not is_recovering and not is_quota_exceeded:
                     fallback_text = "\n\n*(Model finished thinking but generated no code/text output.)*"
                     logger.info(f"[{req_id}] ⚠️ Backfill triggered: Sending synthetic content.")
                     
@@ -232,8 +258,16 @@ async def gen_sse_from_aux_stream(
                     full_body_content += fallback_text
                     # Mark as started so we don't do it again if logic changes
                     has_started_body = True
-                elif is_recovering:
-                     logger.info(f"[{req_id}] 🔇 Backfill suppressed due to active recovery mode.")
+                elif is_recovering or is_quota_exceeded:
+                     reason = "active recovery mode" if is_recovering else "quota exceeded"
+                     logger.info(f"[{req_id}] 🔇 Backfill suppressed due to {reason}. Entering holding pattern.")
+                     
+                     # [FIX-HOLD] If we detect quota/recovery at the very end of the stream,
+                     # we MUST NOT finish the stream (which would close the connection).
+                     # We must hold here to allow the queue worker to rotate auth and restart us.
+                     while GlobalState.IS_QUOTA_EXCEEDED or GlobalState.IS_RECOVERING:
+                         yield ": heartbeat\n\n"
+                         await asyncio.sleep(1.0)
 
                 # Handle Tool Calls or Stop
                 if function and len(function) > 0:

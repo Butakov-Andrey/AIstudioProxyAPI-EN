@@ -154,7 +154,9 @@ async def quota_watchdog():
             # [FIX-COORD] Wrap in recovery signal to notify listeners (stream/worker)
             GlobalState.start_recovery()
             try:
-                success = await perform_auth_rotation()
+                # Get current model ID for smart rotation
+                current_model_id = current_ai_studio_model_id
+                success = await perform_auth_rotation(target_model_id=current_model_id)
                 if success:
                     logger.info("Watchdog: Rotation triggered and completed successfully.")
                 else:

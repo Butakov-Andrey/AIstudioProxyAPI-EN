@@ -54,8 +54,8 @@ def create_profile(path):
 
 # --- TESTS ---
 
-def test_emergency_exclusion():
-    print("--- Test 1: Emergency Exclusion ---")
+def test_emergency_inclusion():
+    print("--- Test 1: Emergency Inclusion in Standard Scan ---")
     setup_test_files()
     
     # Case: Only profile in emergency
@@ -80,7 +80,7 @@ def test_active_empty_logic():
 
 if __name__ == "__main__":
     try:
-        test_emergency_exclusion()
+        test_emergency_inclusion()
         test_active_empty_logic()
     except Exception as e:
         print(f"ERROR: {e}")

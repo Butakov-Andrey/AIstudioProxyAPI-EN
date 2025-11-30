@@ -576,8 +576,11 @@ async def _process_request_refactored(
     # Handles edge case where limit was hit while server was idle
     if GlobalState.NEEDS_ROTATION:
         logger.info(f"[{req_id}] 🔄 Graceful Rotation Pending. Initiating rotation before processing request...")
+        # Get current model ID for smart rotation
+        import server
+        current_model_id = getattr(server, 'current_ai_studio_model_id', None)
         from browser_utils.auth_rotation import perform_auth_rotation
-        if await perform_auth_rotation():
+        if await perform_auth_rotation(target_model_id=current_model_id):
              GlobalState.NEEDS_ROTATION = False
              logger.info(f"[{req_id}] ✅ Pre-flight rotation complete.")
 
@@ -759,23 +762,17 @@ async def _process_request_refactored(
             result_future.set_exception(http_err)
         return completion_event, submit_button_locator, check_client_disconnected
     except QuotaExceededError as quota_err:
-        context['logger'].warning(f"[{req_id}] 🚫 Quota Exceeded detected: {quota_err}. Waiting for Watchdog to rotate...")
+        context['logger'].warning(f"[{req_id}] 🚫 Quota Exceeded detected: {quota_err}. Bubbling up to Queue Worker for re-queueing...")
         
-        # [FINAL-01] Enforce Flag Ownership: Do NOT trigger rotation here.
-        # We let the Watchdog handle the rotation to ensure the flag is managed correctly.
-        # We simply ensure the flag is set (in case it wasn't already) and return 503.
+        # Ensure flag is set so other components know
         if not GlobalState.IS_QUOTA_EXCEEDED:
              GlobalState.set_quota_exceeded(message=str(quota_err))
             
-        if not result_future.done():
-            result_future.set_exception(
-                HTTPException(
-                    status_code=503,
-                    detail=f"[{req_id}] Quota Exceeded. System is rotating credentials. Please retry in a few seconds.",
-                    headers={"Retry-After": "5"}
-                )
-            )
-        return completion_event, submit_button_locator, check_client_disconnected
+        # [CRITICAL-FIX] Bubble up the exception to queue_worker.py
+        # queue_worker.py has the logic to catch QuotaExceededError, KEEP the future pending,
+        # and re-queue the request item. This ensures the client stays connected ("holding")
+        # and the request is retried automatically after rotation.
+        raise quota_err
     except PlaywrightAsyncError as pw_err:
         context['logger'].error(f"[{req_id}] Caught Playwright error: {pw_err}")
         await save_error_snapshot(f"process_playwright_error_{req_id}")

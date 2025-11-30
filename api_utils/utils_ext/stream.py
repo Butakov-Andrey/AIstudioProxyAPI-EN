@@ -111,6 +111,12 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
     try:
         while True:
+            # [CONCURRENCY-FIX] Zombie Stream Check
+            if GlobalState.CURRENT_STREAM_REQ_ID and GlobalState.CURRENT_STREAM_REQ_ID != req_id:
+                logger.warning(f"[{req_id}] 🧟 Zombie Stream detected in wait loop (Active: {GlobalState.CURRENT_STREAM_REQ_ID}). Aborting.")
+                yield {"done": True, "reason": "zombie_stream_aborted", "body": "", "function": []}
+                return
+
             # [FIX-SCROLL] Active Viewport Tracking (Auto-Scroll)
             # Force the viewport to the bottom to prevent DOM virtualization from unloading elements
             if page:
@@ -163,15 +169,13 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                      logger.info(f"[{req_id}] ✅ Recovery completed successfully (Quota cleared). Resuming stream.")
                      # Loop back, the condition at top of loop will now pass
                  else:
-                    # [DEBUG-LOG] detailed state diagnosis
-                    logger.warning(f"[{req_id}] ⛔ DEBUG DIAGNOSTIC: Quota abort decision.")
-                    logger.warning(f"[{req_id}] ⛔ State: IS_RECOVERING={GlobalState.IS_RECOVERING}, IS_QUOTA_EXCEEDED={GlobalState.IS_QUOTA_EXCEEDED}")
-                    logger.warning(f"[{req_id}] ⛔ Recovery Event Set: {GlobalState.RECOVERY_EVENT.is_set()}, Rotation Lock Set: {GlobalState.AUTH_ROTATION_LOCK.is_set()}")
-                    
-                    logger.warning(f"[{req_id}] ⛔ Quota exceeded and no recovery initiated. Aborting request immediately.")
-                    raise QuotaExceededError("Global Quota Limit Reached during stream wait.")
-
-            # [FIX-SHUTDOWN] Check for Global Shutdown
+                     # [FIX-HOLD] If Quota exceeded but recovery not yet started, DO NOT ABORT.
+                     # The worker needs time to loop around and pick up the rotation.
+                     logger.warning(f"[{req_id}] ⛔ Quota exceeded, waiting for recovery initiation (Infinite Hold)...")
+                     await asyncio.sleep(1.0)
+                     continue
+ 
+             # [FIX-SHUTDOWN] Check for Global Shutdown
             if GlobalState.IS_SHUTTING_DOWN.is_set():
                 logger.warning(f"[{req_id}] 🛑 Global Shutdown detected during wait loop. Aborting stream.")
                 yield {"done": True, "reason": "global_shutdown", "body": "", "function": []}
@@ -286,6 +290,29 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         has_content = True
                     stale_done_ignored = False
                     
+                    # [FIX-QUOTA-HOLD] Check quota BEFORE yielding done signal to prevent "Backfill" in response_generators
+                    if parsed_data.get("done") is True:
+                        if GlobalState.IS_QUOTA_EXCEEDED or GlobalState.IS_RECOVERING:
+                             logger.info(f"[{req_id}] 🛡️ Quota/Recovery active: Ignoring DONE signal. Holding stream open.")
+                             continue
+
+                        # [ZOMBIE-PRE-CHECK] Check for post-rotation zombie state BEFORE yielding
+                        just_rotated = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 15.0)
+                        recently_recovered = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 30.0)
+                        
+                        post_rotation_zombie_state = (
+                            not has_content and
+                            received_items_count == 1 and
+                            not stale_done_ignored and
+                            not GlobalState.IS_QUOTA_EXCEEDED and
+                            (just_rotated or recently_recovered)
+                        )
+
+                        if post_rotation_zombie_state:
+                             logger.info(f"[{req_id}] 🔄 Post-rotation empty DONE detected (Rotation: {just_rotated}, Recent: {recently_recovered}). Ignoring as stale zombie packet (Pre-Yield).")
+                             stale_done_ignored = True
+                             continue
+
                     yield parsed_data
                     
                     # [SYNC-FIX] CRITICAL: Dict DONE signal forces immediate exit, ignoring UI state
@@ -313,10 +340,41 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                              except Exception as e:
                                  logger.error(f"[{req_id}] ❌ [Dict Path] DOM Wait Error: {e}")
 
-                        if not has_content and received_items_count == 1 and not stale_done_ignored:
-                            logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
+                        # [FIX-QUOTA-STALL] If Quota is exceeded, this is a legitimate fast-fail, not stale data.
+                        # [FIX-ROTATION-STALL] Also check if we just rotated auth (allow empty done).
+                        # [ZOMBIE-FIX] Enhanced detection for post-rotation scenarios
+                        just_rotated = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 15.0)
+                        recently_recovered = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 30.0)
+                        
+                        # Check if we might be in a post-rotation zombie state
+                        # This handles the case where quota exceeded triggered rotation, 
+                        # rotation completed successfully, but stream handler receives empty DONE
+                        post_rotation_zombie_state = (
+                            not has_content and 
+                            received_items_count == 1 and 
+                            not stale_done_ignored and 
+                            not GlobalState.IS_QUOTA_EXCEEDED and 
+                            (just_rotated or recently_recovered)
+                        )
+                        
+                        if post_rotation_zombie_state:
+                            logger.info(f"[{req_id}] 🔄 Post-rotation empty DONE detected (Rotation: {just_rotated}, Recent: {recently_recovered}). Ignoring as stale zombie packet.")
                             stale_done_ignored = True
                             continue
+                        elif not has_content and received_items_count == 1 and not stale_done_ignored and not GlobalState.IS_QUOTA_EXCEEDED:
+                            # Enhanced check: if rotation happened recently, treat as zombie even if just_rotated is False
+                            # This handles edge cases where timestamp tracking might be slightly off
+                            time_since_rotation = time.time() - GlobalState.LAST_ROTATION_TIMESTAMP
+                            is_recent_rotation = time_since_rotation < 45.0  # Extended window
+                            
+                            if is_recent_rotation:
+                                logger.info(f"[{req_id}] 🔄 Recent rotation detected ({time_since_rotation:.2f}s ago). Treating empty DONE as stale zombie packet.")
+                                stale_done_ignored = True
+                                continue
+                            else:
+                                logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
+                                stale_done_ignored = True
+                                continue
                         break
                     else:
                         stale_done_ignored = False
@@ -472,10 +530,41 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                                 except Exception as dom_wait_err:
                                     logger.error(f"[{req_id}] ❌ DOM Body-Wait Protocol Error: {dom_wait_err}")
 
-                            if not has_content and received_items_count == 1 and not stale_done_ignored:
-                                logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
+                            # [FIX-QUOTA-STALL] If Quota is exceeded, this is a legitimate fast-fail, not stale data.
+                            # [FIX-ROTATION-STALL] Also check if we just rotated auth.
+                            # [ZOMBIE-FIX] Enhanced detection for post-rotation scenarios
+                            just_rotated = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 15.0)
+                            recently_recovered = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 30.0)
+                            
+                            # Check if we might be in a post-rotation zombie state
+                            # This handles the case where quota exceeded triggered rotation, 
+                            # rotation completed successfully, but stream handler receives empty DONE
+                            post_rotation_zombie_state = (
+                                not has_content and 
+                                received_items_count == 1 and 
+                                not stale_done_ignored and 
+                                not GlobalState.IS_QUOTA_EXCEEDED and 
+                                (just_rotated or recently_recovered)
+                            )
+                            
+                            if post_rotation_zombie_state:
+                                logger.info(f"[{req_id}] 🔄 Post-rotation empty DONE detected (Rotation: {just_rotated}, Recent: {recently_recovered}). Ignoring as stale zombie packet.")
                                 stale_done_ignored = True
                                 continue
+                            elif not has_content and received_items_count == 1 and not stale_done_ignored and not GlobalState.IS_QUOTA_EXCEEDED:
+                                # Enhanced check: if rotation happened recently, treat as zombie even if just_rotated is False
+                                # This handles edge cases where timestamp tracking might be slightly off
+                                time_since_rotation = time.time() - GlobalState.LAST_ROTATION_TIMESTAMP
+                                is_recent_rotation = time_since_rotation < 45.0  # Extended window
+                                
+                                if is_recent_rotation:
+                                    logger.info(f"[{req_id}] 🔄 Recent rotation detected ({time_since_rotation:.2f}s ago). Treating empty DONE as stale zombie packet.")
+                                    stale_done_ignored = True
+                                    continue
+                                else:
+                                    logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
+                                    stale_done_ignored = True
+                                    continue
                             yield parsed_data
                             break
                         else:
@@ -562,15 +651,52 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         if body or reason:
                             has_content = True
                         
+                        # [FIX-QUOTA-HOLD] Check quota BEFORE yielding done signal
+                        if data.get("done") is True:
+                            if GlobalState.IS_QUOTA_EXCEEDED or GlobalState.IS_RECOVERING:
+                                 logger.info(f"[{req_id}] 🛡️ Quota/Recovery active: Ignoring DONE signal. Holding stream open.")
+                                 continue
+
                         yield data
                         
                         # [SYNC-FIX] CRITICAL: Dict DONE signal forces immediate exit, ignoring UI state
                         if data.get("done") is True:
                             logger.info(f"[{req_id}] ✅ [Latch] Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing stream completion (Intentional).")
-                            if not has_content and received_items_count == 1 and not stale_done_ignored:
-                                logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
+                            # [FIX-QUOTA-STALL] If Quota is exceeded, this is a legitimate fast-fail, not stale data.
+                            # [FIX-ROTATION-STALL] Also check if we just rotated auth.
+                            # [ZOMBIE-FIX] Enhanced detection for post-rotation scenarios
+                            just_rotated = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 15.0)
+                            recently_recovered = (time.time() - GlobalState.LAST_ROTATION_TIMESTAMP < 30.0)
+                            
+                            # Check if we might be in a post-rotation zombie state
+                            # This handles the case where quota exceeded triggered rotation, 
+                            # rotation completed successfully, but stream handler receives empty DONE
+                            post_rotation_zombie_state = (
+                                not has_content and 
+                                received_items_count == 1 and 
+                                not stale_done_ignored and 
+                                not GlobalState.IS_QUOTA_EXCEEDED and 
+                                (just_rotated or recently_recovered)
+                            )
+                            
+                            if post_rotation_zombie_state:
+                                logger.info(f"[{req_id}] 🔄 Post-rotation empty DONE detected (Rotation: {just_rotated}, Recent: {recently_recovered}). Ignoring as stale zombie packet.")
                                 stale_done_ignored = True
                                 continue
+                            elif not has_content and received_items_count == 1 and not stale_done_ignored and not GlobalState.IS_QUOTA_EXCEEDED:
+                                # Enhanced check: if rotation happened recently, treat as zombie even if just_rotated is False
+                                # This handles edge cases where timestamp tracking might be slightly off
+                                time_since_rotation = time.time() - GlobalState.LAST_ROTATION_TIMESTAMP
+                                is_recent_rotation = time_since_rotation < 45.0  # Extended window
+                                
+                                if is_recent_rotation:
+                                    logger.info(f"[{req_id}] 🔄 Recent rotation detected ({time_since_rotation:.2f}s ago). Treating empty DONE as stale zombie packet.")
+                                    stale_done_ignored = True
+                                    continue
+                                else:
+                                    logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
+                                    stale_done_ignored = True
+                                    continue
                             break
                         else:
                             stale_done_ignored = False
