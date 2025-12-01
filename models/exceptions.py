@@ -5,3 +5,6 @@ class ClientDisconnectedError(Exception):
 class QuotaExceededError(Exception):
     """Raised when the AI Studio UI indicates the account is out of free generations."""
     pass
+
+class QuotaExceededRetry(Exception):
+    pass

@@ -24,7 +24,7 @@ from config import ONLY_COLLECT_CURRENT_USER_ATTACHMENTS, UPLOAD_FILES_DIR, RESP
 from config.global_state import GlobalState
 
 # --- models Module Imports ---
-from models import ChatCompletionRequest, ClientDisconnectedError, QuotaExceededError
+from models import ChatCompletionRequest, ClientDisconnectedError, QuotaExceededError, QuotaExceededRetry
 
 # --- browser_utils Module Imports ---
 from browser_utils import (
@@ -552,6 +552,46 @@ async def _cleanup_request_resources(req_id: str, disconnect_check_task: Optiona
     if is_streaming and completion_event and not completion_event.is_set() and (result_future.done() and result_future.exception() is not None):
          logger.warning(f"[{req_id}] Stream request exception, ensuring completion event is set.")
          completion_event.set()
+
+
+async def process_request_with_retry(
+    req_id: str,
+    request: ChatCompletionRequest,
+    http_request: Request,
+    result_future: Future
+) -> Optional[Tuple[Event, Locator, Callable[[str], bool]]]:
+    """
+    Wrapper around _process_request_refactored to implement a catch-and-retry mechanism
+    for quota-related exceptions.
+    """
+    from server import logger
+    max_retries = 3
+    attempt = 0
+    while attempt < max_retries:
+        attempt += 1
+        try:
+            return await _process_request_refactored(
+                req_id, request, http_request, result_future
+            )
+        except QuotaExceededRetry:
+            logger.warning(f"[{req_id}] Quota wall hit (attempt {attempt}/{max_retries}). Waiting for rotation to complete...")
+            await GlobalState.rotation_complete_event.wait()
+            logger.info(f"[{req_id}] Rotation complete. Retrying request.")
+            continue
+    logger.error(f"[{req_id}] Request failed after {max_retries} retries due to persistent quota issues.")
+    raise Exception(f"Request failed after {max_retries} retries due to persistent quota issues.")
+
+
+async def process_request(
+    req_id: str,
+    request: ChatCompletionRequest,
+    http_request: Request,
+    result_future: Future
+) -> Optional[Tuple[Event, Locator, Callable[[str], bool]]]:
+    """
+    Main entry point for request processing, updated to use the retry wrapper.
+    """
+    return await process_request_with_retry(req_id, request, http_request, result_future)
 
 
 async def _process_request_refactored(

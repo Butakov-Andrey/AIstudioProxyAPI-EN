@@ -30,6 +30,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
         CHAT_SESSION_CONTENT_SELECTOR,
         LAST_CHAT_TURN_SELECTOR,
         UI_GENERATION_WAIT_TIMEOUT_MS,
+        SILENCE_TIMEOUT_MS,
     )
     import queue
 
@@ -79,7 +80,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     
     # [LOGIC-FIX] Last Packet Watchdog for silence detection
     last_packet_time = time.time()
-    silence_detection_threshold = 5.0  # 5 seconds of silence triggers completion
+    silence_detection_threshold = SILENCE_TIMEOUT_MS / 1000.0  # Use configured value, converted to seconds
     min_items_before_silence_check = 10  # Only check silence after receiving some data
     
     # UI-based generation check helper

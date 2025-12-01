@@ -7,7 +7,7 @@ from asyncio import Event
 
 from playwright.async_api import Page as AsyncPage
 
-from models import ClientDisconnectedError, ChatCompletionRequest
+from models import ClientDisconnectedError, ChatCompletionRequest, QuotaExceededRetry
 from config import CHAT_COMPLETION_ID_PREFIX
 from config.global_state import GlobalState
 from .utils import use_stream_response, calculate_usage_stats, generate_sse_chunk, generate_sse_stop_chunk
@@ -52,6 +52,9 @@ async def gen_sse_from_aux_stream(
             if GlobalState.CURRENT_STREAM_REQ_ID and GlobalState.CURRENT_STREAM_REQ_ID != req_id:
                 logger.warning(f"[{req_id}] 🧟 Zombie Stream Detected! Current Global ID: {GlobalState.CURRENT_STREAM_REQ_ID}. Terminating.")
                 break
+
+            if GlobalState.QUOTA_EXCEEDED_EVENT.is_set():
+                raise QuotaExceededRetry("Quota exceeded detected mid-stream.")
 
             # [FIX] Check state flag before processing
             if is_response_finalized:

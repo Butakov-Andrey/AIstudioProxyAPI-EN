@@ -24,6 +24,9 @@ class GlobalState:
     # Global Event to signal Quota Exceeded immediately
     QUOTA_EXCEEDED_EVENT = asyncio.Event()
 
+    # Event to signal that a rotation operation has completed.
+    rotation_complete_event = asyncio.Event()
+
     # Track the type of the last error for adaptive cooldowns
     # Values: 'RATE_LIMIT', 'QUOTA_EXCEEDED', or None
     last_error_type = None

@@ -8,7 +8,7 @@ from .chat import (
 )
 
 # Exception classes
-from .exceptions import ClientDisconnectedError, QuotaExceededError
+from .exceptions import ClientDisconnectedError, QuotaExceededError, QuotaExceededRetry
 
 # Logging utility classes
 from .logging import (
@@ -28,6 +28,7 @@ __all__ = [
     # Exceptions
     'ClientDisconnectedError',
     'QuotaExceededError',
+    'QuotaExceededRetry',
     
     # Logging tools
     'StreamToLogger',
