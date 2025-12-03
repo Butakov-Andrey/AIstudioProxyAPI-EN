@@ -20,6 +20,7 @@ from config import (
     AUTO_SAVE_AUTH,
     AUTH_SAVE_TIMEOUT,
     SAVED_AUTH_DIR,
+    GlobalState,
 )
 from models import ClientDisconnectedError
 
@@ -97,7 +98,11 @@ async def _modify_model_list_response(original_body: bytes, url: str) -> bytes:
 
         # 解析JSON
         import json
-        json_data = json.loads(original_text)
+        try:
+            json_data = json.loads(original_text)
+        except json.JSONDecodeError as json_err:
+            logger.error(f"解析模型列表响应JSON失败: {json_err}")
+            return original_body
 
         # 注入模型
         modified_data = await _inject_models_to_response(json_data, url)
@@ -266,6 +271,12 @@ def _clean_userscript_headers(script_content: str) -> str:
     return '\n'.join(cleaned_lines)
 
 
+async def _wait_for_shutdown():
+    """Helper to wait for GlobalState.IS_SHUTTING_DOWN event."""
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, GlobalState.IS_SHUTTING_DOWN.wait)
+
+
 async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_path: Optional[str] = None):
     """初始化页面逻辑，连接到现有浏览器"""
     logger.info("--- 初始化页面逻辑 (连接到现有浏览器) ---")
@@ -283,7 +294,26 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
             logger.error(f"   ❌ 覆盖的认证文件不存在: {override_storage_state_path}")
             raise RuntimeError(f"Override auth file not found: {override_storage_state_path}")
     elif launch_mode == 'headless' or launch_mode == 'virtual_headless':
+        # Check for Auto-Auth Rotation on Startup
+        if os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP', 'false').lower() == 'true':
+            logger.info("   🤖 Auto-Auth Rotation on Startup is ENABLED. Selecting profile...")
+            try:
+                # Local import to avoid circular dependencies
+                from .auth_rotation import _get_next_profile
+                next_profile = _get_next_profile()
+                if next_profile:
+                    os.environ['ACTIVE_AUTH_JSON_PATH'] = next_profile
+                    logger.info(f"   ✅ Auto-selected profile: {next_profile}")
+                else:
+                    logger.warning("   ⚠️ Auto-Auth Rotation: No available profiles found. Continuing with environment defaults.")
+            except ImportError:
+                logger.error("   ❌ Auto-Auth Rotation failed: Could not import auth_rotation module.")
+            except Exception as e:
+                logger.error(f"   ❌ Error during Auto-Auth Rotation on Startup: {e}", exc_info=True)
+
         auth_filename = os.environ.get('ACTIVE_AUTH_JSON_PATH')
+        logger.info(f"[DEBUG] Headless Init: ACTIVE_AUTH_JSON_PATH='{auth_filename}'")
+        
         if auth_filename:
             constructed_path = auth_filename
             if os.path.exists(constructed_path):
@@ -291,6 +321,8 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
                 logger.info(f"   无头模式将使用的认证文件: {constructed_path}")
             else:
                 logger.error(f"{launch_mode} 模式认证文件无效或不存在: '{constructed_path}'")
+                # DIAGNOSTIC: Check if we should have rotated
+                logger.info(f"[DEBUG] Auth file missing. Auto-Rotation Flag: {os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP')}")
                 raise RuntimeError(f"{launch_mode} 模式认证文件无效: '{constructed_path}'")
         else:
             logger.error(f"{launch_mode} 模式需要 ACTIVE_AUTH_JSON_PATH 环境变量，但未设置或为空。")
@@ -439,7 +471,22 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
 
         try:
             input_wrapper_locator = found_page.locator('ms-prompt-input-wrapper')
-            await expect_async(input_wrapper_locator).to_be_visible(timeout=35000)
+            
+            # Wait for either input visibility or shutdown signal
+            expect_task = asyncio.create_task(expect_async(input_wrapper_locator).to_be_visible(timeout=35000))
+            shutdown_task = asyncio.create_task(_wait_for_shutdown())
+
+            done, pending = await asyncio.wait([expect_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED)
+
+            if shutdown_task in done:
+                logger.info("🛑 Shutdown signal received during initialization. Aborting.")
+                expect_task.cancel()
+                raise RuntimeError("Initialization aborted due to shutdown signal.")
+
+            # expect_task finished
+            shutdown_task.cancel()
+            await expect_task # Propagate result/exception
+
             await expect_async(found_page.locator(INPUT_SELECTOR)).to_be_visible(timeout=10000)
             logger.info("-> ✅ 核心输入区域可见。")
             

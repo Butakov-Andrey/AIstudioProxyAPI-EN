@@ -60,7 +60,16 @@ class HttpInterceptor:
                 decoded_path = unquote(path)
                 if any(keyword in decoded_path for keyword in ["exceeded quota", "RESOURCE_EXHAUSTED", "Failed to generate content"]):
                     self.logger.critical(f"🚨 CRITICAL: Detected Quota Exceeded error in network traffic! URL: {path}")
-                    GlobalState.set_quota_exceeded(message=decoded_path)
+                    
+                    # [FIX] Try to extract model ID if available in context, or fallback to current global model
+                    from server import current_ai_studio_model_id
+                    
+                    # If we have a currently active model ID tracked by the server, use it.
+                    # Since jserror often doesn't contain the payload, this is our best guess
+                    # for what was running when the error occurred.
+                    model_id = current_ai_studio_model_id
+                    
+                    GlobalState.set_quota_exceeded(message=decoded_path, model_id=model_id)
             except Exception as e:
                 self.logger.error(f"Error parsing jserror path: {e}")
 

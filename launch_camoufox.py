@@ -97,6 +97,7 @@ DEFAULT_SERVER_LOG_LEVEL = os.environ.get('SERVER_LOG_LEVEL', 'INFO')  # Server 
 AUTH_PROFILES_DIR = os.path.join(os.path.dirname(__file__), "auth_profiles")
 ACTIVE_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "active")
 SAVED_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "saved")
+EMERGENCY_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "emergency")
 HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
 HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
 LOG_DIR = os.path.join(os.path.dirname(__file__), 'logs')
@@ -172,6 +173,8 @@ def ensure_auth_dirs_exist():
         logger.info(f"  ✓ Active auth directory ready: {ACTIVE_AUTH_DIR}")
         os.makedirs(SAVED_AUTH_DIR, exist_ok=True)
         logger.info(f"  ✓ Saved auth directory ready: {SAVED_AUTH_DIR}")
+        os.makedirs(EMERGENCY_AUTH_DIR, exist_ok=True)
+        logger.info(f"  ✓ Emergency auth directory ready: {EMERGENCY_AUTH_DIR}")
     except Exception as e:
         logger.error(f"  ❌ Failed to create auth directories: {e}", exc_info=True)
         sys.exit(1)
@@ -348,6 +351,7 @@ def find_pids_on_port(port: int) -> list[int]:
             stdout, stderr = process.communicate(timeout=5)
             if process.returncode == 0 and stdout:
                 pids = [int(pid) for pid in stdout.strip().split('\n') if pid.isdigit()]
+            # Check for localized "command not found" messages (e.g., "未找到命令" for Chinese systems)
             elif process.returncode != 0 and ("command not found" in stderr.lower() or "未找到命令" in stderr):
                 logger.error(f"Command 'lsof' not found. Please ensure it is installed.")
             elif process.returncode not in [0, 1]: # lsof returns 1 when not found
@@ -398,9 +402,11 @@ def kill_process_interactive(pid: int) -> bool:
             result = subprocess.run(command_desc, shell=True, capture_output=True, text=True, timeout=5, check=False)
             output = result.stdout.strip()
             error_output = result.stderr.strip()
+            # Check for localized "Success" messages (e.g., "成功" for Chinese systems)
             if result.returncode == 0 and ("SUCCESS" in output.upper() or "成功" in output):
                 logger.info(f"    ✓ PID {pid} terminated via taskkill /F.")
                 success = True
+            # Check for localized "Not Found" messages (e.g., "找不到" for Chinese systems)
             elif "could not find process" in error_output.lower() or "找不到" in error_output: # Process might have exited itself
                 logger.info(f"    PID {pid} not found during taskkill (might have exited).")
                 success = True # Considered success as target is port availability
@@ -638,6 +644,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--exit-on-auth-save", action='store_true',
         help="[Debug Mode] Automatically close launcher and all processes after successful auth save via UI."
+    )
+    parser.add_argument(
+        "--auto-auth-rotation-on-startup",
+        type=str,
+        default=os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP', 'false'),
+        help="Enable auto-rotation to saved/emergency profiles on startup if active profile is missing (true/false)."
     )
     # Logging related arguments (from dev)
     parser.add_argument(
@@ -939,7 +951,8 @@ if __name__ == "__main__":
             # For debug mode, scan all directories and prompt user
             available_profiles = []
             # Scan ACTIVE_AUTH_DIR first, then SAVED_AUTH_DIR
-            for profile_dir_path_str, dir_label in [(ACTIVE_AUTH_DIR, "active"), (SAVED_AUTH_DIR, "saved")]:
+            logger.info(f"[DIAGNOSTIC] Scanning for profiles in: active, saved, emergency.")
+            for profile_dir_path_str, dir_label in [(ACTIVE_AUTH_DIR, "active"), (SAVED_AUTH_DIR, "saved"), (EMERGENCY_AUTH_DIR, "emergency")]:
                 if os.path.exists(profile_dir_path_str):
                     try:
                         # Sort filenames in each directory
@@ -982,9 +995,31 @@ if __name__ == "__main__":
                 logger.info("   No auth files found. Using browser current state.")
                 print("   No auth files found. Using browser current state.", flush=True)
         elif not effective_active_auth_json_path and not args.auto_save_auth:
-            # For headless mode, error if --active-auth-json not provided and active/ empty
-            logger.error(f"  ❌ {final_launch_mode} Mode Error: --active-auth-json not provided and no '.json' auth files found in '{ACTIVE_AUTH_DIR}'. Please save one in Debug mode or specify via argument.")
-            sys.exit(1)
+            # Check for backup profiles in saved or emergency before failing, BUT ONLY if auto-rotation is enabled.
+            auto_rotation_enabled = str(args.auto_auth_rotation_on_startup).lower() == 'true'
+
+            if not auto_rotation_enabled:
+                logger.error(f"  ❌ {final_launch_mode} Mode Error: No active profile found in '{ACTIVE_AUTH_DIR}' and AUTO_AUTH_ROTATION_ON_STARTUP is disabled.")
+                logger.error(f"     Please ensure a profile exists in '{ACTIVE_AUTH_DIR}' or enable auto-rotation.")
+                sys.exit(1)
+
+            # If auto-rotation IS enabled, verify we actually have backups to rotate TO.
+            has_backups = False
+            for backup_dir in [SAVED_AUTH_DIR, EMERGENCY_AUTH_DIR]:
+                if os.path.exists(backup_dir):
+                    try:
+                        if any(f.lower().endswith('.json') for f in os.listdir(backup_dir)):
+                            has_backups = True
+                            break
+                    except Exception:
+                        pass
+
+            if has_backups:
+                logger.info(f"  ⚠️ No active profile selected, but profiles exist in saved/emergency and auto-rotation is enabled. Allowing startup (runtime rotation will select one).")
+            else:
+                # For headless mode, error if --active-auth-json not provided and active/ is empty AND no backups
+                logger.error(f"  ❌ {final_launch_mode} Mode Error: --active-auth-json not provided, active/ is empty, and no backup profiles found in saved/emergency.")
+                sys.exit(1)
 
     # Build Camoufox internal launch command (from dev)
     camoufox_internal_cmd_args = [
@@ -1214,7 +1249,13 @@ if __name__ == "__main__":
                             for task in tasks:
                                 task.cancel()
                             # Give tasks a brief moment to acknowledge cancellation
-                            asyncio.gather(*tasks, return_exceptions=True)
+                            async def wait_for_cancellation():
+                                try:
+                                    await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=3.0)
+                                except asyncio.TimeoutError:
+                                    logger.warning("[ID-03] Timeout waiting for tasks to cancel.")
+                            
+                            loop.create_task(wait_for_cancellation())
                     except Exception as e:
                         logger.warning(f"[ID-03] Error cancelling asyncio tasks: {e}")
                     
@@ -1256,8 +1297,9 @@ if __name__ == "__main__":
                     current_files = set(os.listdir(SAVED_AUTH_DIR))
                     new_files = current_files - initial_files
                     if new_files:
-                        logger.info(f"Detected new saved auth files: {', '.join(new_files)}. Triggering shutdown in 3 seconds...")
-                        time.sleep(3)
+                        sleep_time = float(os.getenv("POLLING_INTERVAL_STREAM", 500)) / 1000
+                        logger.info(f"Detected new saved auth files: {', '.join(new_files)}. Triggering shutdown in {sleep_time} seconds...")
+                        time.sleep(sleep_time)
                         server.should_exit = True
                         logger.info("Shutdown signal sent to Uvicorn server.")
                         break

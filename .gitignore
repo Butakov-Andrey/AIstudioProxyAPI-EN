@@ -221,6 +221,12 @@ auth_profiles/active/*
 !auth_profiles/active/.gitkeep
 auth_profiles/saved/*
 !auth_profiles/saved/.gitkeep
+auth_profiles/emergency/*
+!auth_profiles/emergency/.gitkeep
+config/profile_usage.json
+config/cooldown_status.json
+auth_profiles/locked
+auth_profilesBackup
 
 # Camoufox/Playwright Profile Data (Assume these are generated/temporary)
 camoufox_profile/
@@ -234,6 +240,7 @@ memory-bank/
 gui_config.json
 .rooignore
 .kiloignore
+.kilocodeignore
 
 # key
 key.txt
@@ -250,5 +257,3 @@ browser_utils/generated_*.js
 # Docker 环境的实际配置文件（保留示例文件）
 docker/.env
 docker/my_*.json
-config/profile_usage.json
-config/cooldown_status.json

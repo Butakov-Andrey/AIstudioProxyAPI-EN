@@ -1,4 +1,5 @@
 import asyncio
+import socket
 from typing import Optional
 import json
 import logging
@@ -42,6 +43,30 @@ class ProxyServer:
         # Keep track of background tasks to prevent them from being destroyed prematurely
         self.background_tasks = set()
     
+    def _safe_close(self, writer):
+        """
+        Safely close a writer with robust error handling for SSL shutdown timeouts
+        """
+        if not writer:
+            return
+
+        try:
+            # Attempt to shut down the socket explicitly to prevent SSL timeouts
+            # This implements the fix for [STAB-01]
+            sock = writer.get_extra_info('socket')
+            if sock:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except (OSError, ssl.SSLError):
+                    pass # Ignore errors during teardown
+        except Exception:
+            pass
+        finally:
+            try:
+                writer.close()
+            except Exception:
+                pass
+
     def should_intercept(self, host):
         """
         Determine if the connection to the host should be intercepted
@@ -78,7 +103,7 @@ class ProxyServer:
             request_line = request_line.decode('utf-8').strip()
             
             if not request_line:
-                writer.close()
+                self._safe_close(writer)
                 return
             
             # Parse the request line
@@ -91,7 +116,7 @@ class ProxyServer:
         except Exception as e:
             self.logger.error(f"Error handling client: {e}")
         finally:
-            writer.close()
+            self._safe_close(writer)
     
     async def _handle_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, target: str):
         """
@@ -139,7 +164,7 @@ class ProxyServer:
 
             if new_transport is None:
                 self.logger.error(f"loop.start_tls returned None for {host}:{port}, which is unexpected. Closing connection.")
-                writer.close()
+                self._safe_close(writer)
                 return
             
             client_reader = reader
@@ -166,7 +191,7 @@ class ProxyServer:
             except Exception as e:
                 # --- FIX: Log the unused exception variable ---
                 self.logger.error(f"Error connecting to server {host}:{port}: {e}")
-                client_writer.close()
+                self._safe_close(client_writer)
         else:
             # No interception, just forward the connection
             writer.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
@@ -189,7 +214,7 @@ class ProxyServer:
             except Exception as e:
                 # --- FIX: Log the unused exception variable ---
                 self.logger.error(f"Error connecting to server {host}:{port}: {e}")
-                writer.close()
+                self._safe_close(writer)
 
     async def _forward_data(self, client_reader, client_writer, server_reader, server_writer):
         """
@@ -206,15 +231,15 @@ class ProxyServer:
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer.")
             except Exception as e:
-                if getattr(e, 'winerror', None) == 10054:
-                    self.logger.debug("Connection reset by peer (WinError 10054).")
+                if getattr(e, 'winerror', None) in (10054, 10058):
+                    self.logger.debug(f"Connection closed by peer (WinError {getattr(e, 'winerror', None)}).")
                 elif isinstance(e, ssl.SSLError) and "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(e):
                     self.logger.debug("Connection closed by peer (SSL notify)")
                     return
                 else:
                     self.logger.error(f"Error forwarding data: {e}")
             finally:
-                writer.close()
+                self._safe_close(writer)
         
         # Create tasks for both directions
         client_to_server = asyncio.create_task(_forward(client_reader, server_writer))
@@ -233,10 +258,14 @@ class ProxyServer:
         client_buffer = bytearray()
         server_buffer = bytearray()
         should_sniff = False
+        
+        # Use a dict to share state between closures, as nonlocal only works for simple variables
+        request_context = {"request_ts": 0.0}
 
         # Parse HTTP headers from client
         async def _process_client_data():
             nonlocal client_buffer, should_sniff
+            import time
             
             try:
                 while True:
@@ -268,6 +297,7 @@ class ProxyServer:
                         # Check if we should intercept this request
                         if 'GenerateContent' in path:
                             should_sniff = True
+                            request_context['request_ts'] = time.time()
                             # Process the request body
                             processed_body = await self.interceptor.process_request(
                                 body_data, host, path
@@ -291,15 +321,15 @@ class ProxyServer:
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer processing client data.")
             except Exception as e:
-                if getattr(e, 'winerror', None) == 10054:
-                    self.logger.debug("Connection reset by peer (WinError 10054) processing client data.")
+                if getattr(e, 'winerror', None) in (10054, 10058):
+                    self.logger.debug(f"Connection closed by peer (WinError {getattr(e, 'winerror', None)}) processing client data.")
                 elif isinstance(e, ssl.SSLError) and "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(e):
                     self.logger.debug("Connection closed by peer (SSL notify) processing client data")
                     return
                 else:
                     self.logger.error(f"Error processing client data: {e}")
             finally:
-                server_writer.close()
+                self._safe_close(server_writer)
         
         # Parse HTTP headers from server
         async def _process_server_data():
@@ -340,7 +370,12 @@ class ProxyServer:
                                 )
 
                                 if self.queue is not None:
-                                    self.queue.put(json.dumps(resp))
+                                    # Put wrapped payload with timestamp
+                                    payload = {
+                                        "ts": request_context.get("request_ts", 0),
+                                        "data": resp
+                                    }
+                                    self.queue.put(json.dumps(payload))
                             except Exception as e:
                                 # --- FIX: Log the unused exception variable ---
                                 self.logger.error(f"Error during response interception: {e}")
@@ -352,15 +387,15 @@ class ProxyServer:
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer processing server data.")
             except Exception as e:
-                if getattr(e, 'winerror', None) == 10054:
-                    self.logger.debug("Connection reset by peer (WinError 10054) processing server data.")
+                if getattr(e, 'winerror', None) in (10054, 10058):
+                    self.logger.debug(f"Connection closed by peer (WinError {getattr(e, 'winerror', None)}) processing server data.")
                 elif isinstance(e, ssl.SSLError) and "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(e):
                     self.logger.debug("Connection closed by peer (SSL notify) processing server data")
                     return
                 else:
                     self.logger.error(f"Error processing server data: {e}")
             finally:
-                client_writer.close()
+                self._safe_close(client_writer)
         
         # Create tasks for both directions
         client_to_server = asyncio.create_task(_process_client_data())

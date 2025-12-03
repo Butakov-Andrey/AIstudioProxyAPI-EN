@@ -31,7 +31,7 @@ _USED_PROFILES_HISTORY = {}
 _HISTORY_RETENTION_SECONDS = 3600 * 2 # 2 hours retention for history
 
 # Profiles currently in cooldown (e.g. due to quota limit)
-# Maps filename -> expiry_timestamp (when cooldown ends)
+# Maps filename -> Dict[model_id, expiry_timestamp] OR filename -> expiry_timestamp (legacy/global)
 _COOLDOWN_PROFILES = load_cooldown_profiles()
 
 # [FINAL-02] Depletion Guard: Track rotation attempts
@@ -39,38 +39,164 @@ _ROTATION_TIMESTAMPS = []
 _ROTATION_LIMIT_WINDOW = 60 # seconds
 _ROTATION_LIMIT_COUNT = 3   # max attempts per window
 
-def _find_best_profile_in_dirs(directories: list[str]) -> Optional[str]:
+def _normalize_model_id(model_id: str) -> str:
+    """
+    Normalize model ID to match cooldown key format.
+    Converts "gemini 3 pro preview" to "gemini-3-pro-preview"
+    """
+    if not model_id:
+        return "default"
+    
+    # Convert to lowercase and replace spaces/dots with hyphens
+    normalized = model_id.lower()
+    normalized = normalized.replace(" ", "-")
+    normalized = normalized.replace(".", "-")
+    
+    # Handle specific model patterns
+    if "gemini" in normalized:
+        # Ensure consistent gemini model naming
+        if "gemini-1-5-pro" in normalized:
+            return "gemini-1.5-pro"
+        elif "gemini-2-5-pro" in normalized:
+            return "gemini-2.5-pro"
+        elif "gemini-3-pro-preview" in normalized:
+            return "gemini-3-pro-preview"
+        elif "gemini-pro" in normalized:
+            return "gemini-pro"
+    
+    return normalized
+
+
+def _calculate_smart_priority(profile_path: str, target_model_id: str, cooldown_dict: dict) -> tuple:
+    """
+    Calculates a sorting priority for a profile based on 'Efficiency' logic.
+    
+    Priority Tuple: (neg_efficiency_score, usage_count, random_factor)
+    1. efficiency_score (Higher is better): Count of ACTIVE cooldowns for OTHER models.
+       Rationale: Prefer profiles that are already "damaged" (in cooldown) for other models
+       but valid for the current target, over "fresh" profiles that can serve everything.
+    2. usage_count (Lower is better): Standard wear leveling.
+    3. random_factor: Tie-breaker.
+    """
+    efficiency_score = 0
+    now = time.time()
+    
+    # Check cooldown data for this profile
+    if profile_path in cooldown_dict:
+        data = cooldown_dict[profile_path]
+        if isinstance(data, dict):
+            # Iterate through model cooldowns
+            for model, ts in data.items():
+                # Skip global cooldowns (already filtered out) and target model (already filtered out)
+                if model == "global":
+                    continue
+                
+                # Check if this model is different from target
+                if target_model_id and model == target_model_id:
+                    continue
+                    
+                # If cooldown is active for this OTHER model, increase efficiency score
+                ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                if ts_val > now:
+                    efficiency_score += 1
+
+    usage = get_profile_usage(profile_path)
+    
+    # Return tuple for sorting:
+    # 1. Negative efficiency_score (Ascending sort -> Higher score comes first)
+    # 2. Positive usage (Ascending sort -> Lower usage comes first)
+    # 3. Random (Ascending sort -> Random tie breaker)
+    return (-efficiency_score, usage, random.random())
+
+
+def _find_best_profile_in_dirs(directories: list[str], target_model_id: str = None) -> Optional[str]:
     """
     Finds the best available profile within a given list of directories.
     - Scans for .json files.
-    - Excludes profiles in cooldown.
+    - Excludes profiles in cooldown (Global or Model-Specific).
     - Sorts by usage count (ascending) and then randomly.
     """
-    all_profiles = []
-    for d in directories:
-        if os.path.exists(d):
-            files = glob.glob(os.path.join(d, "*.json"))
-            all_profiles.extend([os.path.abspath(f) for f in files])
-
-    if not all_profiles:
+    if not directories or not isinstance(directories, list):
         return None
 
+    logger.info(f"[DEBUG] Scanning directories: {directories}")
+    all_profiles = []
+    for d in directories:
+        if d and isinstance(d, str) and os.path.exists(d):
+            files = glob.glob(os.path.join(d, "*.json"))
+            logger.info(f"[DEBUG] Found {len(files)} profiles in {d}")
+            all_profiles.extend([os.path.abspath(f) for f in files])
+        else:
+            logger.warning(f"[DEBUG] Directory missing or invalid: {d} (Abs: {os.path.abspath(d) if d else 'None'})")
+
+    if not all_profiles:
+        logger.warning(f"[DEBUG] No profiles found in {directories}")
+        return None
+
+    # Normalize target model ID for cooldown checking
+    normalized_target_model = _normalize_model_id(target_model_id) if target_model_id else None
+    logger.info(f"[DEBUG] Target model: {target_model_id} -> Normalized: {normalized_target_model}")
+
     # Filter out profiles that don't exist or are in cooldown
-    valid_profiles = [p for p in all_profiles if os.path.exists(p) and p not in _COOLDOWN_PROFILES]
+    valid_profiles = []
+    now = time.time()
+    
+    for p in all_profiles:
+        if not os.path.exists(p):
+            continue
+            
+        if p in _COOLDOWN_PROFILES:
+            cooldown_data = _COOLDOWN_PROFILES[p]
+            
+            # Check if cooldown is active
+            is_cooldown_active = False
+            
+            if isinstance(cooldown_data, dict):
+                # New Format: Dict[model_id, timestamp]
+                # Check Global Cooldown
+                if "global" in cooldown_data:
+                     ts = cooldown_data["global"]
+                     ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                     if ts_val > now:
+                         is_cooldown_active = True
+                
+                # Check Specific Model Cooldown
+                if not is_cooldown_active and normalized_target_model:
+                     # Try both the normalized model ID and the original
+                     for model_key in [normalized_target_model, target_model_id.lower() if target_model_id else None]:
+                         if model_key and model_key in cooldown_data:
+                             ts = cooldown_data[model_key]
+                             ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                             if ts_val > now:
+                                 is_cooldown_active = True
+                                 logger.info(f"[DEBUG] Profile {os.path.basename(p)} is in cooldown for model '{model_key}'")
+                                 break
+            else:
+                # Legacy Format: timestamp direct
+                if cooldown_data:
+                    ts = cooldown_data
+                    ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                    if isinstance(ts_val, (int, float)) and ts_val > now:
+                        is_cooldown_active = True
+            
+            if is_cooldown_active:
+                continue
+                
+        valid_profiles.append(p)
 
     if not valid_profiles:
         return None
 
-    # Usage-Based Selection Logic:
-    # 1. Random shuffle (secondary sort factor)
-    random.shuffle(valid_profiles)
-    # 2. Sort by usage (primary sort factor, stable sort preserves randomness for ties)
-    valid_profiles.sort(key=get_profile_usage)
+    # Smart Efficiency Selection Logic:
+    # Sort candidates using the smart priority tuple
+    # Key: (-efficiency_score, usage, random)
+    valid_profiles.sort(key=lambda p: _calculate_smart_priority(p, normalized_target_model, _COOLDOWN_PROFILES))
 
+    logger.info(f"[DEBUG] Best profile selected: {os.path.basename(valid_profiles[0])}")
     return valid_profiles[0]
 
 
-def _get_next_profile() -> Optional[str]:
+def _get_next_profile(target_model_id: str = None) -> Optional[str]:
     """
     Implements a two-tiered profile selection system: Standard and Emergency.
 
@@ -84,24 +210,21 @@ def _get_next_profile() -> Optional[str]:
     """
     # Ensure the emergency directory exists
     emergency_dir = "auth_profiles/emergency"
+    abs_emergency = os.path.abspath(emergency_dir)
+    logger.info(f"[DEBUG] Emergency Dir: {emergency_dir} (Absolute: {abs_emergency})")
     os.makedirs(emergency_dir, exist_ok=True)
     
-    current_time = datetime.now()
-    
-    # Clean up expired cooldowns
-    # Ensure we compare timestamps properly - convert datetime to timestamp for comparison
-    current_timestamp = current_time.timestamp()
-    cooldown_keys_to_remove = [k for k, expiry in _COOLDOWN_PROFILES.items()
-                               if (expiry.timestamp() if hasattr(expiry, 'timestamp') else expiry) <= current_timestamp]
-    if cooldown_keys_to_remove:
-        for k in cooldown_keys_to_remove:
-            del _COOLDOWN_PROFILES[k]
-        save_cooldown_profiles(_COOLDOWN_PROFILES)
+    # Note: Cooldown cleanup is complex with nested structure.
+    # We rely on check-time filtering in _find_best_profile_in_dirs to handle expired entries effectively.
 
     # --- Tier 1: Standard Profiles ---
-    logger.info("Tier 1: Searching for standard profiles...")
-    standard_dirs = ["auth_profiles/saved", "auth_profiles/active"]
-    best_profile = _find_best_profile_in_dirs(standard_dirs)
+    logger.info(f"Tier 1: Searching for standard profiles... (Target Model: {target_model_id or 'Any'})")
+    # [FIX] Explicitly include emergency profiles in standard rotation scan if they are healthy
+    # This ensures we don't artificially ignore valid profiles just because they are in the 'emergency' folder
+    # The 'emergency' fallback logic (Tier 2) below is still useful for specific logging or aggressive fallback if needed,
+    # but primarily we want to treat all available profiles as candidates.
+    standard_dirs = ["auth_profiles/saved", "auth_profiles/active", "auth_profiles/emergency"]
+    best_profile = _find_best_profile_in_dirs(standard_dirs, target_model_id)
 
     if best_profile:
         usage_val = get_profile_usage(best_profile)
@@ -111,7 +234,7 @@ def _get_next_profile() -> Optional[str]:
     # --- Tier 2: Emergency Profiles ---
     logger.warning("Tier 1 yielded no profiles. Falling back to Tier 2: Emergency Pool.")
     emergency_dirs = [emergency_dir]
-    best_emergency_profile = _find_best_profile_in_dirs(emergency_dirs)
+    best_emergency_profile = _find_best_profile_in_dirs(emergency_dirs, target_model_id)
 
     if best_emergency_profile:
         usage_val = get_profile_usage(best_emergency_profile)
@@ -149,7 +272,7 @@ async def _perform_canary_test(page: Page) -> bool:
         return False
 
 
-async def perform_auth_rotation() -> bool:
+async def perform_auth_rotation(target_model_id: str = None) -> bool:
     """
     Performs the authentication profile rotation with a soft-swap and canary test.
     
@@ -258,13 +381,43 @@ async def perform_auth_rotation() -> bool:
         while failed_attempts < max_retries:
             # 2. Select next profile
             logger.info("🔍 Selecting next auth profile...")
-            next_profile_path = _get_next_profile()
+            next_profile_path = _get_next_profile(target_model_id)
 
             if not next_profile_path:
-                logger.critical("❌ Rotation Failed: No available auth profiles found!")
-                logger.critical("♻️ ROTATION FAILED - No profiles available")
-                logger.critical("♻️ =========================================")
-                return False
+                logger.warning("All profiles are on cooldown. Calculating wait time...")
+                
+                now = time.time()
+                min_expiry = float('inf')
+
+                # Find the soonest expiry time among all cooldown profiles
+                for _, cooldown_data in _COOLDOWN_PROFILES.items():
+                    if isinstance(cooldown_data, dict):
+                        for ts in cooldown_data.values():
+                            ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                            if ts_val > now and ts_val < min_expiry:
+                                min_expiry = ts_val
+                    else:  # Legacy timestamp format
+                        ts_val = cooldown_data.timestamp() if hasattr(cooldown_data, 'timestamp') else cooldown_data
+                        if isinstance(ts_val, (int, float)) and ts_val > now and ts_val < min_expiry:
+                            min_expiry = ts_val
+
+                if min_expiry != float('inf'):
+                    # Add a small buffer to avoid timing issues
+                    wait_time = (min_expiry - now) + 1
+                    if wait_time > 0:
+                        logger.info(f"🕒 Waiting for {wait_time:.2f} seconds for the next profile to become available.")
+                        await asyncio.sleep(wait_time)
+                        
+                        # Retry getting the profile
+                        logger.info("Retrying to get next profile after waiting.")
+                        next_profile_path = _get_next_profile(target_model_id)
+
+                # Final check after waiting
+                if not next_profile_path:
+                    logger.critical("❌ Rotation Failed: No available auth profiles found even after waiting!")
+                    logger.critical("♻️ ROTATION FAILED - No profiles available")
+                    logger.critical("♻️ =========================================")
+                    return False
 
             # Always place the *previous* profile on cooldown on the first attempt
             if failed_attempts == 0:
@@ -272,13 +425,51 @@ async def perform_auth_rotation() -> bool:
                 if old_profile != 'unknown' and os.path.exists(old_profile):
                     # Calculate cooldown based on error type
                     error_type = GlobalState.last_error_type
-                    duration = QUOTA_EXCEEDED_COOLDOWN_SECONDS if error_type != 'RATE_LIMIT' else RATE_LIMIT_COOLDOWN_SECONDS
-                    reason_str = "Quota Exceeded/Other" if error_type != 'RATE_LIMIT' else "Rate Limit"
                     
-                    expiry_time = datetime.now() + timedelta(seconds=duration)
-                    _COOLDOWN_PROFILES[old_profile] = expiry_time
+                    # Ensure existing entry is a dict if it exists
+                    if old_profile not in _COOLDOWN_PROFILES or not isinstance(_COOLDOWN_PROFILES[old_profile], dict):
+                        _COOLDOWN_PROFILES[old_profile] = {}
+                        
+                    expiry_ts = (datetime.now() + timedelta(seconds=QUOTA_EXCEEDED_COOLDOWN_SECONDS)).timestamp()
+                    rate_limit_ts = (datetime.now() + timedelta(seconds=RATE_LIMIT_COOLDOWN_SECONDS)).timestamp()
+                    
+                    if error_type == 'RATE_LIMIT':
+                         # Rate Limit -> Global Cooldown
+                         _COOLDOWN_PROFILES[old_profile]["global"] = rate_limit_ts
+                         logger.info(f"❄️ Placing profile in GLOBAL cooldown for {RATE_LIMIT_COOLDOWN_SECONDS}s (Rate Limit).")
+                    else:
+                         # Quota Exceeded -> Model Specific Cooldowns
+                         
+                         # 1. Identify models to cooldown
+                         models_to_cooldown = set(GlobalState.current_profile_exhausted_models)
+                         logger.info(f"🔍 Model cooldown analysis: exhausted_models={GlobalState.current_profile_exhausted_models}, target_model={target_model_id}")
+                         
+                         # 2. Ensure target/current model is included if appropriate
+                         # If a specific target was requested, it's likely the one failing
+                         if target_model_id:
+                             models_to_cooldown.add(target_model_id.lower())
+                         
+                         # 3. Fallback: Only use "default" as absolute last resort
+                         # Prioritize target_model_id and avoid unnecessary "default" entries
+                         if not models_to_cooldown:
+                             if target_model_id:
+                                 models_to_cooldown.add(target_model_id.lower())
+                                 logger.info(f"🔍 Using target_model_id as fallback: {target_model_id}")
+                             elif server.current_ai_studio_model_id:
+                                 models_to_cooldown.add(server.current_ai_studio_model_id.lower())
+                                 logger.info(f"🔍 Using server.current_ai_studio_model_id as fallback: {server.current_ai_studio_model_id}")
+                             else:
+                                 # Only use "default" if we truly cannot identify any model
+                                 logger.warning(f"⚠️ Unable to identify specific model, falling back to 'default'. This should be rare.")
+                                 models_to_cooldown.add("default")
+
+                         # 4. Apply cooldowns
+                         logger.info(f"🎯 Applying cooldown to models: {list(models_to_cooldown)}")
+                         for m_id in models_to_cooldown:
+                             _COOLDOWN_PROFILES[old_profile][m_id] = expiry_ts
+                             logger.info(f"❄️ Placing profile in cooldown for model '{m_id}' for {QUOTA_EXCEEDED_COOLDOWN_SECONDS}s.")
+
                     save_cooldown_profiles(_COOLDOWN_PROFILES)
-                    logger.info(f"❄️ Placing initial failed profile '{os.path.basename(old_profile)}' in cooldown for {duration}s ({reason_str}).")
 
             new_profile_name = os.path.basename(next_profile_path)
             logger.info(f"👉 Attempting to rotate to profile: {new_profile_name}")
@@ -294,9 +485,17 @@ async def perform_auth_rotation() -> bool:
                 return False
 
             try:
-                with open(next_profile_path, 'r', encoding='utf-8') as f:
-                    storage_state = json.load(f)
-                
+                try:
+                    with open(next_profile_path, 'r', encoding='utf-8') as f:
+                        storage_state = json.load(f)
+                except (json.JSONDecodeError, OSError) as json_err:
+                    logger.error(f"❌ Corrupt or inaccessible profile file '{new_profile_name}': {json_err}")
+                    # Treat as a failed attempt, will trigger cooldown logic in outer except/continue
+                    raise
+
+                if not isinstance(storage_state, dict):
+                    raise ValueError(f"Invalid profile format in '{new_profile_name}'")
+
                 context = server.page_instance.context
                 await context.clear_cookies()
                 await context.add_cookies(storage_state.get('cookies', []))
@@ -306,7 +505,7 @@ async def perform_auth_rotation() -> bool:
                 if await _perform_canary_test(server.page_instance):
                     # Healthy profile found, break the loop
                     GlobalState.reset_quota_status()
-                    GlobalState.current_profile_token_count = 0
+                    # GlobalState.current_profile_token_count = 0 # Removed: handled by reset_quota_status
                     logger.info(f"♻️ ROTATION SUCCESSFUL with profile: {new_profile_name}")
                     logger.info("♻️ =========================================")
                     return True

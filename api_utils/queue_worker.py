@@ -1,6 +1,6 @@
 """
-队列工作器模块
-处理请求队列中的任务
+Queue Worker Module
+Handles tasks in the request queue
 """
 
 import asyncio
@@ -18,34 +18,34 @@ from models import QuotaExceededError
 
 
 async def queue_worker() -> None:
-    """队列工作器，处理请求队列中的任务"""
-    # 导入全局变量
+    """Queue worker, processes tasks in the request queue"""
+    # Import global variables
     from server import (
         logger, request_queue, processing_lock, model_switching_lock,
         params_cache_lock
     )
     from config.global_state import GlobalState
     
-    logger.info("--- 队列 Worker 已启动 ---")
+    logger.info("--- Queue Worker Started ---")
     
-    # 检查并初始化全局变量
+    # Check and initialize global variables
     if request_queue is None:
-        logger.info("初始化 request_queue...")
+        logger.info("Initializing request_queue...")
         from asyncio import Queue
         request_queue = Queue()
     
     if processing_lock is None:
-        logger.info("初始化 processing_lock...")
+        logger.info("Initializing processing_lock...")
         from asyncio import Lock
         processing_lock = Lock()
     
     if model_switching_lock is None:
-        logger.info("初始化 model_switching_lock...")
+        logger.info("Initializing model_switching_lock...")
         from asyncio import Lock
         model_switching_lock = Lock()
     
     if params_cache_lock is None:
-        logger.info("初始化 params_cache_lock...")
+        logger.info("Initializing params_cache_lock...")
         from asyncio import Lock
         params_cache_lock = Lock()
     
@@ -60,6 +60,8 @@ async def queue_worker() -> None:
         result_future = None
         req_id = "UNKNOWN"
         completion_event = None
+        submit_btn_loc = None
+        client_disco_checker = None
         
         try:
             # [SHUTDOWN-02] Check shutdown status immediately at loop start
@@ -67,7 +69,7 @@ async def queue_worker() -> None:
                 logger.info("🚨 Queue Worker detected shutdown signal, exiting immediately.")
                 break
 
-            # 检查队列中的项目，清理已断开连接的请求
+            # Check items in queue, clean up disconnected requests
             queue_size = request_queue.qsize()
             if queue_size > 0:
                 checked_count = 0
@@ -94,7 +96,7 @@ async def queue_worker() -> None:
                             if item_http_request:
                                 try:
                                     if await item_http_request.is_disconnected():
-                                        logger.info(f"[{item_req_id}] (Worker Queue Check) 检测到客户端已断开，标记为取消。")
+                                        logger.info(f"[{item_req_id}] (Worker Queue Check) Client disconnect detected, marking as cancelled.")
                                         item["cancelled"] = True
                                         item_future = item.get("result_future")
                                         if item_future and not item_future.done():
@@ -110,17 +112,35 @@ async def queue_worker() -> None:
                 for item in items_to_requeue:
                     await request_queue.put(item)
             
-            # [CRIT-01] Gatekeeper Check: BEFORE getting next request, check quota exceeded
-            if GlobalState.IS_QUOTA_EXCEEDED:
-                logger.info("⏸️ Pausing worker for Auth Rotation...")
-                from browser_utils.auth_rotation import perform_auth_rotation
-                rotation_success = await perform_auth_rotation()
-                if rotation_success:
-                    logger.info("✅ Auth rotation completed successfully. Resuming request processing.")
-                else:
-                    logger.error("❌ Auth rotation failed. System may be exhausted.")
-                    # Continue to check again after a short delay
-                    await asyncio.sleep(1)
+            # [CRIT-01] Gatekeeper Check: BEFORE getting next request, check quota exceeded OR Soft Rotation
+            # [GR-03] Pre-Flight Rotation Check
+            if GlobalState.IS_QUOTA_EXCEEDED or GlobalState.NEEDS_ROTATION:
+                reason = "Quota Exceeded" if GlobalState.IS_QUOTA_EXCEEDED else "Graceful Rotation Pending"
+                logger.info(f"⏸️ Pausing worker for Auth Rotation ({reason})...")
+                
+                # [ID-01] Signal Start of Recovery
+                GlobalState.start_recovery()
+                
+                try:
+                    # Get current model ID for smart rotation
+                    import server
+                    current_model_id = getattr(server, 'current_ai_studio_model_id', None)
+                    from browser_utils.auth_rotation import perform_auth_rotation
+                    rotation_success = await perform_auth_rotation(target_model_id=current_model_id)
+                    if rotation_success:
+                        GlobalState.NEEDS_ROTATION = False
+                        logger.info("✅ Auth rotation completed successfully. Resuming request processing.")
+                    else:
+                        logger.error("❌ Auth rotation failed. System may be exhausted.")
+                        # Continue to check again after a short delay
+                        await asyncio.sleep(1)
+                        # Do NOT finish recovery here if failed, keep system locked or retry?
+                        # For now, we finish to allow retries or error propagation
+                finally:
+                    # [ID-01] Signal End of Recovery (Successful or not, we unblock streams)
+                    GlobalState.finish_recovery()
+
+                if not rotation_success:
                     continue
 
             # [SHUTDOWN-05] Check shutdown before getting new request
@@ -128,7 +148,7 @@ async def queue_worker() -> None:
                 logger.info("🚨 Queue Worker detected shutdown before getting request, exiting immediately.")
                 break
 
-            # 获取下一个请求
+            # Get next request
             try:
                 # [SHUTDOWN-06] Use shorter timeout during shutdown for faster response
                 current_timeout = shutdown_check_interval if GlobalState.IS_SHUTTING_DOWN.is_set() else 5.0
@@ -137,7 +157,7 @@ async def queue_worker() -> None:
                 # [SHUTDOWN-07] Check if we timed out due to shutdown
                 if GlobalState.IS_SHUTTING_DOWN.is_set():
                     break
-                # 如果5秒内没有新请求，继续循环检查
+                # If no new request within 5 seconds, continue loop check
                 continue
             
             req_id = request_item["req_id"]
@@ -145,64 +165,78 @@ async def queue_worker() -> None:
             http_request = request_item["http_request"]
             result_future = request_item["result_future"]
 
+            # [CONCURRENCY-FIX] Set the current active request ID
+            # This invalidates any previous stream consumers still running
+            GlobalState.CURRENT_STREAM_REQ_ID = req_id
+            logger.info(f"[{req_id}] (Worker) Set GLOBAL CURRENT_STREAM_REQ_ID. Previous streams should terminate.")
+
             # [CRIT-01] Secondary quota check after getting request (defense in depth)
             if GlobalState.IS_QUOTA_EXCEEDED:
-                logger.warning(f"[{req_id}] (Worker) ⛔ Quota exceeded flag detected after getting request. Rejecting queued request.")
-                if not result_future.done():
-                    result_future.set_exception(HTTPException(status_code=429, detail="Quota exceeded. Please restart with a new profile."))
-                request_queue.task_done()
-                continue
+                logger.warning(f"[{req_id}] (Worker) ⛔ Quota exceeded flag detected after getting request. Re-queueing request to hold for rotation.")
+                # Re-queue the request to the front (or back) to be processed after rotation
+                # We use items_to_requeue logic or just put it back
+                try:
+                     await request_queue.put(request_item)
+                     request_queue.task_done()
+                     # Trigger rotation logic immediately in next loop iteration
+                     continue
+                except Exception as requeue_err:
+                    logger.error(f"[{req_id}] Failed to re-queue request during quota hold: {requeue_err}")
+                    if not result_future.done():
+                        result_future.set_exception(HTTPException(status_code=429, detail="Quota exceeded. Please restart with a new profile."))
+                    request_queue.task_done()
+                    continue
 
             if request_item.get("cancelled", False):
-                logger.info(f"[{req_id}] (Worker) 请求已取消，跳过。")
+                logger.info(f"[{req_id}] (Worker) Request cancelled, skipping.")
                 if not result_future.done():
-                    result_future.set_exception(client_cancelled(req_id, "请求已被用户取消"))
+                    result_future.set_exception(client_cancelled(req_id, "Request cancelled by user"))
                 request_queue.task_done()
                 continue
 
             is_streaming_request = request_data.stream
-            logger.info(f"[{req_id}] (Worker) 取出请求。模式: {'流式' if is_streaming_request else '非流式'}")
+            logger.info(f"[{req_id}] (Worker) Request dequeued. Mode: {'Streaming' if is_streaming_request else 'Non-streaming'}")
 
-            # 优化：在开始处理前主动检测客户端连接状态，避免不必要的处理
+            # Optimize: Proactively check client connection status before starting processing to avoid unnecessary work
             from api_utils.request_processor import _test_client_connection
             is_connected = await _test_client_connection(req_id, http_request)
             if not is_connected:
-                logger.info(f"[{req_id}] (Worker) ✅ 主动检测到客户端已断开，跳过处理节省资源")
+                logger.info(f"[{req_id}] (Worker) ✅ Proactively detected client disconnection, skipping processing to save resources")
                 if not result_future.done():
-                    result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] 客户端在处理前已断开连接"))
+                    result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] Client disconnected before processing"))
                 request_queue.task_done()
                 continue
             
-            # 流式请求间隔控制
+            # Stream request interval control
             current_time = time.time()
             if was_last_request_streaming and is_streaming_request and (current_time - last_request_completion_time < 1.0):
                 delay_time = max(0.5, 1.0 - (current_time - last_request_completion_time))
-                logger.info(f"[{req_id}] (Worker) 连续流式请求，添加 {delay_time:.2f}s 延迟...")
+                logger.info(f"[{req_id}] (Worker) Consecutive streaming request, adding {delay_time:.2f}s delay...")
                 await asyncio.sleep(delay_time)
             
-            # 等待锁前再次主动检测客户端连接
+            # Check client connection again before waiting for lock
             is_connected = await _test_client_connection(req_id, http_request)
             if not is_connected:
-                logger.info(f"[{req_id}] (Worker) ✅ 等待锁时检测到客户端断开，取消处理")
+                logger.info(f"[{req_id}] (Worker) ✅ Detected client disconnect while waiting for lock, cancelling processing")
                 if not result_future.done():
-                    result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] 客户端关闭了请求"))
+                    result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] Client closed the request"))
                 request_queue.task_done()
                 continue
             
-            logger.info(f"[{req_id}] (Worker) 等待处理锁...")
+            logger.info(f"[{req_id}] (Worker) Waiting for processing lock...")
             async with processing_lock:
-                logger.info(f"[{req_id}] (Worker) 已获取处理锁。开始核心处理...")
+                logger.info(f"[{req_id}] (Worker) Processing lock acquired. Starting core processing...")
                 
-                # 获取锁后最终主动检测客户端连接
+                # Final client connection check after acquiring lock
                 is_connected = await _test_client_connection(req_id, http_request)
                 if not is_connected:
-                    logger.info(f"[{req_id}] (Worker) ✅ 获取锁后检测到客户端断开，取消处理")
+                    logger.info(f"[{req_id}] (Worker) ✅ Detected client disconnect after acquiring lock, cancelling processing")
                     if not result_future.done():
-                        result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] 客户端关闭了请求"))
+                        result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] Client closed the request"))
                 elif result_future.done():
-                    logger.info(f"[{req_id}] (Worker) Future 在处理前已完成/取消。跳过。")
+                    logger.info(f"[{req_id}] (Worker) Future already done/cancelled before processing. Skipping.")
                 else:
-                    # 调用实际的请求处理函数
+                    # Call actual request processing function
                     try:
                         from api_utils import _process_request_refactored
                         returned_value = await _process_request_refactored(
@@ -231,19 +265,27 @@ async def queue_worker() -> None:
                             current_request_was_streaming = False
                             logger.warning(f"[{req_id}] (Worker) _process_request_refactored returned unexpected type: {type(returned_value)}")
 
-                        # 统一的客户端断开检测和响应处理
+                        # Unified client disconnect detection and response handling
                         if completion_event:
                             if isinstance(completion_event, dict):
                                 logger.info(f"[{req_id}] (Worker) Received direct dictionary response. Skipping wait.")
+                                
+                                # [STREAM-FIX] If we get a done signal for a streaming request, ensure stream is terminated
+                                if completion_event.get("done") is True and is_streaming_request:
+                                    logger.info(f"[{req_id}] (Worker) Done signal received for streaming request. Ensuring stream termination.")
+                                    from server import STREAM_QUEUE
+                                    if STREAM_QUEUE:
+                                        await STREAM_QUEUE.put(completion_event)
+
                                 client_disconnected_early = False
                                 # Ensure future is set if not done
                                 if not result_future.done():
                                     result_future.set_result(completion_event)
                             elif hasattr(completion_event, 'wait'):
-                                # 流式模式：等待流式生成器完成信号
-                                logger.info(f"[{req_id}] (Worker) 等待流式生成器完成信号...")
+                                # Streaming mode: Wait for stream generator completion signal
+                                logger.info(f"[{req_id}] (Worker) Waiting for stream generator completion signal...")
 
-                                # 创建一个增强的客户端断开检测器，支持提前done信号触发
+                                # Create an enhanced client disconnect detector supporting early done signal triggering
                                 client_disconnected_early = False
 
                                 async def enhanced_disconnect_monitor():
@@ -259,34 +301,78 @@ async def queue_worker() -> None:
 
                                             # Check Global Quota State
                                             if GlobalState.IS_QUOTA_EXCEEDED:
-                                                logger.critical(f"[{req_id}] (Worker) ⛔ Quota Exceeded detected mid-stream! Aborting worker wait.")
-                                                client_disconnected_early = True # Treat as early exit to skip button handling
-                                                if not completion_event.is_set():
-                                                    completion_event.set()
-                                                break
+                                                # [ID-04] Enhanced Quota Handling in Worker
+                                                if GlobalState.IS_RECOVERING:
+                                                    # If recovering, we do NOT abort. We wait.
+                                                    # The stream generator handles the pause. The worker just needs to NOT kill it.
+                                                    # We log occasionally to show we are alive.
+                                                    if int(time.time()) % 5 == 0:
+                                                        logger.info(f"[{req_id}] (Worker) 🔄 Recovery in progress... Worker holding position.")
+                                                    await asyncio.sleep(0.5)
+                                                    continue
+                                                else:
+                                                    # [FIX-RACE] Check if we just finished recovering
+                                                    # If rotation happened recently (< 10s), ignore the quota flag (it might be stale or transient)
+                                                    # and allow the worker to continue waiting.
+                                                    time_since_rotation = time.time() - GlobalState.LAST_ROTATION_TIMESTAMP
+                                                    if time_since_rotation < 10.0:
+                                                        logger.info(f"[{req_id}] (Worker) 🛡️ Quota signal ignored - Rotation completed {time_since_rotation:.2f}s ago. Resuming wait.")
+                                                        await asyncio.sleep(0.5)
+                                                        continue
 
-                                            # 主动检查客户端是否断开连接
+                                                    # Quota is exceeded but Recovery hasn't signaled yet.
+                                                    # It might be starting momentarily. Give it a grace period.
+                                                    # [DEBUG-LOG] detailed state diagnosis
+                                                    logger.warning(f"[{req_id}] (Worker) ⛔ Quota signal detected. State: Recovering={GlobalState.IS_RECOVERING}, Lock={GlobalState.AUTH_ROTATION_LOCK.is_set()}")
+                                                    logger.warning(f"[{req_id}] (Worker) ⛔ Waiting for recovery initiation...")
+                                                    
+                                                    await asyncio.sleep(2.0)
+                                                    
+                                                    if GlobalState.IS_RECOVERING:
+                                                        logger.info(f"[{req_id}] (Worker) 🔄 Recovery caught after wait. Resuming loop.")
+                                                        continue # Loop back to recovery handling
+                                                    
+                                                    # [FIX-BRITTLE] Check if quota cleared during wait
+                                                    if not GlobalState.IS_QUOTA_EXCEEDED:
+                                                        logger.info(f"[{req_id}] (Worker) ✅ Recovery completed successfully (Quota cleared) after wait. Resuming.")
+                                                        continue
+                                                    
+                                                    # Double check race condition after wait
+                                                    time_since_rotation = time.time() - GlobalState.LAST_ROTATION_TIMESTAMP
+                                                    if time_since_rotation < 10.0:
+                                                        logger.info(f"[{req_id}] (Worker) 🛡️ Quota signal ignored after wait - Rotation completed {time_since_rotation:.2f}s ago.")
+                                                        continue
+
+                                                    # If still no recovery, THEN abort.
+                                                    logger.critical(f"[{req_id}] (Worker) ⛔ Quota Exceeded and no recovery! Aborting worker wait.")
+                                                    logger.critical(f"[{req_id}] (Worker) ⛔ Final State: Recovering={GlobalState.IS_RECOVERING}, Lock={GlobalState.AUTH_ROTATION_LOCK.is_set()}")
+                                                    client_disconnected_early = True # Treat as early exit to skip button handling
+                                                    if not completion_event.is_set():
+                                                        completion_event.set()
+                                                    break
+
+                                            # Proactively check if client is disconnected
                                             is_connected = await _test_client_connection(req_id, http_request)
                                             if not is_connected:
-                                                logger.info(f"[{req_id}] (Worker) ✅ 流式处理中检测到客户端断开，提前触发done信号")
+                                                logger.info(f"[{req_id}] (Worker) ✅ Client disconnect detected during streaming, triggering done signal early")
                                                 client_disconnected_early = True
-                                                # 立即设置completion_event以提前结束等待
+                                                # Set completion_event immediately to end wait early
                                                 if not completion_event.is_set():
                                                     completion_event.set()
                                                 break
-                                            await asyncio.sleep(0.3)  # 更频繁的检查间隔
+                                            await asyncio.sleep(0.3)  # More frequent check interval
                                         except Exception as e:
-                                            logger.error(f"[{req_id}] (Worker) 增强断开检测器错误: {e}")
+                                            logger.error(f"[{req_id}] (Worker) Enhanced disconnect monitor error: {e}")
                                             break
 
-                                # 启动增强的断开连接监控
+                                # Start enhanced disconnect monitoring
                                 disconnect_monitor_task = asyncio.create_task(enhanced_disconnect_monitor())
                             else:
                                 logger.error(f"[{req_id}] (Worker) Unknown completion event type: {type(completion_event)}")
                                 client_disconnected_early = False
                         else:
-                            # 非流式模式：等待处理完成并检测客户端断开
-                            logger.info(f"[{req_id}] (Worker) 非流式模式，等待处理完成...")
+                            # Non-streaming mode: Wait for processing completion and check for client disconnect
+                            logger.info(f"[{req_id}] (Worker) Non-streaming mode, waiting for processing completion...")
 
                             client_disconnected_early = False
 
@@ -301,106 +387,109 @@ async def queue_worker() -> None:
                                                 result_future.cancel()
                                             break
 
-                                        # 主动检查客户端是否断开连接
+                                        # Proactively check if client is disconnected
                                         is_connected = await _test_client_connection(req_id, http_request)
                                         if not is_connected:
-                                            logger.info(f"[{req_id}] (Worker) ✅ 非流式处理中检测到客户端断开，取消处理")
+                                            logger.info(f"[{req_id}] (Worker) ✅ Client disconnect detected during non-streaming processing, cancelling")
                                             client_disconnected_early = True
-                                            # 取消result_future
+                                            # Cancel result_future
                                             if not result_future.done():
-                                                result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] 客户端在非流式处理中断开连接"))
+                                                result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] Client disconnected during non-streaming processing"))
                                             break
-                                        await asyncio.sleep(0.3)  # 更频繁的检查间隔
+                                        await asyncio.sleep(0.3)  # More frequent check interval
                                     except Exception as e:
-                                        logger.error(f"[{req_id}] (Worker) 非流式断开检测器错误: {e}")
+                                        logger.error(f"[{req_id}] (Worker) Non-streaming disconnect monitor error: {e}")
                                         break
 
-                            # 启动非流式断开连接监控
+                            # Start non-streaming disconnect monitoring
                             disconnect_monitor_task = asyncio.create_task(non_streaming_disconnect_monitor())
 
-                        # 等待处理完成（流式或非流式）
+                        # Wait for processing completion (streaming or non-streaming)
                         try:
                             if completion_event:
                                 if isinstance(completion_event, dict):
                                     pass
                                 elif hasattr(completion_event, 'wait'):
-                                    # 流式模式：等待completion_event
+                                    # Streaming mode: Wait for completion_event
                                     from server import RESPONSE_COMPLETION_TIMEOUT
                                     await asyncio.wait_for(completion_event.wait(), timeout=RESPONSE_COMPLETION_TIMEOUT/1000 + 60)
-                                    logger.info(f"[{req_id}] (Worker) ✅ 流式生成器完成信号收到。客户端提前断开: {client_disconnected_early}")
+                                    logger.info(f"[{req_id}] (Worker) ✅ Stream generator completion signal received. Client early disconnect: {client_disconnected_early}")
                             else:
-                                # 非流式模式：等待result_future完成
+                                # Non-streaming mode: Wait for result_future
                                 from server import RESPONSE_COMPLETION_TIMEOUT
                                 await asyncio.wait_for(asyncio.shield(result_future), timeout=RESPONSE_COMPLETION_TIMEOUT/1000 + 60)
-                                logger.info(f"[{req_id}] (Worker) ✅ 非流式处理完成。客户端提前断开: {client_disconnected_early}")
+                                logger.info(f"[{req_id}] (Worker) ✅ Non-streaming processing completed. Client early disconnect: {client_disconnected_early}")
 
-                            # 如果客户端提前断开，尝试点击停止按钮以中止生成
+                            # If client disconnected early, try clicking stop button to abort generation
                             if client_disconnected_early:
-                                logger.info(f"[{req_id}] (Worker) 客户端提前断开，尝试停止生成...")
+                                logger.info(f"[{req_id}] (Worker) Client disconnected early, attempting to stop generation...")
                                 if submit_btn_loc:
                                     try:
+                                        # [AUTO-01] Harden Stop Button Logic
+                                        # Use try/except block to handle potential UI changes or detachments
                                         is_button_enabled = await submit_btn_loc.is_enabled(timeout=2000)
                                         if is_button_enabled:
-                                            logger.info(f"[{req_id}] (Worker) 发现停止按钮可用，正在点击以中止生成...")
+                                            logger.info(f"[{req_id}] (Worker) Stop button found enabled, clicking to abort generation...")
                                             await submit_btn_loc.click(timeout=5000, force=True)
-                                            logger.info(f"[{req_id}] (Worker) ✅ 已点击停止按钮。")
+                                            logger.info(f"[{req_id}] (Worker) ✅ Stop button clicked.")
                                         else:
-                                            logger.info(f"[{req_id}] (Worker) 停止按钮不可用，无需操作。")
+                                            logger.info(f"[{req_id}] (Worker) Stop button not enabled, no action needed.")
                                     except Exception as stop_err:
-                                        logger.warning(f"[{req_id}] (Worker) 尝试停止生成时出错: {stop_err}")
+                                        logger.warning(f"[{req_id}] (Worker) Error trying to stop generation: {stop_err}")
 
                             if submit_btn_loc and client_disco_checker and completion_event and not client_disconnected_early:
-                                    # 等待发送按钮禁用确认流式响应完全结束
-                                    logger.info(f"[{req_id}] (Worker) 流式响应完成，检查并处理发送按钮状态...")
+                                    # Wait for send button disable to confirm stream response fully ended
+                                    logger.info(f"[{req_id}] (Worker) Stream response completed, checking and handling send button status...")
                                     wait_timeout_ms = 30000  # 30 seconds
                                     try:
                                         from playwright.async_api import expect as expect_async
                                         from api_utils.request_processor import ClientDisconnectedError
 
-                                        # 检查客户端连接状态
-                                        client_disco_checker("流式响应后按钮状态检查 - 前置检查: ")
-                                        await asyncio.sleep(0.5)  # 给UI一点时间更新
+                                        # Check client connection status
+                                        client_disco_checker("Post-stream button status check - Pre-check: ")
+                                        await asyncio.sleep(0.5)  # Give UI some time to update
 
-                                        # 检查按钮是否仍然启用，如果启用则直接点击停止
-                                        logger.info(f"[{req_id}] (Worker) 检查发送按钮状态...")
+                                        # Check if button is still enabled, if so click stop directly
+                                        logger.info(f"[{req_id}] (Worker) Checking send button status...")
                                         try:
+                                            # [AUTO-01] Harden Submit Button Logic
                                             is_button_enabled = await submit_btn_loc.is_enabled(timeout=2000)
-                                            logger.info(f"[{req_id}] (Worker) 发送按钮启用状态: {is_button_enabled}")
+                                            logger.info(f"[{req_id}] (Worker) Send button enabled status: {is_button_enabled}")
 
                                             if is_button_enabled:
-                                                # 流式响应完成后按钮仍启用，直接点击停止
-                                                logger.info(f"[{req_id}] (Worker) 流式响应完成但按钮仍启用，主动点击按钮停止生成...")
+                                                # Button still enabled after stream completion, click stop
+                                                logger.info(f"[{req_id}] (Worker) Stream completed but button still enabled, clicking stop to end generation...")
                                                 await submit_btn_loc.click(timeout=5000, force=True)
-                                                logger.info(f"[{req_id}] (Worker) ✅ 发送按钮点击完成。")
+                                                logger.info(f"[{req_id}] (Worker) ✅ Send button click completed.")
                                             else:
-                                                logger.info(f"[{req_id}] (Worker) 发送按钮已禁用，无需点击。")
+                                                logger.info(f"[{req_id}] (Worker) Send button disabled, no click needed.")
                                         except Exception as button_check_err:
-                                            logger.warning(f"[{req_id}] (Worker) 检查按钮状态失败: {button_check_err}")
+                                            logger.warning(f"[{req_id}] (Worker) Failed to check button status: {button_check_err}")
 
-                                        # 等待按钮最终禁用
-                                        logger.info(f"[{req_id}] (Worker) 等待发送按钮最终禁用...")
+                                        # Wait for button to be finally disabled
+                                        logger.info(f"[{req_id}] (Worker) Waiting for send button to be finally disabled...")
                                         await expect_async(submit_btn_loc).to_be_disabled(timeout=wait_timeout_ms)
-                                        logger.info(f"[{req_id}] ✅ 发送按钮已禁用。")
+                                        logger.info(f"[{req_id}] ✅ Send button disabled.")
 
                                     except Exception as e_pw_disabled:
-                                        logger.warning(f"[{req_id}] ⚠️ 流式响应后按钮状态处理超时或错误: {e_pw_disabled}")
+                                        logger.warning(f"[{req_id}] ⚠️ Stream post-response button status handling timeout or error: {e_pw_disabled}")
                                         from api_utils.request_processor import save_error_snapshot
                                         await save_error_snapshot(f"stream_post_submit_button_handling_timeout_{req_id}")
                                     except ClientDisconnectedError:
-                                        logger.info(f"[{req_id}] 客户端在流式响应后按钮状态处理时断开连接。")
+                                        logger.info(f"[{req_id}] Client disconnected during stream post-response button status handling.")
                             elif completion_event and current_request_was_streaming:
-                                logger.warning(f"[{req_id}] (Worker) 流式请求但 submit_btn_loc 或 client_disco_checker 未提供。跳过按钮禁用等待。")
+                                logger.warning(f"[{req_id}] (Worker) Streaming request but submit_btn_loc or client_disco_checker missing. Skipping button disable wait.")
 
                         except asyncio.TimeoutError:
-                            logger.warning(f"[{req_id}] (Worker) ⚠️ 等待处理完成超时。")
+                            logger.warning(f"[{req_id}] (Worker) ⚠️ Processing completion wait timed out.")
                             if not result_future.done():
                                 result_future.set_exception(processing_timeout(req_id, "Processing timed out waiting for completion."))
                         except Exception as ev_wait_err:
-                            logger.error(f"[{req_id}] (Worker) ❌ 等待处理完成时出错: {ev_wait_err}")
+                            logger.error(f"[{req_id}] (Worker) ❌ Error waiting for completion: {ev_wait_err}")
                             if not result_future.done():
                                 result_future.set_exception(server_error(req_id, f"Error waiting for completion: {ev_wait_err}"))
                         finally:
-                            # 清理断开连接监控任务
+                            # Cleanup disconnect monitor task
                             if 'disconnect_monitor_task' in locals() and not disconnect_monitor_task.done():
                                 disconnect_monitor_task.cancel()
                                 try:
@@ -408,29 +497,51 @@ async def queue_worker() -> None:
                                 except asyncio.CancelledError:
                                     pass
 
+                    except QuotaExceededError as qe:
+                        # Re-raise to be caught by the handler below which handles re-queueing
+                        raise qe
                     except Exception as process_err:
                         logger.error(f"[{req_id}] (Worker) _process_request_refactored execution error: {process_err}")
                         if not result_future.done():
                             result_future.set_exception(server_error(req_id, f"Request processing error: {process_err}"))
             
-            logger.info(f"[{req_id}] (Worker) 释放处理锁。")
+            logger.info(f"[{req_id}] (Worker) Processing lock released.")
 
-            # 在释放处理锁后立即执行清空操作
+            # [GR-02] Post-Request Graceful Rotation Check
+            # Must happen AFTER releasing the lock but BEFORE processing next request
+            just_rotated = False
+            if GlobalState.NEEDS_ROTATION:
+                logger.info(f"[{req_id}] 🔄 Graceful Rotation Triggered after request completion.")
+                # Get current model ID for smart rotation
+                import server
+                current_model_id = getattr(server, 'current_ai_studio_model_id', None)
+                from browser_utils.auth_rotation import perform_auth_rotation
+                rotation_success = await perform_auth_rotation(target_model_id=current_model_id)
+                if rotation_success:
+                    GlobalState.NEEDS_ROTATION = False
+                    just_rotated = True
+                    logger.info(f"[{req_id}] ✅ Graceful Rotation completed.")
+                else:
+                    logger.error(f"[{req_id}] ❌ Graceful Rotation failed. Flag remains set for next retry.")
+
+            # Execute cleanup immediately after releasing lock
             try:
-                # 清空流式队列缓存
+                # Clear stream queue cache
                 from api_utils import clear_stream_queue
                 await clear_stream_queue()
 
                 # [FIX-03] Worker Cleanup Short-Circuit - Enhanced browser shutdown detection
                 if GlobalState.IS_QUOTA_EXCEEDED:
                     logger.warning(f"[{req_id}] (Worker) ⛔ Quota Exceeded flag detected! Skipping chat history cleanup to allow immediate rotation.")
+                elif just_rotated:
+                    logger.info(f"[{req_id}] (Worker) 🔄 Just rotated credentials. Skipping chat history cleanup (session is fresh).")
                 elif GlobalState.IS_SHUTTING_DOWN.is_set():
                     logger.warning(f"[{req_id}] (Worker) 🚨 Shutdown detected, skipping all browser operations.")
                 elif submit_btn_loc and client_disco_checker:
                     # Enhanced browser availability check
                     from server import page_instance, is_page_ready, browser_instance
-                    browser_available = (page_instance and is_page_ready and 
-                                       hasattr(page_instance, 'context') and 
+                    browser_available = (page_instance and is_page_ready and
+                                       hasattr(page_instance, 'context') and
                                        page_instance.context is not None and
                                        browser_instance and browser_instance.is_connected())
                     
@@ -438,14 +549,14 @@ async def queue_worker() -> None:
                         try:
                             from browser_utils.page_controller import PageController
                             page_controller = PageController(page_instance, logger, req_id)
-                            logger.info(f"[{req_id}] (Worker) 执行聊天历史清空（{'流式' if completion_event else '非流式'}模式）...")
+                            logger.info(f"[{req_id}] (Worker) Clearing chat history ({'streaming' if completion_event else 'non-streaming'} mode)...")
                             
-                            # 使用 dummy checker 确保清空操作不受客户端断开影响
+                            # Use dummy checker to ensure cleanup is not affected by client disconnect
                             dummy_checker = lambda stage: False
                             
                             try:
                                 await page_controller.clear_chat_history(dummy_checker)
-                                logger.info(f"[{req_id}] (Worker) ✅ 聊天历史清空完成。")
+                                logger.info(f"[{req_id}] (Worker) ✅ Chat history cleared.")
                             except Exception as clear_chat_err:
                                 # Check if browser is still available before attempting recovery
                                 if GlobalState.IS_SHUTTING_DOWN.is_set():
@@ -454,44 +565,68 @@ async def queue_worker() -> None:
                                     # Double-check browser availability before reload attempt
                                     from server import browser_instance
                                     if browser_instance and browser_instance.is_connected():
-                                        logger.warning(f"[{req_id}] (Worker) 尝试刷新页面以恢复状态...")
+                                        logger.warning(f"[{req_id}] (Worker) Attempting page reload to recover state...")
                                         try:
                                             await page_instance.reload()
-                                            logger.info(f"[{req_id}] (Worker) ✅ 页面刷新成功。")
+                                            logger.info(f"[{req_id}] (Worker) ✅ Page reload successful.")
                                         except Exception as reload_err:
-                                            logger.error(f"[{req_id}] (Worker) ❌ 页面刷新失败: {reload_err}")
+                                            logger.error(f"[{req_id}] (Worker) ❌ Page reload failed: {reload_err}")
                                     else:
                                         logger.warning(f"[{req_id}] (Worker) Browser no longer available during cleanup recovery, skipping reload.")
                         except Exception as controller_err:
                             logger.warning(f"[{req_id}] (Worker) PageController initialization failed: {controller_err}")
                     else:
-                        logger.info(f"[{req_id}] (Worker) 跳过聊天历史清空：浏览器不可用或已关闭")
+                        logger.info(f"[{req_id}] (Worker) Skipping chat history cleanup: Browser unavailable or closed")
 
                 else:
-                    logger.info(f"[{req_id}] (Worker) 跳过聊天历史清空：缺少必要参数（submit_btn_loc: {bool(submit_btn_loc)}, client_disco_checker: {bool(client_disco_checker)}）")
+                    logger.info(f"[{req_id}] (Worker) Skipping chat history cleanup: Missing required params (submit_btn_loc: {bool(submit_btn_loc)}, client_disco_checker: {bool(client_disco_checker)})")
             except Exception as clear_err:
-                logger.error(f"[{req_id}] (Worker) 清空操作时发生错误: {clear_err}", exc_info=True)
+                logger.error(f"[{req_id}] (Worker) Error during cleanup: {clear_err}", exc_info=True)
 
             was_last_request_streaming = is_streaming_request
             last_request_completion_time = time.time()
             
         except asyncio.CancelledError:
-            logger.info("--- 队列 Worker 被取消 ---")
+            logger.info("--- Queue Worker Cancelled ---")
             if result_future and not result_future.done():
                 result_future.cancel("Worker cancelled")
             break
         except QuotaExceededError as qe:
             logger.error(f"[{req_id}] ⛔ CRITICAL: {qe}")
-            if result_future and not result_future.done():
-                # Mark this auth profile as 'exhausted' (optional future task).
-                # Return 429 (Too Many Requests) to the client.
-                result_future.set_exception(HTTPException(status_code=429, detail="Account quota exceeded. Please try a different account."))
+            # [FINAL-FIX] If QuotaExceededError bubbles up here, it means it happened MID-PROCESSING.
+            
+            # 1. Check if client is still connected before re-queuing
+            try:
+                # Ensure we have the function available
+                from api_utils.request_processor import _test_client_connection
+                is_connected = await _test_client_connection(req_id, http_request)
+            except Exception:
+                is_connected = False # Assume disconnected on error to be safe
+                
+            if not is_connected:
+                logger.info(f"[{req_id}] Client disconnected during Quota Exception. Dropping request (NOT re-queuing).")
+                if result_future and not result_future.done():
+                    result_future.set_exception(HTTPException(status_code=499, detail="Client disconnected during Quota Error"))
+            
+            # 2. Only Re-queue if connected
+            elif result_future and not result_future.done():
+                logger.info(f"[{req_id}] 🔄 Re-queueing failed request due to Quota Exceeded mid-processing (Client Connected)...")
+                try:
+                    request_queue.put_nowait(request_item)
+                    # IMPORTANT: Do NOT set exception on future, keep it pending!
+                    # The client is still connected and waiting on this future.
+                    # By putting it back in queue, it will be picked up again by worker loop
+                    # which will then see GlobalState.IS_QUOTA_EXCEEDED and hold it until rotation.
+                except Exception as requeue_err:
+                    logger.error(f"[{req_id}] Failed to re-queue mid-processing request: {requeue_err}")
+                    result_future.set_exception(HTTPException(status_code=429, detail="Quota exceeded. Please retry."))
+            
         except Exception as e:
-            logger.error(f"[{req_id}] (Worker) ❌ 处理请求时发生意外错误: {e}", exc_info=True)
+            logger.error(f"[{req_id}] (Worker) ❌ Unexpected error processing request: {e}", exc_info=True)
             if result_future and not result_future.done():
-                result_future.set_exception(server_error(req_id, f"服务器内部错误: {e}"))
+                result_future.set_exception(server_error(req_id, f"Internal Server Error: {e}"))
         finally:
             if request_item:
                 request_queue.task_done()
     
-    logger.info("--- 队列 Worker 已停止 ---")
+    logger.info("--- Queue Worker Stopped ---")

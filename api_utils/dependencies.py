@@ -65,6 +65,7 @@ async def ensure_request_lock():
     """
     from config.global_state import GlobalState
     import asyncio
+    from server import logger
 
     # A request is considered "queued" if it has to wait for the lock.
     is_waiting = GlobalState.IS_QUOTA_EXCEEDED or not GlobalState.AUTH_ROTATION_LOCK.is_set()

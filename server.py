@@ -14,10 +14,10 @@ import logging.handlers
 import socket # 保留 socket 以便在 __main__ 中进行简单的直接运行提示
 from asyncio import Queue, Lock, Future, Task, Event
 
-# 新增: 导入 load_dotenv
+# Add: Import load_dotenv
 from dotenv import load_dotenv
 
-# 新增: 在所有其他导入之前加载 .env 文件
+# Add: Load .env file before other imports
 load_dotenv()
 
 from fastapi import FastAPI, Request, HTTPException
@@ -33,12 +33,12 @@ import aiohttp
 import stream
 import queue
 
-# --- 配置模块导入 ---
+# --- Config Module Import ---
 from config import (
     RESPONSE_COMPLETION_TIMEOUT,
 )
 
-# --- models模块导入 ---
+# --- Models Module Import ---
 from models import (
     FunctionCall,
     ToolCall,
@@ -51,10 +51,10 @@ from models import (
     WebSocketLogHandler
 )
 
-# --- logging_utils模块导入 ---
+# --- Logging Utils Module Import ---
 from logging_utils import setup_server_logging, restore_original_streams
 
-# --- browser_utils模块导入 ---
+# --- Browser Utils Module Import ---
 from browser_utils import (
     _initialize_page_logic,
     _close_page_logic,
@@ -73,7 +73,7 @@ from browser_utils import (
     _set_model_from_page_display
 )
 
-# --- api_utils模块导入 ---
+# --- API Utils Module Import ---
 from api_utils import (
     generate_sse_chunk,
     generate_sse_stop_chunk, 
@@ -101,7 +101,7 @@ is_browser_connected = False
 is_page_ready = False
 is_initializing = False
 
-# --- 全局代理配置 ---
+# --- Global Proxy Config ---
 PLAYWRIGHT_PROXY_SETTINGS: Optional[Dict[str, str]] = None
 
 global_model_list_raw_json: Optional[List[Any]] = None
@@ -125,7 +125,7 @@ logger = logging.getLogger("AIStudioProxyServer")
 log_ws_manager = None
 
 
-# --- FastAPI App 定义 ---
+# --- FastAPI App Definition ---
 app = create_app()
 
 async def quota_watchdog():
@@ -151,11 +151,18 @@ async def quota_watchdog():
                  continue
             
             # Force rotation
-            success = await perform_auth_rotation()
-            if success:
-                logger.info("Watchdog: Rotation triggered and completed successfully.")
-            else:
-                logger.error("Watchdog: Rotation triggered but failed.")
+            # [FIX-COORD] Wrap in recovery signal to notify listeners (stream/worker)
+            GlobalState.start_recovery()
+            try:
+                # Get current model ID for smart rotation
+                current_model_id = current_ai_studio_model_id
+                success = await perform_auth_rotation(target_model_id=current_model_id)
+                if success:
+                    logger.info("Watchdog: Rotation triggered and completed successfully.")
+                else:
+                    logger.error("Watchdog: Rotation triggered but failed.")
+            finally:
+                GlobalState.finish_recovery()
             
             # Ensure event/flag is cleared
             if GlobalState.IS_QUOTA_EXCEEDED:
