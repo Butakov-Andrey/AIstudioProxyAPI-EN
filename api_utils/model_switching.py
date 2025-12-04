@@ -57,16 +57,16 @@ async def handle_model_switching(
     assert model_id_to_use is not None, "Target model ID must be set"
 
     async with model_switching_lock:
-        if server.current_ai_studio_model_id != model_id_to_use:
-            logger.info(f"[{req_id}] Preparing to switch model: {server.current_ai_studio_model_id} -> {model_id_to_use}")
+        if state.current_ai_studio_model_id != model_id_to_use:
+            logger.info(f"[{req_id}] Preparing to switch model: {state.current_ai_studio_model_id} -> {model_id_to_use}")
             from browser_utils import switch_ai_studio_model
 
             switch_success = await switch_ai_studio_model(page, model_id_to_use, req_id)
             if switch_success:
-                server.current_ai_studio_model_id = model_id_to_use
+                state.current_ai_studio_model_id = model_id_to_use
                 context['model_actually_switched'] = True
                 context['current_ai_studio_model_id'] = model_id_to_use
-                logger.info(f"[{req_id}] ✅ Model switched successfully: {server.current_ai_studio_model_id}")
+                logger.info(f"[{req_id}] ✅ Model switched successfully: {state.current_ai_studio_model_id}")
             else:
                 # Current model ID should exist when switching fails
                 current_model = state.current_ai_studio_model_id or "unknown"
@@ -82,9 +82,8 @@ async def handle_model_switching(
 
 
 async def _handle_model_switch_failure(req_id: str, page: AsyncPage, model_id_to_use: str, model_before_switch: str, logger) -> None:
-    import server
     logger.warning(f"[{req_id}] ❌ Failed to switch to model {model_id_to_use}.")
-    server.current_ai_studio_model_id = model_before_switch
+    state.current_ai_studio_model_id = model_before_switch
     from .error_utils import http_error
     raise http_error(422, f"[{req_id}] Failed to switch to model '{model_id_to_use}'. Ensure model is available.")
 
