@@ -9,7 +9,6 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from playwright.async_api import Page as AsyncPage
-from playwright.async_api import TimeoutError
 from playwright.async_api import expect as expect_async
 
 from config import (
@@ -58,9 +57,21 @@ from .operations import (
     save_error_snapshot,
 )
 from .thinking_normalizer import format_directive_log, normalize_reasoning_effort_with_stream_check
+from .page_controller_modules.parameters import ParameterController
+from .page_controller_modules.input import InputController
+from .page_controller_modules.chat import ChatController
+from .page_controller_modules.response import ResponseController
+from .page_controller_modules.base import BaseController
 
 
-class PageController:
+class PageController(
+    ParameterController,
+    # ThinkingController,
+    InputController,
+    ChatController,
+    ResponseController,
+    BaseController,
+):
     """封装了与AI Studio页面交互的所有操作。"""
 
     def __init__(self, page: AsyncPage, logger, req_id: str):
