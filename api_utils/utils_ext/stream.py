@@ -52,8 +52,6 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, silence_thresho
     if stream_start_time == 0.0:
         stream_start_time = time.time() - 10.0 # Fallback: 10s buffer if not provided
 
-    logger.info(f"[{req_id}] Starting stream response (TTFB Timeout: {timeout:.2f}s, Silence Threshold: {silence_threshold:.2f}s, Max Retries: {max_empty_retries}, Start Time: {stream_start_time})")
-
     accumulated_body = ""
     accumulated_reason_len = 0
     total_reason_processed = 0
@@ -82,6 +80,8 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, silence_thresho
     # Ensure it's at least as long as initial_wait_limit to prevent general timeout from undercutting TTFB
     silence_wait_limit = int(silence_threshold * 10)
     max_empty_retries = max(silence_wait_limit, initial_wait_limit)
+    
+    logger.info(f"[{req_id}] Starting stream response (TTFB Timeout: {timeout:.2f}s, Silence Threshold: {silence_threshold:.2f}s, Max Retries: {max_empty_retries}, Start Time: {stream_start_time})")
     
     # [STREAM-FIX] Hard timeout limit (3x the dynamic timeout) to prevent infinite zombie loops
     hard_timeout_limit = int(timeout * 10 * 3)
@@ -113,11 +113,24 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, silence_thresho
                 return True
                 
             # Check if submit button is disabled (generation in progress)
-            submit_button = page.locator('button[aria-label="Run"].run-button, ms-run-button button[type="submit"].run-button')
+            # Use SUBMIT_BUTTON_SELECTOR from config for consistency
+            from config.selectors import SUBMIT_BUTTON_SELECTOR
+            submit_button = page.locator(SUBMIT_BUTTON_SELECTOR)
+            
+            # Check element exists before querying state
             if await submit_button.count() > 0:
-                is_disabled = await submit_button.first.is_disabled(timeout=1000)
-                if is_disabled:
-                    return True
+                try:
+                    # Increase timeout to 2000ms for consistency with input.py
+                    is_disabled = await submit_button.first.is_disabled(timeout=2000)
+                    if is_disabled:
+                        return True
+                except Exception as btn_check_err:
+                    # Log specific button state check failures
+                    if "Timeout" in str(btn_check_err) or "timeout" in str(btn_check_err):
+                        # Timeout on is_disabled check - assume not generating
+                        return False
+                    # Re-raise other unexpected errors for visibility
+                    raise
                     
             return False
         except Exception as e:
