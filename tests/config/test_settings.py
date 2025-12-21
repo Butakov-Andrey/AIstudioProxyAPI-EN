@@ -22,18 +22,18 @@ from config.settings import (
 
 
 def test_get_environment_variable_returns_value():
-    """测试场景: 环境变量存在时返回其值"""
+    """Test scenario: Return environment variable value when it exists."""
     with patch.dict(os.environ, {"TEST_VAR": "test_value"}):
         assert get_environment_variable("TEST_VAR") == "test_value"
 
 
 def test_get_environment_variable_returns_default():
-    """测试场景: 环境变量不存在时返回默认值"""
+    """Test scenario: Return default value when environment variable does not exist."""
     assert get_environment_variable("NON_EXISTENT_VAR", "default") == "default"
 
 
 def test_get_environment_variable_returns_empty_default():
-    """测试场景: 无默认值时返回空字符串"""
+    """Test scenario: Return empty string when no default value is provided."""
     assert get_environment_variable("NON_EXISTENT_VAR") == ""
 
 
@@ -54,7 +54,7 @@ def test_get_environment_variable_returns_empty_default():
     ],
 )
 def test_get_boolean_env_true_values(env_value: str, expected: bool):
-    """测试场景: 布尔真值解析 (true/1/yes/on)"""
+    """Test scenario: Boolean true value parsing (true/1/yes/on)."""
     with patch.dict(os.environ, {"BOOL_VAR": env_value}):
         assert get_boolean_env("BOOL_VAR") is expected
 
@@ -75,13 +75,13 @@ def test_get_boolean_env_true_values(env_value: str, expected: bool):
     ],
 )
 def test_get_boolean_env_false_values(env_value: str, expected: bool):
-    """测试场景: 布尔假值解析 (false/0/no/off/empty/invalid)"""
+    """Test scenario: Boolean false value parsing (false/0/no/off/empty/invalid)."""
     with patch.dict(os.environ, {"BOOL_VAR": env_value}):
         assert get_boolean_env("BOOL_VAR") is expected
 
 
 def test_get_boolean_env_default_true():
-    """测试场景: 默认值为 True 时的逻辑翻转"""
+    """Test scenario: Logic reversal when default value is True."""
     # When default=True, only explicit false values return False
     assert get_boolean_env("NON_EXISTENT", default=True) is True
 
@@ -100,7 +100,7 @@ def test_get_boolean_env_default_true():
 
 
 def test_get_boolean_env_default_false():
-    """测试场景: 默认值为 False 时的标准逻辑"""
+    """Test scenario: Standard logic when default value is False."""
     assert get_boolean_env("NON_EXISTENT", default=False) is False
 
 
@@ -108,43 +108,43 @@ def test_get_boolean_env_default_false():
 
 
 def test_get_int_env_valid_integer():
-    """测试场景: 有效整数字符串解析"""
+    """Test scenario: Valid integer string parsing."""
     with patch.dict(os.environ, {"INT_VAR": "123"}):
         assert get_int_env("INT_VAR") == 123
 
 
 def test_get_int_env_negative_integer():
-    """测试场景: 负整数解析"""
+    """Test scenario: Negative integer parsing."""
     with patch.dict(os.environ, {"INT_VAR": "-456"}):
         assert get_int_env("INT_VAR") == -456
 
 
 def test_get_int_env_zero():
-    """测试场景: 零值解析"""
+    """Test scenario: Zero value parsing."""
     with patch.dict(os.environ, {"INT_VAR": "0"}):
         assert get_int_env("INT_VAR") == 0
 
 
 def test_get_int_env_invalid_returns_default():
-    """测试场景: 无效字符串回退到默认值"""
+    """Test scenario: Invalid string falls back to default value."""
     with patch.dict(os.environ, {"INT_VAR": "invalid"}):
         assert get_int_env("INT_VAR", default=10) == 10
 
 
 def test_get_int_env_float_string_returns_default():
-    """测试场景: 浮点数字符串回退到默认值"""
+    """Test scenario: Float string falls back to default value."""
     with patch.dict(os.environ, {"INT_VAR": "3.14"}):
         assert get_int_env("INT_VAR", default=5) == 5
 
 
 def test_get_int_env_empty_returns_default():
-    """测试场景: 空字符串回退到默认值"""
+    """Test scenario: Empty string falls back to default value."""
     with patch.dict(os.environ, {"INT_VAR": ""}):
         assert get_int_env("INT_VAR", default=7) == 7
 
 
 def test_get_int_env_non_existent_returns_default():
-    """测试场景: 环境变量不存在时返回默认值"""
+    """Test scenario: Return default value when environment variable does not exist."""
     assert get_int_env("NON_EXISTENT_INT", default=5) == 5
 
 
@@ -152,7 +152,7 @@ def test_get_int_env_non_existent_returns_default():
 
 
 def test_path_constants_are_strings():
-    """测试场景: 路径常量均为字符串类型"""
+    """Test scenario: Path constants are all string types."""
     from config.settings import (
         ACTIVE_AUTH_DIR,
         APP_LOG_FILE_PATH,
@@ -171,7 +171,7 @@ def test_path_constants_are_strings():
 
 
 def test_path_constants_contain_expected_dirs():
-    """测试场景: 路径常量包含预期目录名称"""
+    """Test scenario: Path constants contain expected directory names."""
     from config.settings import (
         ACTIVE_AUTH_DIR,
         APP_LOG_FILE_PATH,
@@ -190,7 +190,7 @@ def test_path_constants_contain_expected_dirs():
 
 
 def test_path_relationship_active_under_profiles():
-    """测试场景: active 目录应在 auth_profiles 下"""
+    """Test scenario: active directory should be under auth_profiles."""
     from config.settings import ACTIVE_AUTH_DIR, AUTH_PROFILES_DIR
 
     # ACTIVE_AUTH_DIR should be a subdirectory of AUTH_PROFILES_DIR
@@ -198,7 +198,7 @@ def test_path_relationship_active_under_profiles():
 
 
 def test_path_relationship_saved_under_profiles():
-    """测试场景: saved 目录应在 auth_profiles 下"""
+    """Test scenario: saved directory should be under auth_profiles."""
     from config.settings import AUTH_PROFILES_DIR, SAVED_AUTH_DIR
 
     assert AUTH_PROFILES_DIR in SAVED_AUTH_DIR
@@ -208,7 +208,7 @@ def test_path_relationship_saved_under_profiles():
 
 
 def test_module_constants_with_env_override():
-    """测试场景: 模块级常量可通过环境变量覆盖"""
+    """Test scenario: Module-level constants can be overridden by environment variables."""
     original_module = sys.modules.get("config.settings")
 
     try:
@@ -239,7 +239,7 @@ def test_module_constants_with_env_override():
 
 
 def test_log_rotation_config():
-    """测试场景: 日志轮转配置解析"""
+    """Test scenario: Log rotation configuration parsing."""
     original_module = sys.modules.get("config.settings")
 
     try:

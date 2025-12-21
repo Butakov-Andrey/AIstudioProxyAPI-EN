@@ -42,7 +42,7 @@ class AuthManager:
         """
         profiles = await self.get_available_profiles()
 
-        # 获取已失败配置文件的 basename 集合 (避免路径差异导致的重复)
+        # Get set of basenames for failed profiles (prevents duplicates due to path differences)
         failed_basenames = {os.path.basename(p) for p in self.failed_profiles}
         current_basename = (
             os.path.basename(self.current_profile) if self.current_profile else None
@@ -53,7 +53,8 @@ class AuthManager:
             p
             for p in profiles
             if os.path.basename(p) not in failed_basenames
-            and os.path.basename(p) != current_basename  # 也排除当前配置文件
+            and os.path.basename(p)
+            != current_basename  # Also exclude the current profile
         ]
 
         if not available:
@@ -77,6 +78,11 @@ class AuthManager:
             logger.warning(
                 "Attempted to mark profile failed but no profile provided or active."
             )
+
+    def reset_failures(self) -> None:
+        """Reset the failure tracking."""
+        self.failed_profiles.clear()
+        logger.info("Auth profile failure tracking reset.")
 
 
 # Global instance

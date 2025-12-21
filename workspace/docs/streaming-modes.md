@@ -1,138 +1,138 @@
-# 流式处理模式详解
+# Streaming Modes Explained
 
-本文档详细介绍 AI Studio Proxy API 的三层流式响应获取机制，以及请求队列和并发处理逻辑。
+This document details the three-layer streaming response acquisition mechanism of the AI Studio Proxy API, as well as the request queue and concurrency processing logic.
 
-## 🔄 三层响应获取机制概览
+## 🔄 Three-Layer Response Acquisition Mechanism Overview
 
-项目实现了三层响应获取机制，确保高可用性和最佳性能：
+The project implements a three-layer response acquisition mechanism to ensure high availability and optimal performance:
 
 ```
-请求 → 第一层: 集成流式代理 (True Streaming) → 第二层: 外部Helper服务 → 第三层: Playwright页面交互 (Pseudo-Streaming)
+Request → Layer 1: Integrated Streaming Proxy (True Streaming) → Layer 2: External Helper Service → Layer 3: Playwright Page Interaction (Pseudo-Streaming)
 ```
 
-### 工作原理
+### How It Works
 
-1. **优先级处理**: 按层级顺序尝试获取响应
-2. **自动降级**: 上层失败时自动降级到下层
-3. **性能优化**: 优先使用高性能方案
-4. **完整后备**: 确保在任何情况下都能获取响应
+1. **Priority Processing**: Attempt to acquire response in order of layers.
+2. **Auto Downgrade**: Automatically downgrade to lower layer if upper layer fails.
+3. **Performance Optimization**: Prioritize high-performance solutions.
+4. **Full Fallback**: Ensure response acquisition in any situation.
 
-## 🚀 第一层: 集成流式代理 (Standard Streaming)
+## 🚀 Layer 1: Integrated Streaming Proxy (Standard Streaming)
 
-### 概述
+### Overview
 
-集成流式代理是默认启用的高性能响应获取方案，提供**真正的流式响应 (True Streaming)**。
+The integrated streaming proxy is the default enabled high-performance response acquisition solution, providing **True Streaming**.
 
-### 技术特点
+### Technical Features
 
-- **独立进程**: 运行在独立的进程中，不影响主服务
-- **直接转发**: 直接转发请求到 AI Studio，减少中间环节
-- **实时传输**: 原生支持 SSE (Server-Sent Events)，Token 实时生成并传输
-- **高性能**: 最小化延迟 (TTFT - Time To First Token)，最大化吞吐量
+- **Independent Process**: Runs in an independent process, does not affect the main service.
+- **Direct Forwarding**: Directly forwards requests to AI Studio, reducing intermediate steps.
+- **Real-time Transmission**: Natively supports SSE (Server-Sent Events), tokens are generated and transmitted in real-time.
+- **High Performance**: Minimizes TTFT (Time To First Token), maximizes throughput.
 
-### 配置方式
+### Configuration
 
-#### .env 文件配置 (推荐)
+#### .env File Configuration (Recommended)
 
 ```env
-# 启用集成流式代理
+# Enable integrated streaming proxy
 STREAM_PORT=3120
 
-# 禁用集成流式代理
+# Disable integrated streaming proxy
 STREAM_PORT=0
 ```
 
-### 适用场景
+### Applicable Scenarios
 
-- **日常使用**: 提供最佳性能体验
-- **生产环境**: 稳定可靠的生产部署
-- **流式应用**: 需要实时响应的应用
+- **Daily Use**: Provides best performance experience.
+- **Production Environment**: Stable and reliable production deployment.
+- **Streaming Applications**: Applications requiring real-time response.
 
-## 🔧 第二层: 外部 Helper 服务
+## 🔧 Layer 2: External Helper Service
 
-### 概述
+### Overview
 
-外部 Helper 服务是可选的备用方案，当集成流式代理不可用时启用。
+External Helper Service is an optional backup solution, enabled when the integrated streaming proxy is unavailable.
 
-### 技术特点
+### Technical Features
 
-- **外部服务**: 独立部署的外部服务
-- **认证依赖**: 需要有效的认证文件
-- **备用方案**: 作为流式代理的备用
+- **External Service**: Independently deployed external service.
+- **Auth Dependency**: Requires valid auth file.
+- **Backup Solution**: Acts as a backup for the streaming proxy.
 
-### 配置方式
+### Configuration
 
 ```env
-# 配置 Helper 服务端点
+# Configure Helper service endpoint
 GUI_DEFAULT_HELPER_ENDPOINT=http://your-helper-service:port
 ```
 
-## 🎭 第三层: Playwright 页面交互 (Pseudo-Streaming)
+## 🎭 Layer 3: Playwright Page Interaction (Pseudo-Streaming)
 
-### 概述
+### Overview
 
-Playwright 页面交互是最终的后备方案。当流式代理不可用时，系统会控制浏览器在页面上生成完整响应，然后模拟流式效果返回给客户端。
+Playwright Page Interaction is the final fallback solution. When streaming proxy is unavailable, the system controls the browser to generate the full response on the page, then simulates streaming effect to return to the client.
 
-### "伪流式" (Pseudo-Streaming) 机制
+### "Pseudo-Streaming" Mechanism
 
-在此模式下，响应**不是**实时传输的：
+In this mode, the response is **not** transmitted in real-time:
 
-1. 系统等待 AI Studio 网页完全生成回复。
-2. 获取完整的文本内容。
-3. 将完整内容按字符块切割，快速模拟 SSE 事件发送给客户端。
+1. System waits for AI Studio webpage to fully generate the reply.
+2. Acquires the complete text content.
+3. Cuts the complete content into character blocks and quickly simulates SSE events to send to the client.
 
-**注意**: 这意味着客户端会感觉到较高的“首字延迟” (Time To First Token)，因为必须等待整个回复生成完毕才能开始接收数据。
+**Note**: This means the client will perceive a higher "Time To First Token" because it must wait for the entire reply to be generated before receiving data.
 
-### 技术特点
+### Technical Features
 
-- **浏览器自动化**: 使用 Camoufox 浏览器模拟用户操作
-- **完整参数支持**: 支持所有 AI Studio 参数 (`temperature`, `top_p` 等)
-- **最终后备**: 确保在任何情况下都能工作
+- **Browser Automation**: Uses Camoufox browser to simulate user operations.
+- **Full Parameter Support**: Supports all AI Studio parameters (`temperature`, `top_p`, etc.).
+- **Final Fallback**: Ensures functionality in any situation.
 
-### 适用场景
+### Applicable Scenarios
 
-- **调试模式**: 开发和调试时使用
-- **参数精确控制**: 需要精确控制所有参数
-- **故障排除**: 当其他方式都失败时的最终方案
+- **Debug Mode**: Used during development and debugging.
+- **Precise Parameter Control**: Requires precise control of all parameters.
+- **Troubleshooting**: Final solution when all other methods fail.
 
-## 🚦 请求队列与并发控制
+## 🚦 Request Queue and Concurrency Control
 
-为了保证浏览器自动化操作的稳定性，系统采用了严格的串行处理机制。
+To ensure the stability of browser automation operations, the system adopts a strict serial processing mechanism.
 
-### 1. 串行请求队列 (Sequential Queue)
+### 1. Serial Request Queue
 
-由于浏览器页面（Page Instance）是单例的，且 DOM 操作具有状态依赖性，所有请求（无论是否流式）都会进入一个全局 FIFO 队列。
+Since the browser page (Page Instance) is a singleton and DOM operations have state dependencies, all requests (streaming or not) enter a global FIFO queue.
 
-- **机制**: `api_utils/queue_worker.py` 维护一个 `request_queue`。
-- **锁**: 使用 `processing_lock` 确保同一时间只有一个请求在操作浏览器或通过代理发送数据。
+- **Mechanism**: `api_utils/queue_worker.py` maintains a `request_queue`.
+- **Lock**: Uses `processing_lock` to ensure only one request operates the browser or sends data via proxy at a time.
 
-### 2. 智能延迟机制 (Smart Delay)
+### 2. Smart Delay Mechanism
 
-为了防止在连续快速发送流式请求时触发 AI Studio 的风控或导致浏览器状态异常，系统实现了智能延迟机制。
+To prevent triggering AI Studio's risk control or causing browser state abnormalities when sending consecutive rapid streaming requests, the system implements a smart delay mechanism.
 
-- **逻辑**:
-  - 如果上一个请求是流式请求，且当前请求也是流式请求。
-  - 且两个请求的间隔时间小于 1 秒。
-  - 系统会自动插入 `0.5s - 1.0s` 的延迟。
-- **目的**: 模拟人类操作节奏，提高连续对话的稳定性。
+- **Logic**:
+  - If the previous request was a streaming request, and the current request is also a streaming request.
+  - And the interval between the two requests is less than 1 second.
+  - The system automatically inserts a `0.5s - 1.0s` delay.
+- **Purpose**: Simulate human operation rhythm, improve continuous conversation stability.
 
-### 3. 资源清理与锁释放
+### 3. Resource Cleanup and Lock Release
 
-- **自动清理**: 每个请求处理完成后，Worker 会自动清理流式队列和聊天历史（如果需要）。
-- **超时保护**: 结合内部超时机制，防止死锁导致队列阻塞。
+- **Auto Cleanup**: After each request is processed, the Worker automatically cleans up the streaming queue and chat history (if needed).
+- **Timeout Protection**: Combined with internal timeout mechanism to prevent deadlocks from blocking the queue.
 
-## ⚙️ 模式选择建议
+## ⚙️ Mode Selection Recommendations
 
-| 模式             | 类型             | 延迟 (TTFT)       | 吞吐量 | 稳定性 | 适用场景            |
-| ---------------- | ---------------- | ----------------- | ------ | ------ | ------------------- |
-| **集成流式代理** | True Streaming   | 最低              | 最高   | 最高   | **生产环境 (推荐)** |
-| **Helper 服务**  | 取决于实现       | 中等              | 中等   | 中等   | 特殊网络环境        |
-| **Playwright**   | Pseudo-Streaming | 最高 (需等待生成) | 最低   | 中等   | 调试、参数测试      |
+| Mode | Type | Latency (TTFT) | Throughput | Stability | Applicable Scenario |
+| --- | --- | --- | --- | --- | --- |
+| **Integrated Streaming Proxy** | True Streaming | Lowest | Highest | Highest | **Production (Recommended)** |
+| **Helper Service** | Depends on impl | Medium | Medium | Medium | Special Network Environment |
+| **Playwright** | Pseudo-Streaming | Highest (Wait for generation) | Lowest | Medium | Debugging, Parameter Testing |
 
-### 故障排除
+### Troubleshooting
 
-#### 为什么流式响应感觉有延迟？
+#### Why does streaming response feel delayed?
 
-- **检查模式**: 确认是否降级到了 Playwright 模式（伪流式）。如果是，这是正常现象，因为需要等待完整生成。
-- **检查队列**: 如果有多个并发请求，后续请求必须等待前序请求完成。
-- **智能延迟**: 连续发送请求时，系统可能会自动引入短暂延迟。
+- **Check Mode**: Confirm if downgraded to Playwright mode (Pseudo-Streaming). If so, this is normal as it waits for full generation.
+- **Check Queue**: If there are multiple concurrent requests, subsequent requests must wait for preceding ones to complete.
+- **Smart Delay**: When sending consecutive requests, the system may automatically introduce a short delay.

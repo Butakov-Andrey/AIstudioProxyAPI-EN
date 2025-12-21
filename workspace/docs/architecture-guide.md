@@ -1,316 +1,316 @@
-# 项目架构指南
+# Project Architecture Guide
 
-本文档详细介绍 AI Studio Proxy API 项目的模块化架构设计、组件职责和交互关系。
+This document details the modular architecture design, component responsibilities, and interactions of the AI Studio Proxy API project.
 
-## 🏗️ 整体架构概览
+## 🏗️ Architecture Overview
 
-### 核心设计原则
+### Core Design Principles
 
-- **模块化分离**: 按功能领域划分模块，避免循环依赖
-- **单一职责**: 每个模块专注于特定功能
-- **配置统一**: `.env` 文件和 `config/` 模块统一管理配置
-- **异步优先**: 全面采用异步编程模式
+- **Modular Separation**: Divide modules by functional area to avoid circular dependencies
+- **Single Responsibility**: Each module focuses on specific functions
+- **Unified Configuration**: `.env` file and `config/` module manage configuration uniformly
+- **Async First**: Adopt asynchronous programming patterns comprehensively
 
 ---
 
-## 📁 模块结构
+## 📁 Module Structure
 
 ```
 AIstudioProxyAPI/
-├── api_utils/                  # FastAPI 应用核心模块
-│   ├── app.py                 # 应用入口和生命周期管理
-│   ├── routers/               # API 路由（按职责拆分）
-│   │   ├── api_keys.py        # /api/keys* 密钥管理
-│   │   ├── auth_files.py      # /api/auth-files* 认证文件管理
+├── api_utils/                  # FastAPI application core module
+│   ├── app.py                 # Application entry and lifecycle management
+│   ├── routers/               # API routers (split by responsibility)
+│   │   ├── api_keys.py        # /api/keys* Key management
+│   │   ├── auth_files.py      # /api/auth-files* Auth file management
 │   │   ├── chat.py            # /v1/chat/completions
-│   │   ├── health.py          # /health 健康检查
-│   │   ├── helper.py          # /api/helper* Helper 服务配置
-│   │   ├── info.py            # /api/info 信息端点
-│   │   ├── logs_ws.py         # /ws/logs WebSocket 日志
+│   │   ├── health.py          # /health Health check
+│   │   ├── helper.py          # /api/helper* Helper service config
+│   │   ├── info.py            # /api/info Info endpoint
+│   │   ├── logs_ws.py         # /ws/logs WebSocket logs
 │   │   ├── model_capabilities.py  # /api/model-capabilities
-│   │   ├── models.py          # /v1/models 模型列表
-│   │   ├── ports.py           # /api/ports* 端口配置
-│   │   ├── proxy.py           # /api/proxy* 代理配置
+│   │   ├── models.py          # /v1/models Model list
+│   │   ├── ports.py           # /api/ports* Port config
+│   │   ├── proxy.py           # /api/proxy* Proxy config
 │   │   ├── queue.py           # /v1/queue, /v1/cancel
-│   │   ├── server.py          # /api/server* 服务器控制
+│   │   ├── server.py          # /api/server* Server control
 │   │   └── static.py          # /, /assets/* React SPA
-│   ├── request_processor.py   # 请求处理核心逻辑
-│   ├── queue_worker.py        # 异步队列工作器
-│   ├── response_generators.py # SSE 响应生成器
-│   ├── auth_utils.py          # 认证工具
-│   ├── auth_manager.py        # 认证管理器
-│   ├── dependencies.py        # FastAPI 依赖注入
-│   ├── client_connection.py   # 客户端连接管理
-│   ├── server_state.py        # 服务器状态管理
-│   ├── model_switching.py     # 模型切换逻辑
-│   ├── mcp_adapter.py         # MCP 协议适配器
-│   ├── sse.py                 # SSE 流式响应处理
-│   ├── utils.py               # 通用工具函数
-│   └── utils_ext/             # 扩展工具模块
-│       ├── files.py           # 文件/附件处理
-│       ├── helper.py          # Helper 服务工具
-│       ├── prompts.py         # 提示词处理
-│       ├── stream.py          # 流式处理工具
-│       ├── string_utils.py    # 字符串工具
-│       ├── tokens.py          # Token 计算
-│       ├── tools_execution.py # 工具执行
-│       └── validation.py      # 请求验证
+│   ├── request_processor.py   # Request processing core logic
+│   ├── queue_worker.py        # Async queue worker
+│   ├── response_generators.py # SSE response generator
+│   ├── auth_utils.py          # Auth tools
+│   ├── auth_manager.py        # Auth manager
+│   ├── dependencies.py        # FastAPI dependency injection
+│   ├── client_connection.py   # Client connection management
+│   ├── server_state.py        # Server state management
+│   ├── model_switching.py     # Model switching logic
+│   ├── mcp_adapter.py         # MCP protocol adapter
+│   ├── sse.py                 # SSE streaming response handling
+│   ├── utils.py               # Common utility functions
+│   └── utils_ext/             # Extended utility modules
+│       ├── files.py           # File/Attachment handling
+│       ├── helper.py          # Helper service tools
+│       ├── prompts.py         # Prompt handling
+│       ├── stream.py          # Stream handling tools
+│       ├── string_utils.py    # String tools
+│       ├── tokens.py          # Token calculation
+│       ├── tools_execution.py # Tool execution
+│       └── validation.py      # Request validation
 │
-├── browser_utils/              # 浏览器自动化模块
-│   ├── page_controller.py     # 页面控制器（聚合入口）
-│   ├── page_controller_modules/  # 控制器子模块 (Mixin)
-│   │   ├── base.py            # 基础控制器
-│   │   ├── chat.py            # 聊天历史管理
-│   │   ├── input.py           # 输入控制
-│   │   ├── parameters.py      # 参数控制
-│   │   ├── response.py        # 响应获取
-│   │   └── thinking.py        # 思考过程控制
-│   ├── initialization/        # 初始化模块
-│   │   ├── core.py            # 浏览器上下文创建、导航
-│   │   ├── network.py         # 网络拦截配置
-│   │   ├── auth.py            # 认证状态保存/恢复
-│   │   ├── scripts.py         # UserScript 脚本注入
-│   │   └── debug.py           # 调试监听器
-│   ├── operations_modules/    # 操作子模块
-│   │   ├── parsers.py         # 数据解析
-│   │   ├── interactions.py    # 页面交互
-│   │   └── errors.py          # 错误处理
-│   ├── model_management.py    # 模型管理
-│   ├── operations.py          # 操作聚合入口
-│   ├── debug_utils.py         # 调试工具
-│   ├── thinking_normalizer.py # 思考过程标准化
-│   └── more_models.js         # 油猴脚本模板
+├── browser_utils/              # Browser automation module
+│   ├── page_controller.py     # Page controller (Aggregate entry)
+│   ├── page_controller_modules/  # Controller submodules (Mixin)
+│   │   ├── base.py            # Base controller
+│   │   ├── chat.py            # Chat history management
+│   │   ├── input.py           # Input control
+│   │   ├── parameters.py      # Parameter control
+│   │   ├── response.py        # Response acquisition
+│   │   └── thinking.py        # Thinking process control
+│   ├── initialization/        # Initialization module
+│   │   ├── core.py            # Browser context creation, navigation
+│   │   ├── network.py         # Network interception config
+│   │   ├── auth.py            # Auth state save/restore
+│   │   ├── scripts.py         # UserScript injection
+│   │   └── debug.py           # Debug listener
+│   ├── operations_modules/    # Operation submodules
+│   │   ├── parsers.py         # Data parsing
+│   │   ├── interactions.py    # Page interactions
+│   │   └── errors.py          # Error handling
+│   ├── model_management.py    # Model management
+│   ├── operations.py          # Operation aggregate entry
+│   ├── debug_utils.py         # Debug tools
+│   ├── thinking_normalizer.py # Thinking process normalization
+│   └── more_models.js         # Tampermonkey script template
 │
-├── config/                     # 配置管理模块
-│   ├── settings.py            # 主要设置和环境变量
-│   ├── constants.py           # 系统常量定义
-│   ├── timeouts.py            # 超时配置
-│   ├── selectors.py           # CSS 选择器定义
-│   ├── selector_utils.py      # 选择器工具函数
-│   └── model_capabilities.json # 模型能力配置
+├── config/                     # Configuration management module
+│   ├── settings.py            # Main settings and environment variables
+│   ├── constants.py           # System constant definitions
+│   ├── timeouts.py            # Timeout configurations
+│   ├── selectors.py           # CSS selector definitions
+│   ├── selector_utils.py      # Selector utility functions
+│   └── model_capabilities.json # Model capability configuration
 │
-├── models/                     # 数据模型定义
-│   ├── chat.py                # 聊天相关模型
-│   ├── exceptions.py          # 自定义异常类
-│   └── logging.py             # 日志相关模型
+├── models/                     # Data model definitions
+│   ├── chat.py                # Chat related models
+│   ├── exceptions.py          # Custom exception classes
+│   └── logging.py             # Log related models
 │
-├── stream/                     # 流式代理服务模块
-│   ├── main.py                # 代理服务入口
-│   ├── proxy_server.py        # 代理服务器实现
-│   ├── proxy_connector.py     # 代理连接器
-│   ├── cert_manager.py        # 证书管理
-│   ├── interceptors.py        # 请求拦截器
-│   └── utils.py               # 流式处理工具
+├── stream/                     # Streaming proxy service module
+│   ├── main.py                # Proxy service entry
+│   ├── proxy_server.py        # Proxy server implementation
+│   ├── proxy_connector.py     # Proxy connector
+│   ├── cert_manager.py        # Certificate management
+│   ├── interceptors.py        # Request interceptors
+│   └── utils.py               # Stream handling tools
 │
-├── launcher/                   # 启动器模块
-│   ├── runner.py              # 启动逻辑核心
-│   ├── config.py              # 启动配置处理
-│   ├── checks.py              # 环境与依赖检查
-│   ├── process.py             # Camoufox 进程管理
-│   ├── frontend_build.py      # 前端构建检查
-│   ├── internal.py            # 内部工具
-│   ├── logging_setup.py       # 日志配置
-│   └── utils.py               # 启动器工具
+├── launcher/                   # Launcher module
+│   ├── runner.py              # Launch logic core
+│   ├── config.py              # Launch config processing
+│   ├── checks.py              # Environment and dependency checks
+│   ├── process.py             # Camoufox process management
+│   ├── frontend_build.py      # Frontend build check
+│   ├── internal.py            # Internal tools
+│   ├── logging_setup.py       # Log configuration
+│   └── utils.py               # Launcher tools
 │
-├── logging_utils/              # 日志管理模块
-│   ├── setup.py               # 日志系统配置
-│   └── grid_logger.py         # 网格日志器
+├── logging_utils/              # Log management module
+│   ├── setup.py               # Log system configuration
+│   └── grid_logger.py         # Grid logger
 │
-├── server.py                   # 应用入口点
-├── launch_camoufox.py          # 命令行启动器（主入口）
-├── deprecated/                 # 已废弃的模块
-│   └── gui_launcher.py         # [已废弃] GUI 启动器
-└── pyproject.toml              # Poetry 配置
+├── server.py                   # Application entry point
+├── launch_camoufox.py          # Command line launcher (Main entry)
+├── deprecated/                 # Deprecated modules
+│   └── gui_launcher.py         # [Deprecated] GUI Launcher
+└── pyproject.toml              # Poetry configuration
 ```
 
 ---
 
-## 🔧 核心模块详解
+## 🔧 Core Modules Details
 
-### 1. api_utils/ - FastAPI 应用核心
+### 1. api_utils/ - FastAPI Application Core
 
-**职责**: API 路由、认证、请求处理。
+**Responsibility**: API routing, authentication, request processing.
 
-#### app.py - 应用入口
+#### app.py - Application Entry
 
-- FastAPI 应用创建和配置
-- 生命周期管理 (startup/shutdown)
-- 中间件配置 (API 密钥认证)
+- FastAPI application creation and configuration
+- Lifecycle management (startup/shutdown)
+- Middleware configuration (API key authentication)
 
-#### routers/ - API 路由
+#### routers/ - API Routes
 
-路由按职责拆分为独立模块:
+Routes are split into independent modules by responsibility:
 
-| 模块                    | 端点                      | 职责               |
+| Module | Endpoint | Responsibility |
 | ----------------------- | ------------------------- | ------------------ |
-| `chat.py`               | `/v1/chat/completions`    | 聊天完成接口       |
-| `models.py`             | `/v1/models`              | 模型列表           |
-| `model_capabilities.py` | `/api/model-capabilities` | 模型能力查询       |
-| `health.py`             | `/health`                 | 健康检查           |
-| `queue.py`              | `/v1/queue`, `/v1/cancel` | 队列管理           |
-| `api_keys.py`           | `/api/keys*`              | 密钥管理           |
-| `logs_ws.py`            | `/ws/logs`                | 实时日志流         |
-| `static.py`             | `/`, `/assets/*`          | React SPA 静态资源 |
-| `info.py`               | `/api/info`               | API 信息           |
-| `auth_files.py`         | `/api/auth-files*`        | 认证文件管理       |
-| `ports.py`              | `/api/ports*`             | 端口配置和进程管理 |
-| `proxy.py`              | `/api/proxy*`             | 代理配置管理       |
-| `server.py`             | `/api/server*`            | 服务器控制         |
-| `helper.py`             | `/api/helper*`            | Helper 服务配置    |
+| `chat.py` | `/v1/chat/completions` | Chat completion interface |
+| `models.py` | `/v1/models` | Model list |
+| `model_capabilities.py` | `/api/model-capabilities` | Model capability query |
+| `health.py` | `/health` | Health check |
+| `queue.py` | `/v1/queue`, `/v1/cancel` | Queue management |
+| `api_keys.py` | `/api/keys*` | Key management |
+| `logs_ws.py` | `/ws/logs` | Real-time log stream |
+| `static.py` | `/`, `/assets/*` | React SPA static resources |
+| `info.py` | `/api/info` | API information |
+| `auth_files.py` | `/api/auth-files*` | Auth file management |
+| `ports.py` | `/api/ports*` | Port config and process management |
+| `proxy.py` | `/api/proxy*` | Proxy config management |
+| `server.py` | `/api/server*` | Server control |
+| `helper.py` | `/api/helper*` | Helper service config |
 
-#### queue_worker.py - 队列工作器
+#### queue_worker.py - Queue Worker
 
-- 异步请求队列处理 (FIFO)
-- 并发控制和资源管理
-- **分级错误恢复机制**:
-  - **Tier 1**: 页面快速刷新 (处理临时性 DOM 错误)
-  - **Tier 2**: 认证配置文件切换 (处理配额耗尽)
+- Asynchronous request queue processing (FIFO)
+- Concurrency control and resource management
+- **Tiered Error Recovery Mechanism**:
+  - **Tier 1**: Page quick refresh (Handle temporary DOM errors)
+  - **Tier 2**: Auth profile switching (Handle quota exhaustion)
 
-### 2. browser_utils/ - 浏览器自动化
+### 2. browser_utils/ - Browser Automation
 
-**职责**: 浏览器控制、页面交互、脚本注入。
+**Responsibility**: Browser control, page interaction, script injection.
 
-#### page_controller.py - 页面控制器
+#### page_controller.py - Page Controller
 
-基于 Mixin 模式的聚合控制器，继承自 `page_controller_modules/` 子模块。
+Aggregate controller based on Mixin pattern, inheriting from `page_controller_modules/` submodules.
 
-#### initialization/ - 初始化模块
+#### initialization/ - Initialization Module
 
-| 模块         | 职责                             |
+| Module | Responsibility |
 | ------------ | -------------------------------- |
-| `core.py`    | 浏览器上下文创建、导航、登录检测 |
-| `network.py` | 网络拦截、模型列表注入           |
-| `auth.py`    | 认证状态保存/恢复                |
-| `scripts.py` | UserScript 脚本注入              |
-| `debug.py`   | 调试监听器设置                   |
+| `core.py` | Browser context creation, navigation, login detection |
+| `network.py` | Network interception, model list injection |
+| `auth.py` | Auth state save/restore |
+| `scripts.py` | UserScript script injection |
+| `debug.py` | Debug listener settings |
 
-#### 脚本注入机制
+#### Script Injection Mechanism
 
-脚本注入通过 `initialization/network.py` 实现：
+Script injection is implemented via `initialization/network.py`:
 
-- Playwright 原生路由拦截 `/api/models`
-- 从油猴脚本 (`more_models.js`) 解析模型数据
-- 模型数据自动同步到页面
+- Playwright native route interception `/api/models`
+- Parse model data from Tampermonkey script (`more_models.js`)
+- Model data automatically synced to page
 
-### 3. stream/ - 流式代理服务
+### 3. stream/ - Streaming Proxy Service
 
-**职责**: 高性能的流式响应代理。
+**Responsibility**: High-performance streaming response proxy.
 
-- **proxy_server.py**: HTTP/HTTPS 代理实现
-- **interceptors.py**: AI Studio 请求拦截和响应解析
-- **cert_manager.py**: 自签名证书管理
+- **proxy_server.py**: HTTP/HTTPS proxy implementation
+- **interceptors.py**: AI Studio request interception and response parsing
+- **cert_manager.py**: Self-signed certificate management
 
-### 4. launcher/ - 启动器模块
+### 4. launcher/ - Launcher Module
 
-**职责**: 应用启动和进程管理。
+**Responsibility**: Application startup and process management.
 
-| 模块         | 职责              |
+| Module | Responsibility |
 | ------------ | ----------------- |
-| `runner.py`  | 启动逻辑核心      |
-| `config.py`  | 启动配置处理      |
-| `checks.py`  | 环境与依赖检查    |
-| `process.py` | Camoufox 进程管理 |
+| `runner.py` | Launch logic core |
+| `config.py` | Launch config processing |
+| `checks.py` | Environment and dependency checks |
+| `process.py` | Camoufox process management |
 
 ---
 
-## 🔄 响应获取机制
+## 🔄 Response Acquisition Mechanism
 
-项目实现三层响应获取机制，确保高可用性：
+The project implements a three-layer response acquisition mechanism to ensure high availability:
 
 ```
-请求 → 第一层: 流式代理 → 第二层: Helper → 第三层: Playwright
+Request → Layer 1: Streaming Proxy → Layer 2: Helper → Layer 3: Playwright
 ```
 
-| 层级           | 类型             | 延迟 | 参数支持   | 适用场景        |
+| Layer | Type | Latency | Parameter Support | Applicable Scenario |
 | -------------- | ---------------- | ---- | ---------- | --------------- |
-| **流式代理**   | True Streaming   | 最低 | 基础参数   | 生产环境 (推荐) |
-| **Helper**     | 取决于实现       | 中等 | 取决于实现 | 特殊网络环境    |
-| **Playwright** | Pseudo-Streaming | 最高 | 所有参数   | 调试、参数测试  |
+| **Streaming Proxy** | True Streaming | Lowest | Basic | Production (Recommended) |
+| **Helper** | Implementation Dependent | Medium | Implementation Dependent | Special Network Environment |
+| **Playwright** | Pseudo-Streaming | Highest | All | Debugging, Parameter Testing |
 
-### 请求处理路径
+### Request Processing Path
 
-**辅助流路径 (STREAM)**:
+**Auxiliary Stream Path (STREAM)**:
 
-- 入口: `_handle_auxiliary_stream_response`
-- 从 `STREAM_QUEUE` 消费，产出 OpenAI 兼容 SSE
+- Entry: `_handle_auxiliary_stream_response`
+- Consume from `STREAM_QUEUE`, produce OpenAI compatible SSE
 
-**Playwright 路径**:
+**Playwright Path**:
 
-- 入口: `_handle_playwright_response`
-- 通过 `PageController.get_response` 拉取文本，按块输出
-
----
-
-## 🔐 认证系统
-
-### API 密钥管理
-
-- **存储**: `auth_profiles/key.txt`
-- **验证**: Bearer Token 和 X-API-Key 双重支持
-- **管理**: Web UI 分级权限查看
-
-### 浏览器认证
-
-- **文件**: `auth_profiles/active/*.json`
-- **内容**: 浏览器会话和 Cookie
-- **更新**: 通过 `--debug` 模式重新获取
+- Entry: `_handle_playwright_response`
+- Pull text via `PageController.get_response`, output by chunk
 
 ---
 
-## 📊 配置管理
+## 🔐 Authentication System
 
-### 优先级
+### API Key Management
 
-1. **命令行参数** (最高)
-2. **环境变量** (`.env` 文件)
-3. **默认值** (代码定义)
+- **Storage**: `auth_profiles/key.txt`
+- **Validation**: Bearer Token and X-API-Key dual support
+- **Management**: Web UI tiered permission view
 
-### config/ 模块
+### Browser Authentication
 
-| 文件                      | 职责                                           |
+- **File**: `auth_profiles/active/*.json`
+- **Content**: Browser session and Cookies
+- **Update**: Re-acquire via `--debug` mode
+
+---
+
+## 📊 Configuration Management
+
+### Priority
+
+1. **Command Line Arguments** (Highest)
+2. **Environment Variables** (`.env` file)
+3. **Default Values** (Code defined)
+
+### config/ Module
+
+| File | Responsibility |
 | ------------------------- | ---------------------------------------------- |
-| `settings.py`             | 环境变量加载和解析                             |
-| `constants.py`            | 系统常量定义                                   |
-| `timeouts.py`             | 超时配置                                       |
-| `selectors.py`            | CSS 选择器定义                                 |
-| `selector_utils.py`       | 选择器工具函数                                 |
-| `model_capabilities.json` | 模型能力配置（思考类型、Google Search 支持等） |
+| `settings.py` | Environment variable loading and parsing |
+| `constants.py` | System constant definitions |
+| `timeouts.py` | Timeout configurations |
+| `selectors.py` | CSS selector definitions |
+| `selector_utils.py` | Selector utility functions |
+| `model_capabilities.json` | Model capability configuration (Thinking type, Google Search support, etc.) |
 
-> **注意**: `model_capabilities.json` 是外部化的 JSON 配置文件，用于定义各模型的能力参数。
-> 当 Google 发布新模型时，只需编辑 JSON 文件，无需修改代码。
-
----
-
-## 🚀 脚本注入 v3.0
-
-### 工作流程
-
-1. **脚本解析**: 从油猴脚本解析 `MODELS_TO_INJECT` 数组
-2. **网络拦截**: Playwright 拦截 `/api/models` 请求
-3. **数据合并**: 注入模型添加 `__NETWORK_INJECTED__` 标记
-4. **脚本注入**: 脚本注入到页面上下文
-
-### 技术优势
-
-- ✅ **100% 可靠**: Playwright 原生拦截，无时序问题
-- ✅ **零维护**: 脚本更新自动生效
-- ✅ **完全同步**: 前后端使用相同数据源
+> **Note**: `model_capabilities.json` is an externalized JSON configuration file defining capability parameters for each model.
+> When Google releases new models, just edit the JSON file, no code changes needed.
 
 ---
 
-## 📈 开发工具
+## 🚀 Script Injection v3.0
 
-| 工具        | 用途              |
+### Workflow
+
+1. **Script Parsing**: Parse `MODELS_TO_INJECT` array from Tampermonkey script
+2. **Network Interception**: Playwright intercepts `/api/models` request
+3. **Data Merge**: Injected models add `__NETWORK_INJECTED__` marker
+4. **Script Injection**: Script injected into page context
+
+### Technical Advantages
+
+- ✅ **100% Reliable**: Playwright native interception, no timing issues
+- ✅ **Zero Maintenance**: Script updates automatically take effect
+- ✅ **Fully Synced**: Frontend and backend use same data source
+
+---
+
+## 📈 Development Tools
+
+| Tool | Usage |
 | ----------- | ----------------- |
-| **Poetry**  | 依赖管理          |
-| **Pyright** | 类型检查          |
-| **Ruff**    | 代码格式化和 Lint |
-| **pytest**  | 测试框架          |
+| **Poetry** | Dependency management |
+| **Pyright** | Type checking |
+| **Ruff** | Code formatting and Lint |
+| **pytest** | Testing framework |
 
 ---
 
-## 相关文档
+## Related Documentation
 
-- [开发者指南](development-guide.md) - Poetry、Pyright 工作流程
-- [流式处理模式详解](streaming-modes.md) - 三层响应机制详解
-- [脚本注入指南](script_injection_guide.md) - 油猴脚本功能
+- [Developer Guide](development-guide.md) - Poetry, Pyright workflow
+- [Streaming Modes Explained](streaming-modes.md) - Three-layer response mechanism details
+- [Script Injection Guide](script_injection_guide.md) - Tampermonkey script features

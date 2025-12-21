@@ -1,7 +1,7 @@
 # --- config/selector_utils.py ---
 """
-选择器工具模块
-提供用于处理动态 UI 结构的选择器回退逻辑
+Selector Utilities Module
+Provides fallback logic for handling dynamic UI structures
 """
 
 import asyncio
@@ -18,29 +18,29 @@ from config.timeouts import (
 logger = logging.getLogger("AIStudioProxyServer")
 
 
-# --- 输入区域容器选择器 (按优先级排序) ---
-# Google AI Studio 会不定期更改 UI 结构，此列表包含所有已知的容器选择器
-# 优先尝试当前 UI，回退到旧 UI
-# 注意: 顺序很重要！第一个选择器会被优先尝试，每个失败的选择器会增加启动时间
+# --- Input area container selectors (sorted by priority) ---
+# Google AI Studio periodically changes UI structure, this list contains all known container selectors
+# Priority: try current UI first, fall back to older UIs
+# Note: Order matters! First selector is tried first, each failed selector adds to startup time
 INPUT_WRAPPER_SELECTORS: List[str] = [
-    # 当前 UI 结构 (2024-12 确认有效)
+    # Current UI structure (confirmed working 2024-12)
     "ms-chunk-editor",
-    # 备用 UI 结构 (可能在其他版本或区域有效)
+    # Fallback UI structure (may work in other versions or regions)
     "ms-prompt-input-wrapper .prompt-input-wrapper",
     "ms-prompt-input-wrapper",
-    # 过渡期 UI (ms-prompt-box) - 历史版本，保留作为回退
+    # Transitional UI (ms-prompt-box) - legacy version, kept as fallback
     "ms-prompt-box .prompt-box-container",
     "ms-prompt-box",
 ]
 
-# --- 自动调整容器选择器 ---
+# --- Autosize wrapper selectors ---
 AUTOSIZE_WRAPPER_SELECTORS: List[str] = [
-    # 当前 UI 结构
+    # Current UI structure
     "ms-prompt-input-wrapper .text-wrapper",
     "ms-prompt-input-wrapper ms-autosize-textarea",
     "ms-chunk-input .text-wrapper",
     "ms-autosize-textarea",
-    # 过渡期 UI (ms-prompt-box) - 已弃用但保留作为回退
+    # Transitional UI (ms-prompt-box) - deprecated but kept as fallback
     "ms-prompt-box .text-wrapper",
     "ms-prompt-box ms-autosize-textarea",
 ]
@@ -55,97 +55,97 @@ async def find_first_visible_locator(
     fallback_timeout_per_selector: int = SELECTOR_VISIBILITY_TIMEOUT_MS,  # kept for API compat
 ) -> Tuple[Optional[Locator], Optional[str]]:
     """
-    尝试多个选择器并返回第一个可见元素的 Locator。
+    Try multiple selectors and return the Locator of the first visible element.
 
-    使用主动 DOM 监听策略 (Playwright MutationObserver):
-    - 对第一个选择器使用较长超时（主选择器，最可能成功）
-    - 后续选择器使用较短超时作为回退
+    Uses active DOM listening strategy (Playwright MutationObserver):
+    - Uses longer timeout for first selector (primary, most likely to succeed)
+    - Uses shorter timeout for subsequent selectors as fallbacks
 
     Args:
-        page: Playwright 页面实例
-        selectors: 要尝试的选择器列表（按优先级排序）
-        description: 元素描述（用于日志记录）
-        timeout_per_selector: 主选择器的超时时间（毫秒）
+        page: Playwright page instance
+        selectors: List of selectors to try (sorted by priority)
+        description: Element description (for logging)
+        timeout_per_selector: Timeout for primary selector (milliseconds)
 
     Returns:
         Tuple[Optional[Locator], Optional[str]]:
-            - 可见元素的 Locator，如果都失败则为 None
-            - 成功的选择器字符串，如果都失败则为 None
+            - Locator of visible element, or None if all failed
+            - Successful selector string, or None if all failed
     """
     from playwright.async_api import expect as expect_async
 
     if not selectors:
-        logger.warning(f"[Selector] {description}: 没有提供选择器")
+        logger.warning(f"[Selector] {description}: No selectors provided")
         return None, None
 
-    # 主选择器使用较长超时（最可能成功，值得等待）
+    # Primary selector uses longer timeout (most likely to succeed, worth waiting for)
     primary_selector = selectors[0]
     primary_timeout = timeout_per_selector
 
-    # 回退选择器使用较短超时
+    # Fallback selectors use shorter timeout
     fallback_timeout = min(2000, timeout_per_selector // 2)
 
     logger.debug(
-        f"[Selector] {description}: 开始主动监听 '{primary_selector}' (超时: {primary_timeout}ms)"
+        f"[Selector] {description}: Starting active listening for '{primary_selector}' (timeout: {primary_timeout}ms)"
     )
 
-    # 尝试主选择器（使用 Playwright 的 MutationObserver 主动监听）
+    # Try primary selector (using Playwright's MutationObserver active listening)
     try:
         locator = page.locator(primary_selector)
         await expect_async(locator).to_be_visible(timeout=primary_timeout)
-        logger.debug(f"[Selector] {description}: '{primary_selector}' 元素可见")
+        logger.debug(f"[Selector] {description}: '{primary_selector}' element visible")
         return locator, primary_selector
     except asyncio.CancelledError:
         raise
     except Exception as e:
         logger.debug(
-            f"[Selector] {description}: '{primary_selector}' 超时 ({primary_timeout}ms) - {type(e).__name__}"
+            f"[Selector] {description}: '{primary_selector}' timeout ({primary_timeout}ms) - {type(e).__name__}"
         )
 
-    # 回退到其他选择器
+    # Fall back to other selectors
     if len(selectors) > 1:
         logger.debug(
-            f"[Selector] {description}: 尝试 {len(selectors) - 1} 个回退选择器 (超时: {fallback_timeout}ms)"
+            f"[Selector] {description}: Trying {len(selectors) - 1} fallback selectors (timeout: {fallback_timeout}ms)"
         )
         for idx, selector in enumerate(selectors[1:], 2):
             try:
                 locator = page.locator(selector)
                 await expect_async(locator).to_be_visible(timeout=fallback_timeout)
                 logger.debug(
-                    f"[Selector] {description}: '{selector}' 元素可见 (回退 {idx}/{len(selectors)})"
+                    f"[Selector] {description}: '{selector}' element visible (fallback {idx}/{len(selectors)})"
                 )
                 return locator, selector
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.debug(
-                    f"[Selector] {description}: '{selector}' 超时 (回退 {idx}/{len(selectors)})"
+                    f"[Selector] {description}: '{selector}' timeout (fallback {idx}/{len(selectors)})"
                 )
 
     logger.warning(
-        f"[Selector] {description}: 所有选择器均未找到可见元素 "
-        f"(尝试了 {len(selectors)} 个选择器)"
+        f"[Selector] {description}: No visible element found for any selector "
+        f"(tried {len(selectors)} selectors)"
     )
     return None, None
 
 
 def build_combined_selector(selectors: List[str]) -> str:
     """
-    将多个选择器组合为单个 CSS 选择器字符串（用逗号分隔）。
+    Combine multiple selectors into a single CSS selector string (comma-separated).
 
-    这对于创建能匹配多个 UI 结构的选择器很有用。
+    This is useful for creating selectors that can match multiple UI structures.
 
     Args:
-        selectors: 要组合的选择器列表
+        selectors: List of selectors to combine
 
     Returns:
-        str: 组合后的选择器字符串
+        str: Combined selector string
 
     Example:
         combined = build_combined_selector([
             "ms-prompt-box .text-wrapper",
             "ms-prompt-input-wrapper .text-wrapper"
         ])
-        # 返回: "ms-prompt-box .text-wrapper, ms-prompt-input-wrapper .text-wrapper"
+        # Returns: "ms-prompt-box .text-wrapper, ms-prompt-input-wrapper .text-wrapper"
     """
     return ", ".join(selectors)

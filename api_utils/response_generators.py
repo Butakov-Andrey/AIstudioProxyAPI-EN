@@ -21,6 +21,7 @@ from .sse import generate_sse_chunk, generate_sse_stop_chunk
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats
 from api_utils.utils_ext.usage_tracker import increment_profile_usage
+from logging_utils import set_request_id
 
 
 async def resilient_stream_generator(

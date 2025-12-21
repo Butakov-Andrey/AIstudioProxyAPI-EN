@@ -811,7 +811,7 @@ class TestMonitorCompletion:
                     stream_state,
                 )
 
-            assert "Empty response" in str(exc.value) or "空响应" in str(exc.value)
+            assert "Empty response" in str(exc.value)
 
 
 class TestCleanup:

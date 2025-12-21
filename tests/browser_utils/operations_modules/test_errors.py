@@ -108,7 +108,9 @@ async def test_detect_and_extract_page_error_empty_message():
     result = await detect_and_extract_page_error(page, "test_req")
 
     # Should return default message (line 22)
-    assert result == "检测到错误提示框，但无法提取特定消息。"
+    assert (
+        result == "Error toast detected, but specific message could not be extracted."
+    )
 
 
 @pytest.mark.asyncio

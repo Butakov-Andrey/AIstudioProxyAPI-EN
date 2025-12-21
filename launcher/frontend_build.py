@@ -49,7 +49,7 @@ def _get_dist_mtime() -> float:
 
 
 def is_frontend_stale() -> bool:
-    """检查前端是否需要重新构建。"""
+    """Check if frontend needs to be rebuilt."""
     if not _FRONTEND_DIST.exists():
         return True
 
@@ -64,28 +64,28 @@ def is_frontend_stale() -> bool:
 
 
 def check_npm_available() -> bool:
-    """检查 npm 是否可用。"""
+    """Check if npm is available."""
     return shutil.which("npm") is not None
 
 
 def rebuild_frontend() -> bool:
     """
-    重新构建前端。
+    Rebuild the frontend.
 
     Returns:
         True if build succeeded, False otherwise.
     """
     if not _FRONTEND_DIR.exists():
-        logger.warning(f"前端目录不存在: {_FRONTEND_DIR}")
+        logger.warning(f"Frontend directory not found: {_FRONTEND_DIR}")
         return False
 
     if not check_npm_available():
-        logger.warning("npm 未安装，跳过前端重建")
+        logger.warning("npm not installed, skipping frontend rebuild")
         return False
 
     # Check if node_modules exists
     if not (_FRONTEND_DIR / "node_modules").exists():
-        logger.info("[Build] 正在安装前端依赖...")
+        logger.info("[Build] Installing frontend dependencies...")
         try:
             result = subprocess.run(
                 ["npm", "install"],
@@ -95,16 +95,16 @@ def rebuild_frontend() -> bool:
                 timeout=120,
             )
             if result.returncode != 0:
-                logger.error(f"npm install 失败: {result.stderr}")
+                logger.error(f"npm install failed: {result.stderr}")
                 return False
         except subprocess.TimeoutExpired:
-            logger.error("npm install 超时")
+            logger.error("npm install timed out")
             return False
         except Exception as e:
-            logger.error(f"npm install 出错: {e}")
+            logger.error(f"npm install error: {e}")
             return False
 
-    logger.info("[Build] 正在构建前端...")
+    logger.info("[Build] Building frontend...")
     try:
         result = subprocess.run(
             ["npm", "run", "build"],
@@ -114,7 +114,7 @@ def rebuild_frontend() -> bool:
             timeout=60,
         )
         if result.returncode == 0:
-            logger.info("[Build] 前端构建成功")
+            logger.info("[Build] Frontend build succeeded")
             return True
         else:
             # TypeScript errors go to stdout, other errors to stderr
@@ -123,27 +123,27 @@ def rebuild_frontend() -> bool:
                 # Truncate long error messages for readability
                 if len(error_output) > 500:
                     error_output = error_output[:500] + "\n... (truncated)"
-                logger.error(f"前端构建失败:\n{error_output}")
+                logger.error(f"Frontend build failed:\n{error_output}")
             else:
-                logger.error(f"前端构建失败 (exit code: {result.returncode})")
+                logger.error(f"Frontend build failed (exit code: {result.returncode})")
             return False
     except subprocess.TimeoutExpired:
-        logger.error("前端构建超时")
+        logger.error("Frontend build timed out")
         return False
     except Exception as e:
-        logger.error(f"前端构建出错: {e}")
+        logger.error(f"Frontend build error: {e}")
         return False
 
 
 def ensure_frontend_built(skip_build: bool = False) -> None:
     """
-    确保前端已构建且为最新。
+    Ensure frontend is built and up-to-date.
 
-    如果源文件比 dist 更新，则自动重建。
+    Automatically rebuilds if source files are newer than dist.
 
     Args:
-        skip_build: 如果为 True，跳过所有构建检查。
-                   也可以通过设置环境变量 SKIP_FRONTEND_BUILD=1 来跳过。
+        skip_build: If True, skip all build checks.
+                   Can also be skipped by setting environment variable SKIP_FRONTEND_BUILD=1.
     """
     import os
 
@@ -153,15 +153,17 @@ def ensure_frontend_built(skip_build: bool = False) -> None:
         "true",
         "yes",
     ):
-        logger.info("[Build] 跳过前端构建检查 (SKIP_FRONTEND_BUILD)")
+        logger.info("[Build] Skipping frontend build check (SKIP_FRONTEND_BUILD)")
         return
 
     if not _FRONTEND_SRC.exists():
-        logger.debug("[Build] 未找到前端源目录，跳过构建检查")
+        logger.debug(
+            "[Build] Frontend source directory not found, skipping build check"
+        )
         return
 
     if is_frontend_stale():
-        logger.info("[Build] 检测到前端源文件更新，正在重建...")
+        logger.info("[Build] Detected frontend source file updates, rebuilding...")
         rebuild_frontend()
     else:
-        logger.info("[Build] 前端已是最新")
+        logger.info("[Build] Frontend is up-to-date")

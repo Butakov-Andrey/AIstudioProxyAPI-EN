@@ -139,7 +139,7 @@ class TestUpdatePortConfig:
             data = response.json()
             assert data["success"] is True
             assert data["config"]["fastapi_port"] == 8080
-            assert "restart" in data["message"].lower() or "重启" in data["message"]
+            assert "restart" in data["message"].lower()
 
     def test_update_port_config_invalid(self, client: TestClient) -> None:
         """Test updating with invalid port."""
@@ -205,7 +205,7 @@ class TestKillProcess:
             ),
             patch(
                 "api_utils.routers.ports._kill_process",
-                return_value=(True, "进程已终止"),
+                return_value=(True, "Process terminated"),
             ),
         ):
             response = client.post(
@@ -242,7 +242,7 @@ class TestKillProcess:
             ),
             patch(
                 "api_utils.routers.ports._kill_process",
-                return_value=(False, "无法终止进程"),
+                return_value=(False, "Failed to terminate process"),
             ),
         ):
             response = client.post(
@@ -354,7 +354,7 @@ class TestKillProcessHelper:
             with patch("time.sleep"):
                 success, msg = _kill_process(1234)
                 assert success is True
-                assert "SIGKILL" in msg or "强制终止" in msg
+                assert "SIGKILL" in msg or "force" in msg.lower()
 
     def test_kill_process_unsupported_os(self) -> None:
         """Test killing process on unsupported OS."""
@@ -374,7 +374,7 @@ class TestKillProcessHelper:
         ):
             success, msg = _kill_process(1234)
             assert success is False
-            assert "permission denied" in msg.lower() or "错误" in msg
+            assert "permission denied" in msg.lower() or "error" in msg.lower()
 
 
 class TestWindowsPlatform:
@@ -536,7 +536,7 @@ class TestWindowsPlatform:
             )
             success, msg = _kill_process(1234)
             assert success is False
-            assert "1234" in msg or "无法" in msg
+            assert "1234" in msg or "Failed" in msg or "Unable" in msg
 
     def test_kill_process_linux_cannot_kill(self) -> None:
         """Test _kill_process on Linux when process survives SIGKILL."""
@@ -556,4 +556,4 @@ class TestWindowsPlatform:
             with patch("time.sleep"):
                 success, msg = _kill_process(1234)
                 assert success is False
-                assert "无法" in msg or "1234" in msg
+                assert "Unable" in msg or "1234" in msg

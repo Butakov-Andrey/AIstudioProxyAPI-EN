@@ -69,8 +69,17 @@ def mock_server():
             None,
             "needs_update",
         ),
-        (None, None, False, True, None, None, "localStorage不存在", "missing"),
-        ("invalid-json", None, False, True, None, None, "JSON解析失败", "json_error"),
+        (None, None, False, True, None, None, "localStorage not found", "missing"),
+        (
+            "invalid-json",
+            None,
+            False,
+            True,
+            None,
+            None,
+            "JSON parse failed",
+            "json_error",
+        ),
         (
             None,
             Exception("Eval Error"),
@@ -78,7 +87,7 @@ def mock_server():
             True,
             None,
             None,
-            "验证失败",
+            "Verification failed",
             "eval_error",
         ),
     ],
@@ -641,7 +650,7 @@ async def test_load_excluded_models_edge_cases(tmp_path):
         load_excluded_models("non_existent.txt")
         # Implementation uses logger.debug, not logger.info
         debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
-        assert any("未找到" in msg for msg in debug_calls)
+        assert any("not found" in msg.lower() for msg in debug_calls)
 
     # 2. File exists but is empty - tested in the next block with mocked file I/O
 
@@ -660,7 +669,7 @@ async def test_load_excluded_models_edge_cases(tmp_path):
         load_excluded_models("empty.txt")
         # Implementation uses logger.debug
         debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
-        assert any("文件为空" in msg for msg in debug_calls)
+        assert any("empty" in msg.lower() for msg in debug_calls)
 
     # 3. Exception
     with (
@@ -698,7 +707,7 @@ async def test_handle_initial_model_state_exceptions(mock_page):
         # Check that we have the catastrophic error log
         # It catches "Inner Error" in the outer except block
         error_calls = [args[0][0] for args in mock_logger.error.call_args_list]
-        assert any("严重错误" in msg for msg in error_calls)
+        assert any("serious error" in msg.lower() for msg in error_calls)
 
 
 @pytest.mark.asyncio
@@ -756,7 +765,7 @@ async def test_set_model_from_page_display_timeout(mock_page):
 
         # Should log warning about timeout
         assert any(
-            "等待模型列表超时" in str(arg)
+            "waiting for model list timed out" in str(arg).lower()
             for arg in mock_logger.warning.call_args_list[0][0]
         )
         # Should still update global ID using display name as fallback
@@ -842,7 +851,7 @@ async def test_verify_ui_state_missing_storage(mock_page):
     result = await _verify_ui_state_settings(mock_page)
 
     assert result["exists"] is False
-    assert result["error"] == "localStorage不存在"
+    assert result["error"] == "localStorage not found"
     assert result["needsUpdate"] is True
 
 
@@ -854,7 +863,7 @@ async def test_verify_ui_state_json_error(mock_page):
     result = await _verify_ui_state_settings(mock_page)
 
     assert result["exists"] is False
-    assert "JSON解析失败" in result["error"]
+    assert "JSON parse failed" in result["error"]
     assert result["needsUpdate"] is True
 
 
@@ -866,7 +875,7 @@ async def test_verify_ui_state_exception(mock_page):
     result = await _verify_ui_state_settings(mock_page)
 
     assert result["exists"] is False
-    assert "验证失败" in result["error"]
+    assert "Verification failed" in result["error"]
     assert result["needsUpdate"] is True
 
 
@@ -1106,7 +1115,8 @@ async def test_handle_initial_model_state_json_error(mock_page, mock_server):
         mock_set_model.assert_called()
         errors = [call.args[0] for call in mock_logger.error.call_args_list]
         assert any(
-            "解析 localStorage.aiStudioUserPreference JSON 失败" in e for e in errors
+            "Failed to parse localStorage.aiStudioUserPreference JSON" in e
+            for e in errors
         )
 
 
@@ -1114,6 +1124,7 @@ async def test_handle_initial_model_state_json_error(mock_page, mock_server):
 @pytest.mark.timeout(5)
 async def test_handle_initial_model_state_reload_retry(mock_page, mock_server):
     """Test reload retry logic."""
+    mock_server = MagicMock()
     mock_page.evaluate.return_value = None  # Trigger reload
 
     mock_page.goto.side_effect = [Exception("Load failed"), None]
@@ -1135,7 +1146,7 @@ async def test_handle_initial_model_state_reload_retry(mock_page, mock_server):
 
         assert mock_page.goto.call_count == 2
         warnings = [call.args[0] for call in mock_logger.warning.call_args_list]
-        assert any("页面重新加载尝试 1/3 失败" in w for w in warnings)
+        assert any("page reload attempt 1/3 failed" in w.lower() for w in warnings)
 
 
 # === Section 5: Set Model from Page Display Tests ===
@@ -1239,11 +1250,7 @@ async def test_set_model_from_page_display_set_storage_defaults(mock_page, mock_
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
 async def test_set_model_from_page_display_same_id(mock_page):
-    """Test when displayed ID matches current server ID.
-
-    Implementation note: When model ID is unchanged, no log is emitted (line 175 comment).
-    We verify the ID remains unchanged and no update occurs.
-    """
+    """Test when displayed ID matches current server ID."""
     mock_state = MagicMock()
     mock_state.current_ai_studio_model_id = "gemini-pro"
     mock_state.parsed_model_list = []
@@ -1688,7 +1695,8 @@ async def test_switch_ai_studio_model_json_error_logging(mock_page):
 
         warnings = [call.args[0] for call in mock_logger.warning.call_args_list]
         assert any(
-            "无法解析原始的 aiStudioUserPreference JSON 字符串" in w for w in warnings
+            "failed to parse original aistudiouserpreference json string" in w.lower()
+            for w in warnings
         )
 
 
@@ -1714,7 +1722,10 @@ async def test_switch_ai_studio_model_ui_state_fail(mock_page):
         await switch_ai_studio_model(mock_page, "gemini-pro", "req1")
 
         warnings = [call.args[0] for call in mock_logger.warning.call_args_list]
-        assert any("UI状态设置失败，但继续执行" in w for w in warnings)
+        assert any(
+            "UI state setting failed, but continuing execution" in str(w)
+            for w in warnings
+        )
 
 
 @pytest.mark.asyncio
@@ -1747,7 +1758,7 @@ async def test_switch_ai_studio_model_final_storage_mismatch(mock_page):
         await switch_ai_studio_model(mock_page, "gemini-pro", "req1")
 
         errors = [call.args[0] for call in mock_logger.error.call_args_list]
-        assert any("AI Studio 未接受模型更改" in e for e in errors)
+        assert any("AI Studio did not accept model change" in e for e in errors)
 
 
 # === Section 7: Revert Logic Tests ===

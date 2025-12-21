@@ -60,7 +60,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit) as exc_info,
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         assert exc_info.value.code == 0
@@ -88,7 +88,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit) as exc_info,
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         assert exc_info.value.code == 0
@@ -116,7 +116,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit) as exc_info,
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         assert exc_info.value.code == 0
@@ -144,7 +144,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit),
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         call_args = mock_launch_server.call_args[1]
@@ -172,7 +172,7 @@ class TestRunInternalCamoufox:
         ):
             mock_proxy.return_value = {
                 "camoufox_proxy": "http://proxy:8080",
-                "source": "命令行参数",
+                "source": "CLI argument",
             }
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
@@ -199,7 +199,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit),
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         call_args = mock_launch_server.call_args[1]
@@ -225,7 +225,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit) as exc_info,
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         assert exc_info.value.code == 1
@@ -250,7 +250,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit),
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         call_args = mock_launch_server.call_args[1]
@@ -276,7 +276,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit) as exc_info,
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         assert exc_info.value.code == 1
@@ -302,7 +302,7 @@ class TestRunInternalCamoufox:
             patch("launcher.internal.determine_proxy_configuration") as mock_proxy,
             pytest.raises(SystemExit) as exc_info,
         ):
-            mock_proxy.return_value = {"camoufox_proxy": None, "source": "默认无代理"}
+            mock_proxy.return_value = {"camoufox_proxy": None, "source": "No Proxy"}
             run_internal_camoufox(mock_args, mock_launch_server, mock_default_addons)
 
         assert exc_info.value.code == 1

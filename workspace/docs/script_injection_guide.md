@@ -1,141 +1,141 @@
-# 油猴脚本动态挂载功能使用指南
+# Tampermonkey Script Dynamic Injection Guide
 
-## 概述
+## Overview
 
-本功能允许您动态挂载油猴脚本来增强 AI Studio 的模型列表，支持自定义模型注入和配置管理。系统采用 Playwright 原生网络拦截技术，直接从油猴脚本解析模型列表，确保了 100% 的可靠性和前后端数据的一致性。
+This feature allows you to dynamically mount Tampermonkey scripts to enhance AI Studio's model list, supporting custom model injection and configuration management. The system uses Playwright native network interception technology to parse the model list directly from the Tampermonkey script, ensuring 100% reliability and frontend-backend data consistency.
 
-## 功能特性
+## Features
 
-- ✅ **Playwright 原生拦截** - 使用 Playwright 路由拦截，不受浏览器安全策略影响
-- ✅ **双重保障机制** - 网络拦截 + 脚本注入，确保万无一失
-- ✅ **直接脚本解析** - 从油猴脚本中自动解析模型列表，无需额外配置文件
-- ✅ **前后端同步** - 前端和后端使用相同的模型数据源
-- ✅ **自动适配** - 脚本更新时自动获取新的模型列表
-- ✅ **静默失败** - 脚本文件不存在时静默跳过，不影响主要功能
+- ✅ **Playwright Native Interception** - Uses Playwright route interception, unaffected by browser security policies
+- ✅ **Double Assurance Mechanism** - Network interception + Script injection, ensuring failsafe operation
+- ✅ **Direct Script Parsing** - Automatically parses model lists from the Tampermonkey script, no extra config file needed
+- ✅ **Frontend-Backend Sync** - Frontend and backend use the same model data source
+- ✅ **Auto Adaptation** - Automatically fetches new model lists when the script updates
+- ✅ **Silent Failure** - Silently skips if the script file does not exist, without affecting main functions
 
-## 配置说明
+## Configuration
 
-### 环境变量配置
+### Environment Variables
 
-在 `.env` 文件中添加以下配置：
+Add the following configuration to your `.env` file:
 
 ```bash
-# 是否启用脚本注入功能
+# Whether to enable script injection feature
 ENABLE_SCRIPT_INJECTION=true
 
-# 油猴脚本文件路径（相对于项目根目录）
-# 模型数据直接从此脚本文件中解析
+# Tampermonkey script file path (relative to project root)
+# Model data is parsed directly from this script file
 USERSCRIPT_PATH=browser_utils/more_models.js
 ```
 
-## 工作原理
+## How It Works
 
 ```
-油猴脚本 → Playwright 网络拦截 (后端) + 脚本注入 (前端) → API同步
+Tampermonkey Script → Playwright Network Interception (Backend) + Script Injection (Frontend) → API Sync
 ```
 
-1.  **后端 (Playwright)**: 在网络层拦截 `/api/models` 请求，直接注入解析出的模型数据。这是核心机制，确保可靠性。
-2.  **前端 (浏览器)**: 辅助注入原始油猴脚本到页面，确保 UI 显示一致。
-3.  **同步**: 前后端使用同一份脚本数据源，保持完全一致。
+1.  **Backend (Playwright)**: Intercepts `/api/models` requests at the network layer, directly injecting parsed model data. This is the core mechanism ensuring reliability.
+2.  **Frontend (Browser)**: Auxiliarily injects the original Tampermonkey script into the page to ensure UI consistency.
+3.  **Sync**: Frontend and backend use the same script data source, keeping completely consistent.
 
-### 核心优势
+### Core Advantages
 
-- 🎯 **高可靠性** - 不受浏览器安全限制
-- ⚡ **更早拦截** - 在网络层面拦截，优于 JavaScript 注入
-- 🛡️ **双重保障** - 网络拦截 + 脚本注入
-- 🔄 **单一数据源** - 油猴脚本是唯一的模型定义源
+- 🎯 **High Reliability** - Unaffected by browser security restrictions
+- ⚡ **Earlier Interception** - Intercepts at network level, superior to JavaScript injection
+- 🛡️ **Double Assurance** - Network interception + Script injection
+- 🔄 **Single Data Source** - Tampermonkey script is the sole source of model definitions
 
-## 使用方法
+## Usage
 
-### 1. 启用脚本注入
+### 1. Enable Script Injection
 
-确保在 `.env` 文件中设置：
+Ensure set in `.env` file:
 
 ```bash
 ENABLE_SCRIPT_INJECTION=true
 ```
 
-### 2. 准备脚本文件
+### 2. Prepare Script File
 
-将您的油猴脚本放在 `browser_utils/more_models.js`（或您在 `USERSCRIPT_PATH` 中指定的路径）。
+Place your Tampermonkey script at `browser_utils/more_models.js` (or the path you specified in `USERSCRIPT_PATH`).
 
-**⚠️ 脚本文件必须存在，否则不会执行任何注入操作。**
+**⚠️ The script file must exist, otherwise no injection operation will be performed.**
 
-### 3. 启动服务
+### 3. Start Service
 
-正常启动 AI Studio Proxy 服务，系统将自动处理注入和解析。
+Start AI Studio Proxy service normally, the system will automatically handle injection and parsing.
 
-### 4. 验证注入效果
+### 4. Verify Injection Effect
 
-- **前端**: 在 AI Studio 页面上可以看到注入的模型
-- **API**: 通过 `/v1/models` 端点可以获取包含注入模型的完整列表
+- **Frontend**: Injected models can be seen on the AI Studio page
+- **API**: Full list containing injected models can be obtained via `/v1/models` endpoint
 
-## 日志输出示例
+## Log Output Example
 
-启用脚本注入后，您将在日志中看到类似输出：
+After enabling script injection, you will see output similar to this in the logs:
 
 ```
-# 网络拦截相关日志
-设置网络拦截和脚本注入...
-成功设置模型列表网络拦截
-成功解析 6 个模型从油猴脚本
+# Network interception related logs
+Setting up network interception and script injection...
+Successfully set up model list network interception
+Successfully parsed 6 models from Tampermonkey script
 
-# 模型列表响应处理时的日志
-捕获到潜在的模型列表响应来自: https://alkalimakersuite.googleapis.com/...
-添加了 6 个注入的模型到API模型列表
-成功解析和更新模型列表。总共解析模型数: 12
+# Logs during model list response processing
+Captured potential model list response from: https://alkalimakersuite.googleapis.com/...
+Added 6 injected models to API model list
+Successfully parsed and updated model list. Total models parsed: 12
 
-# 解析出的模型示例
+# Example of parsed models
 👑 Kingfall (Script v1.6)
 ✨ Gemini 1.5 Pro (Script v1.6)
 🦁 Goldmane (Script v1.6)
 ```
 
-## 故障排除
+## Troubleshooting
 
-### 脚本注入失败
+### Script Injection Failed
 
-1.  **检查文件路径** - 确保 `USERSCRIPT_PATH` 指向的文件存在
-2.  **检查文件权限** - 确保脚本文件可读
-3.  **查看日志** - 检查详细的错误信息
+1.  **Check File Path** - Ensure `USERSCRIPT_PATH` points to an existing file
+2.  **Check File Permissions** - Ensure script file is readable
+3.  **Check Logs** - Check detailed error messages
 
-### 模型解析失败
+### Model Parsing Failed
 
-1.  **脚本格式** - 确保油猴脚本中的 `MODELS_TO_INJECT` 数组格式正确
-2.  **必需字段** - 确保每个模型都有 `name` 和 `displayName` 字段
-3.  **JavaScript语法** - 确保脚本文件是有效的 JavaScript 格式
+1.  **Script Format** - Ensure `MODELS_TO_INJECT` array format in Tampermonkey script is correct
+2.  **Required Fields** - Ensure each model has `name` and `displayName` fields
+3.  **JavaScript Syntax** - Ensure script file is valid JavaScript format
 
-### 禁用脚本注入
+### Disable Script Injection
 
-如果遇到问题，可以临时禁用脚本注入：
+If you encounter issues, you can temporarily disable script injection:
 
 ```bash
 ENABLE_SCRIPT_INJECTION=false
 ```
 
-## 高级用法
+## Advanced Usage
 
-### 自定义脚本路径
+### Custom Script Path
 
-您可以使用不同的脚本文件：
+You can use a different script file:
 
 ```bash
 USERSCRIPT_PATH=custom_scripts/my_script.js
 ```
 
-### 版本管理
+### Version Management
 
-系统会自动解析脚本中的版本信息，保持与油猴脚本完全一致的显示效果，包括 emoji 和版本标识。
+The system automatically parses version information in the script, maintaining consistent display effects with the Tampermonkey script, including emojis and version identifiers.
 
-## 注意事项
+## Notes
 
-1.  **重启生效** - 脚本文件更新后需要重启服务
-2.  **浏览器缓存** - 如果模型列表没有更新，尝试刷新页面或清除浏览器缓存
-3.  **兼容性** - 确保您的油猴脚本与当前的 AI Studio 页面结构兼容
+1.  **Restart to Take Effect** - Service restart is needed after script file update
+2.  **Browser Cache** - If model list doesn't update, try refreshing page or clearing browser cache
+3.  **Compatibility** - Ensure your Tampermonkey script is compatible with current AI Studio page structure
 
-## 技术细节
+## Technical Details
 
-- **核心实现** - `browser_utils/initialization/network.py` 实现了 Playwright 网络拦截逻辑。
-- **脚本注入** - `browser_utils/initialization/scripts.py` 负责将脚本注入到浏览器上下文。
-- **脚本管理** - `browser_utils/script_manager.py` 负责加载和解析脚本内容。
-- **脚本解析** - `browser_utils/operations_modules/parsers.py` 负责从脚本中提取模型数据。
+- **Core Implementation** - `browser_utils/initialization/network.py` implements Playwright network interception logic.
+- **Script Injection** - `browser_utils/initialization/scripts.py` is responsible for injecting script into browser context.
+- **Script Management** - `browser_utils/script_manager.py` is responsible for loading and parsing script content.
+- **Script Parsing** - `browser_utils/operations_modules/parsers.py` is responsible for extracting model data from the script.

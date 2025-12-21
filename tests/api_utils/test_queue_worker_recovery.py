@@ -1,10 +1,10 @@
 """
-高质量测试: Queue Worker 恢复逻辑 (最小化模拟)
+High-quality tests: Queue Worker recovery logic (minimal mocking)
 
-测试策略:
-- 使用真实的 asyncio 原语 (Event, Queue)
-- 仅模拟外部依赖 (浏览器, 网络)
-- 测试实际错误路径和边缘情况
+Test strategy:
+- Use real asyncio primitives (Event, Queue)
+- Only mock external dependencies (browser, network)
+- Test actual error paths and edge cases
 """
 
 import asyncio
@@ -21,8 +21,8 @@ from api_utils.queue_worker import QueueManager
 @pytest.mark.asyncio
 async def test_switch_auth_profile_missing_ws_endpoint():
     """
-    测试场景: 浏览器重新初始化时缺少 CAMOUFOX_WS_ENDPOINT
-    预期: 抛出 RuntimeError 并包含清晰的错误消息
+    Test scenario: CAMOUFOX_WS_ENDPOINT missing during browser re-initialization
+    Expected: Throw RuntimeError with clear error message
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
@@ -38,7 +38,7 @@ async def test_switch_auth_profile_missing_ws_endpoint():
         ),
         patch(
             "config.get_environment_variable",
-            return_value=None,  # WS_ENDPOINT 缺失
+            return_value=None,  # WS_ENDPOINT missing
         ),
     ):
         mock_state.browser_instance = mock_browser
@@ -50,7 +50,7 @@ async def test_switch_auth_profile_missing_ws_endpoint():
         ):
             await queue_manager._switch_auth_profile("req123")
 
-        # 验证清理步骤仍然执行
+        # Verify cleanup steps still execute
         mock_auth_mgr.mark_profile_failed.assert_called_once()
         mock_browser.close.assert_called_once()
 
@@ -58,8 +58,8 @@ async def test_switch_auth_profile_missing_ws_endpoint():
 @pytest.mark.asyncio
 async def test_switch_auth_profile_missing_playwright_manager():
     """
-    测试场景: 浏览器重新初始化时缺少 playwright_manager
-    预期: 抛出 RuntimeError 并包含清晰的错误消息
+    Test scenario: playwright_manager missing during browser re-initialization
+    Expected: Throw RuntimeError with clear error message
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
@@ -79,13 +79,13 @@ async def test_switch_auth_profile_missing_playwright_manager():
         ),
     ):
         mock_state.browser_instance = mock_browser
-        mock_state.playwright_manager = None  # playwright_manager 缺失
+        mock_state.playwright_manager = None  # playwright_manager missing
         mock_auth_mgr.get_next_profile = AsyncMock(return_value="profile2.json")
 
         with pytest.raises(RuntimeError, match="Playwright manager not available"):
             await queue_manager._switch_auth_profile("req123")
 
-        # 验证清理步骤仍然执行
+        # Verify cleanup steps still execute
         mock_auth_mgr.mark_profile_failed.assert_called_once()
         mock_browser.close.assert_called_once()
 
@@ -93,8 +93,8 @@ async def test_switch_auth_profile_missing_playwright_manager():
 @pytest.mark.asyncio
 async def test_switch_auth_profile_page_init_failure():
     """
-    测试场景: 页面初始化失败 (is_page_ready=False)
-    预期: 抛出 RuntimeError 并包含描述性错误消息
+    Test scenario: Page initialization failed (is_page_ready=False)
+    Expected: Throw RuntimeError with descriptive error message
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
@@ -125,28 +125,31 @@ async def test_switch_auth_profile_page_init_failure():
         mock_state.page_instance = None
         mock_state.is_page_ready = False
         mock_auth_mgr.get_next_profile = AsyncMock(return_value="profile2.json")
-        # 模拟页面初始化失败
+        # Simulate page initialization failure
         mock_init.return_value = (None, False)
 
-        with pytest.raises(RuntimeError, match="页面初始化失败，无法完成配置文件切换"):
+        with pytest.raises(
+            RuntimeError,
+            match="Page initialization failed, unable to complete profile switch",
+        ):
             await queue_manager._switch_auth_profile("req123")
 
-        # 验证浏览器重新连接仍然发生
+        # Verify browser reconnection still occurs
         mock_playwright_mgr.firefox.connect.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_switch_auth_profile_browser_not_connected():
     """
-    测试场景: 浏览器未连接时切换配置文件
-    预期: 跳过浏览器关闭步骤，直接重新连接
+    Test scenario: Switch profile when browser is not connected
+    Expected: Skip browser close step, reconnect directly
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
 
     mock_browser = AsyncMock()
-    # is_connected() 是同步方法，返回布尔值
-    mock_browser.is_connected = MagicMock(return_value=False)  # 浏览器未连接
+    # is_connected() is a synchronous method, returns boolean
+    mock_browser.is_connected = MagicMock(return_value=False)  # Browser not connected
     mock_browser.version = "Mozilla Firefox 115.0"
     mock_page = AsyncMock()
     mock_playwright_mgr = MagicMock()
@@ -184,24 +187,24 @@ async def test_switch_auth_profile_browser_not_connected():
 
         await queue_manager._switch_auth_profile("req123")
 
-        # 验证浏览器关闭未被调用 (因为未连接)
+        # Verify browser close not called (because not connected)
         mock_browser.close.assert_not_called()
 
-        # 但重新连接仍然发生
+        # But reconnection still occurs
         mock_playwright_mgr.firefox.connect.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_refresh_page_cancelled_error():
     """
-    测试场景: 页面刷新期间收到取消信号
-    预期: 正确处理 CancelledError 并重新抛出
+    Test scenario: Cancellation signal received during page refresh
+    Expected: Correctly handle CancelledError and re-throw
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
 
     mock_page = AsyncMock()
-    # 模拟 reload 被取消
+    # Simulate reload cancelled
     mock_page.reload.side_effect = asyncio.CancelledError()
 
     with patch("api_utils.server_state.state") as mock_state:
@@ -211,15 +214,15 @@ async def test_refresh_page_cancelled_error():
         with pytest.raises(asyncio.CancelledError):
             await queue_manager._refresh_page("req123")
 
-        # 验证日志记录了取消事件
-        queue_manager.logger.info.assert_any_call("(Recovery) 页面刷新被取消")
+        # Verify log recorded cancellation event
+        queue_manager.logger.info.assert_any_call("(Recovery) Page refresh cancelled")
 
 
 @pytest.mark.asyncio
 async def test_refresh_page_generic_error():
     """
-    测试场景: 页面刷新期间发生通用错误
-    预期: 记录错误并重新抛出异常
+    Test scenario: Generic error occurred during page refresh
+    Expected: Log error and re-throw exception
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
@@ -234,20 +237,20 @@ async def test_refresh_page_generic_error():
         with pytest.raises(Exception, match="Navigation timeout"):
             await queue_manager._refresh_page("req123")
 
-        # 验证错误被记录
+        # Verify error logged
         queue_manager.logger.error.assert_called_once()
-        assert "页面刷新失败" in queue_manager.logger.error.call_args[0][0]
+        assert "Page refresh failed" in queue_manager.logger.error.call_args[0][0]
 
 
 @pytest.mark.asyncio
 async def test_processing_lock_none_error():
     """
-    测试场景: processing_lock 为 None 时处理请求
-    预期: 设置 server error 异常并跳过处理
+    Test scenario: Process request when processing_lock is None
+    Expected: Set server error exception and skip processing
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
-    queue_manager.processing_lock = None  # Lock 缺失
+    queue_manager.processing_lock = None  # Lock missing
     queue_manager.request_queue = AsyncMock()
     queue_manager.handle_streaming_delay = AsyncMock()
 
@@ -269,7 +272,7 @@ async def test_processing_lock_none_error():
     )
 
     async def mock_check_connection(req_id, http_req):
-        return True  # 客户端连接正常
+        return True  # Client connection OK
 
     with patch(
         "api_utils.request_processor._check_client_connection",
@@ -277,22 +280,22 @@ async def test_processing_lock_none_error():
     ):
         await queue_manager.process_request(request_item)
 
-        # 验证 future 包含 HTTPException
+        # Verify future contains HTTPException
         assert result_future.done()
         with pytest.raises(HTTPException) as exc_info:
             result_future.result()
         assert exc_info.value.status_code == 500
         assert "Processing lock missing" in exc_info.value.detail
 
-        # 验证 task_done 被调用
+        # Verify task_done called
         queue_manager.request_queue.task_done.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_process_request_cancelled_before_processing():
     """
-    测试场景: 请求在处理前被标记为取消
-    预期: 跳过处理并设置取消异常
+    Test scenario: Request marked as cancelled before processing
+    Expected: Skip processing and set cancellation exception
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
@@ -310,28 +313,28 @@ async def test_process_request_cancelled_before_processing():
             "request_data": mock_chat_request,
             "http_request": mock_http_request,
             "result_future": result_future,
-            "cancelled": True,  # 请求已取消
+            "cancelled": True,  # Request cancelled
             "enqueue_time": 0.0,
         },
     )
 
     await queue_manager.process_request(request_item)
 
-    # 验证 future 包含取消异常
+    # Verify future contains cancellation exception
     assert result_future.done()
     with pytest.raises(HTTPException) as exc_info:
         result_future.result()
     assert "cancelled" in exc_info.value.detail.lower()
 
-    # 验证 task_done 被调用
+    # Verify task_done called
     queue_manager.request_queue.task_done.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_switch_auth_profile_browser_reconnect_error():
     """
-    测试场景: 重新连接浏览器时发生错误
-    预期: 抛出异常并记录错误
+    Test scenario: Error occurred while reconnecting to browser
+    Expected: Throw exception and log error
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
@@ -339,7 +342,7 @@ async def test_switch_auth_profile_browser_reconnect_error():
     mock_browser = AsyncMock()
     mock_browser.is_connected = MagicMock(return_value=True)
     mock_playwright_mgr = MagicMock()
-    # 模拟连接失败
+    # Simulate connection failure
     mock_playwright_mgr.firefox.connect = AsyncMock(
         side_effect=Exception("Connection refused")
     )
@@ -362,7 +365,7 @@ async def test_switch_auth_profile_browser_reconnect_error():
         with pytest.raises(Exception, match="Connection refused"):
             await queue_manager._switch_auth_profile("req123")
 
-        # 验证清理步骤仍然执行
+        # Verify cleanup steps still execute
         mock_auth_mgr.mark_profile_failed.assert_called_once()
         mock_browser.close.assert_called_once()
 
@@ -371,12 +374,12 @@ async def test_switch_auth_profile_browser_reconnect_error():
 @pytest.mark.asyncio
 async def test_profile_switch_under_concurrent_requests():
     """
-    集成测试: 在处理其他请求时发生配置文件切换
+    Integration test: Profile switch occurs while processing other requests
 
-    验证点:
-    - 配置文件切换获取 processing_lock
-    - 其他请求等待配置文件切换完成
-    - 状态一致性得到维护
+    Verification points:
+    - Profile switch acquires processing_lock
+    - Other requests wait for profile switch to complete
+    - State consistency maintained
     """
     queue_manager = QueueManager()
     queue_manager.logger = MagicMock()
@@ -402,14 +405,14 @@ async def test_profile_switch_under_concurrent_requests():
             execution_order.append("request_processing")
             await asyncio.sleep(0.005)
 
-    # 启动一个配置文件切换和一个常规请求
+    # Start a profile switch and a regular request
     switch_task = asyncio.create_task(slow_profile_switch())
-    await asyncio.sleep(0.001)  # 确保切换先获取锁
+    await asyncio.sleep(0.001)  # Ensure switch acquires lock first
     request_task = asyncio.create_task(quick_request())
 
     await asyncio.gather(switch_task, request_task)
 
-    # 验证配置文件切换完全完成后才开始请求处理
+    # Verify request processing starts only after profile switch is fully completed
     assert execution_order == [
         "profile_switch_start",
         "profile_switch_end",

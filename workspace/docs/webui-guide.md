@@ -1,201 +1,201 @@
-# Web UI 使用指南
+# Web UI Guide
 
-本项目内置了一个功能丰富的现代化 Web 用户界面，提供聊天测试、状态监控、API 密钥管理等完整功能。
+This project features a rich, modern Web User Interface providing chat testing, status monitoring, API key management, and more.
 
-## 访问方式
+## Access
 
-在浏览器中打开服务器的根地址，默认为 `http://127.0.0.1:2048/`。
+Open the server's root address in your browser, defaulting to `http://127.0.0.1:2048/`.
 
-**端口配置**：
+**Port Configuration**:
 
-- 默认端口：2048
-- 配置方式：在 `.env` 文件中设置 `PORT=2048` 或 `DEFAULT_FASTAPI_PORT=2048`
-- 命令行覆盖：使用 `--server-port` 参数
-- GUI 配置：通过图形启动器直接设置
+- Default port: 2048
+- Configuration: Set `PORT=2048` or `DEFAULT_FASTAPI_PORT=2048` in `.env` file
+- Command line override: Use `--server-port` parameter
+- GUI Configuration: Set directly via graphical launcher
 
-## 主要功能
+## Main Features
 
-### 聊天界面
+### Chat Interface
 
-- **基本聊天**: 发送消息并接收来自 AI Studio 的回复，支持三层响应获取机制
-- **Markdown 支持**: 支持 Markdown 格式化、代码块高亮和数学公式渲染
-- **自动 API 密钥认证**: 对话请求会自动包含 Bearer token 认证，支持本地存储
-- **智能错误处理**: 针对 401 认证错误、配额超限等提供专门的中文提示信息
-- **输入验证**: 防止发送空消息，双重检查确保内容有效性
-- **流式响应**: 支持实时流式输出，提供类似 ChatGPT 的打字机效果
-- **客户端断开检测**: 智能检测客户端连接状态，优化资源使用
+- **Basic Chat**: Send messages and receive responses from AI Studio, supporting three-layer response acquisition mechanism
+- **Markdown Support**: Supports Markdown formatting, code block highlighting, and math formula rendering
+- **Automatic API Key Auth**: Chat requests automatically include Bearer token authentication, supports local storage
+- **Smart Error Handling**: Provides specific hints for 401 auth errors, quota limits, etc.
+- **Input Validation**: Prevents sending empty messages, double checks content validity
+- **Streaming Response**: Supports real-time streaming output, providing ChatGPT-like typewriter effect
+- **Client Disconnect Detection**: Smart detection of client connection status to optimize resource usage
 
-### 服务器信息
+### Server Info
 
-切换到 "服务器信息" 标签页可以查看：
+Switch to "Server Info" tab to view:
 
-- **API 调用信息**: Base URL、模型名称、认证状态等
-- **服务健康检查**: `/health` 端点的详细状态，包括：
-  - Playwright 连接状态
-  - 浏览器连接状态
-  - 页面就绪状态
-  - 队列工作器状态
-  - 当前队列长度
-- **系统状态**: 三层响应获取机制的状态
-- **实时更新**: 提供 "刷新" 按钮手动更新信息
+- **API Call Info**: Base URL, Model Name, Auth Status, etc.
+- **Service Health Check**: Detailed status of `/health` endpoint, including:
+  - Playwright connection status
+  - Browser connection status
+  - Page readiness status
+  - Queue worker status
+  - Current queue length
+- **System Status**: Status of three-layer response acquisition mechanism
+- **Real-time Update**: Provides "Refresh" button to manually update information
 
-### 安全的 API 密钥管理系统
+### Secure API Key Management System
 
-"设置" 标签页提供完整的密钥管理功能：
+"Settings" tab provides complete key management features:
 
-#### 分级权限查看系统
+#### Tiered Permission View System
 
-**工作原理**:
+**How it works**:
 
-- **未验证状态**: 只显示基本的密钥输入界面和提示信息
-- **验证成功后**: 显示完整的密钥管理界面，包括服务器密钥列表
+- **Unverified State**: Only shows basic key input interface and hints
+- **Verified State**: Shows complete key management interface, including server key list
 
-**验证流程**:
+**Verification Process**:
 
-1. 在密钥输入框中输入有效的 API 密钥
-2. 点击"验证密钥"按钮进行验证
-3. 验证成功后，界面自动刷新显示完整功能
-4. 验证状态在浏览器会话期间保持有效
+1. Enter a valid API key in the key input box
+2. Click "Verify Key" button
+3. After successful verification, the interface automatically refreshes to show full features
+4. Verification state remains valid during the browser session
 
-#### 密钥管理功能
+#### Key Management Features
 
-**密钥验证**:
+**Key Verification**:
 
-- 支持验证任意 API 密钥的有效性
-- 验证成功的密钥会自动保存到浏览器本地存储
-- 验证失败会显示具体的错误信息
+- Supports verifying validity of any API key
+- Successfully verified keys are automatically saved to browser local storage
+- Verification failure shows specific error message
 
-**密钥列表查看**:
+**Key List View**:
 
-- 显示服务器上配置的所有 API 密钥
-- 所有密钥都经过打码处理显示（格式：`xxxx****xxxx`）
-- 显示密钥的添加时间和状态信息
-- 提供单独的密钥验证按钮
+- Displays all API keys configured on the server
+- All keys are masked for display (Format: `xxxx****xxxx`)
+- Shows key addition time and status info
+- Provides individual key verification button
 
-**安全机制**:
+**Security Mechanism**:
 
-- **打码显示**: 所有密钥都经过安全打码处理，保护敏感信息
-- **会话保持**: 验证状态仅在当前浏览器会话中有效
-- **本地存储**: 验证成功的密钥保存在浏览器本地存储中
-- **重置功能**: 可随时重置验证状态，重新进行密钥验证
+- **Masked Display**: All keys are safely masked to protect sensitive info
+- **Session Persistence**: Verification state only valid in current browser session
+- **Local Storage**: Verified keys saved in browser local storage
+- **Reset Function**: Can reset verification state anytime to re-verify keys
 
-#### 密钥输入界面
+#### Key Input Interface
 
-- **自动保存**: 输入框内容会自动保存到浏览器本地存储
-- **快捷操作**: 支持回车键快速验证
-- **可见性切换**: 提供密钥可见性切换按钮
-- **状态指示**: 实时显示当前的验证状态和密钥配置情况
+- **Auto Save**: Input box content automatically saved to browser local storage
+- **Quick Action**: Supports Enter key for quick verification
+- **Visibility Toggle**: Provides key visibility toggle button
+- **Status Indication**: Real-time display of current verification state and key configuration status
 
-### 模型设置
+### Model Settings
 
-"模型设置" 标签页允许用户配置并保存（至浏览器本地存储）以下参数：
+"Model Settings" tab allows users to configure and save (to browser local storage) the following parameters:
 
-- **系统提示词 (System Prompt)**: 自定义指导模型的行为和角色
-- **温度 (Temperature)**: 控制生成文本的随机性
-- **最大输出 Token (Max Output Tokens)**: 限制模型单次回复的长度
-- **Top-P**: 控制核心采样的概率阈值
-- **思考模式 (Thinking Mode)**:
-  - **思考等级 (Thinking Level)**: 针对支持的模型（如 Gemini 3 Pro），选择 Low 或 High
-  - **思考预算 (Thinking Budget)**: 手动限制思考过程的 Token 预算
-- **工具 (Tools)**:
-  - **Google Search**: 启用搜索作为工具以改进事实性 (Grounding with Google Search)
-- **停止序列 (Stop Sequences)**: 指定一个或多个序列，当模型生成这些序列时将停止输出
-- 提供"保存设置"和"重置为默认值"按钮
+- **System Prompt**: Customize model behavior and role
+- **Temperature**: Control randomness of generated text
+- **Max Output Tokens**: Limit length of single model response
+- **Top-P**: Control probability threshold for nucleus sampling
+- **Thinking Mode**:
+  - **Thinking Level**: For supported models (e.g., Gemini 3 Pro), choose Low or High
+  - **Thinking Budget**: Manually limit Token budget for thinking process
+- **Tools**:
+  - **Google Search**: Enable search as a tool to improve factuality (Grounding with Google Search)
+- **Stop Sequences**: Specify one or more sequences that stop model generation
+- Provides "Save Settings" and "Reset to Defaults" buttons
 
-### 模型选择器
+### Model Selector
 
-在主聊天界面可以选择希望使用的模型，选择后会尝试在 AI Studio 后端进行切换。
+Select desired model in main chat interface; selection attempts to switch model in AI Studio backend.
 
-### 系统日志
+### System Logs
 
-右侧有一个可展开/收起的侧边栏，通过 WebSocket (`/ws/logs`) 实时显示后端日志：
+Right sidebar (expandable/collapsible) displays real-time backend logs via WebSocket (`/ws/logs`):
 
-- 包含日志级别、时间戳和消息内容
-- 提供清理日志的按钮
-- 用于调试和监控
+- Includes log level, timestamp, and message content
+- Provides clear log button
+- Used for debugging and monitoring
 
-### 主题切换
+### Theme Toggle
 
-右上角提供 "浅色"/"深色" 按钮，用于切换界面主题，偏好设置会保存在浏览器本地存储中。
+Top right "Light"/"Dark" button for switching interface theme; preference saved in browser local storage.
 
-### 响应式设计
+### Responsive Design
 
-界面会根据屏幕大小自动调整布局。
+Interface layout adjusts automatically based on screen size.
 
-## 使用说明
+## Usage Instructions
 
-### 首次使用
+### First Use
 
-1. 启动服务后，在浏览器中访问 `http://127.0.0.1:2048/`
+1. After starting service, visit `http://127.0.0.1:2048/` in browser
 
-2. **API 密钥配置检查**：
-   - 访问"设置"标签页查看 API 密钥状态
-   - 如果显示"不需要 API 密钥"，则可以直接使用
-   - 如果显示"需要 API 密钥"，则需要进行密钥验证
+2. **API Key Config Check**:
+   - Visit "Settings" tab to check API key status
+   - If "No API Key Required" shows, use directly
+   - If "API Key Required" shows, verification is needed
 
-3. **API 密钥验证流程**（如果需要）：
-   - 在"API 密钥管理"区域输入有效的 API 密钥
-   - 点击"验证密钥"按钮进行验证
-   - 验证成功后界面会自动刷新，显示：
-     - 验证成功的状态指示
-     - 服务器上配置的密钥列表（打码显示）
-     - 完整的密钥管理功能
+3. **API Key Verification Process** (If needed):
+   - Enter valid API key in "API Key Management" area
+   - Click "Verify Key" button
+   - Upon success, interface refreshes to show:
+     - Verified status indicator
+     - List of keys configured on server (masked)
+     - Complete key management features
 
-4. **密钥获取方式**：
-   - 如果是管理员：可以直接查看 `auth_profiles/key.txt` 文件
-   - 如果是用户：需要联系管理员获取有效的 API 密钥
-   - 密钥格式：至少 8 个字符的字符串
+4. **How to Get Key**:
+   - Admins: View `auth_profiles/key.txt` file directly
+   - Users: Contact admin to get valid API key
+   - Key Format: String of at least 8 characters
 
-### 日常使用
+### Daily Use
 
-1. 在聊天界面输入消息进行对话测试（会自动使用验证过的密钥进行认证）
-2. 通过"服务器信息"标签查看服务状态
-3. 在"模型设置"标签中调整对话参数
-4. 侧边栏显示实时系统日志，可用于调试和监控
+1. Input message in chat interface to test dialogue (uses verified key automatically)
+2. View service status via "Server Info" tab
+3. Adjust dialogue parameters in "Model Settings" tab
+4. Sidebar displays real-time system logs for debugging and monitoring
 
-## 安全机制说明
+## Security Mechanism Explanation
 
-- **分级权限**: 未验证状态下只显示基本信息，验证成功后显示完整的密钥管理界面
-- **会话保持**: 验证状态在浏览器会话期间保持，无需重复验证
-- **安全显示**: 所有密钥都经过打码处理，保护敏感信息
-- **重置功能**: 可随时重置验证状态，重新进行密钥验证
-- **自动认证**: 对话请求自动包含认证头，确保 API 调用安全
+- **Tiered Permissions**: Only shows basic info when unverified, full key management when verified
+- **Session Persistence**: Verification state persists during browser session, no re-verification needed
+- **Secure Display**: All keys masked to protect sensitive info
+- **Reset Function**: Reset verification state anytime to re-verify
+- **Auto Auth**: Dialogue requests automatically include auth header ensuring secure API calls
 
-## 用途
+## Uses
 
-这个 Web UI 主要用于：
+This Web UI is mainly used for:
 
-- 简单聊天测试
-- 开发调试
-- 快速验证代理是否正常工作
-- 监控服务器状态
-- 安全管理 API 密钥
-- 方便地调整和测试模型参数
+- Simple chat testing
+- Development debugging
+- Quickly verifying if proxy works
+- Monitoring server status
+- Securely managing API keys
+- Conveniently adjusting and testing model parameters
 
-## 故障排除
+## Troubleshooting
 
-### 无法显示日志或服务器信息
+### Logs or Server Info Not Showing
 
-- 检查浏览器开发者工具 (F12) 的控制台和网络选项卡是否有错误
-- 确认 WebSocket 连接 (`/ws/logs`) 是否成功建立
-- 确认 `/health` 和 `/api/info` 端点是否能正常访问并返回数据
+- Check browser developer tools (F12) console and network tabs for errors
+- Confirm WebSocket connection (`/ws/logs`) established successfully
+- Confirm `/health` and `/api/info` endpoints accessible and returning data
 
-### API 密钥管理问题
+### API Key Management Issues
 
-- **无法验证密钥**: 检查输入的密钥格式，确认服务器上的 `auth_profiles/key.txt` 文件包含有效密钥
-- **验证成功但无法查看密钥列表**: 检查浏览器控制台是否有 JavaScript 错误，尝试刷新页面
-- **验证状态丢失**: 验证状态仅在当前浏览器会话中有效，关闭浏览器或标签页会丢失状态
-- **密钥显示异常**: 确认 `/api/keys` 端点返回正确的 JSON 格式数据
+- **Cannot Verify Key**: Check input format, confirm valid key exists in server's `auth_profiles/key.txt`
+- **Verify Success but No Key List**: Check browser console for JS errors, try refreshing page
+- **Verification State Lost**: State only valid in current session, closing browser/tab loses state
+- **Key Display Abnormal**: Confirm `/api/keys` endpoint returns correct JSON format data
 
-### 对话功能问题
+### Chat Function Issues
 
-- **发送消息后收到 401 错误**: API 密钥认证失败，需要在设置页面重新验证密钥
-- **无法发送空消息**: 这是正常的安全机制，确保输入有效内容后再发送
-- **对话请求失败**: 检查网络连接，确认服务器正常运行，查看浏览器控制台和服务器日志
+- **401 Error after Sending**: API key auth failed, re-verify key in settings page
+- **Cannot Send Empty Message**: Normal security mechanism, ensure valid input
+- **Request Failed**: Check network connection, confirm server running, check browser console and server logs
 
-## 下一步
+## Next Steps
 
-Web UI 使用完成后，请参考：
+After finishing with Web UI, refer to:
 
-- [API 使用指南](api-usage.md)
-- [故障排除指南](troubleshooting.md)
+- [API Usage Guide](api-usage.md)
+- [Troubleshooting Guide](troubleshooting.md)

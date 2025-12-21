@@ -1,5 +1,5 @@
 """
-FastAPI 依赖项模块
+FastAPI Dependencies Module
 """
 
 import logging
@@ -47,7 +47,7 @@ def get_server_state() -> Dict[str, Any]:
         is_playwright_ready,
     )
 
-    # 返回不可变快照，避免下游修改全局引用
+    # Return immutable snapshot to prevent downstream modifications to global references
     return dict(
         is_initializing=is_initializing,
         is_playwright_ready=is_playwright_ready,
@@ -85,6 +85,7 @@ def get_current_ai_studio_model_id() -> str:
 
     return current_ai_studio_model_id
 
+
 async def ensure_request_lock():
     """
     Dependency that acts as a 'Parking Lot' for requests.
@@ -96,29 +97,41 @@ async def ensure_request_lock():
     from server import logger
 
     # A request is considered "queued" if it has to wait for the lock.
-    is_waiting = GlobalState.IS_QUOTA_EXCEEDED or not GlobalState.AUTH_ROTATION_LOCK.is_set()
+    is_waiting = (
+        GlobalState.IS_QUOTA_EXCEEDED or not GlobalState.AUTH_ROTATION_LOCK.is_set()
+    )
     if is_waiting:
         GlobalState.queued_request_count += 1
-    
+
     try:
         # Wait loop to handle both Lock and Quota states
         # We wait if:
         # 1. Lock is NOT set (Rotation in progress)
         # 2. Quota IS exceeded (Rotation about to start, or we need to wait for it)
-        while GlobalState.IS_QUOTA_EXCEEDED or not GlobalState.AUTH_ROTATION_LOCK.is_set():
+        while (
+            GlobalState.IS_QUOTA_EXCEEDED or not GlobalState.AUTH_ROTATION_LOCK.is_set()
+        ):
             if not GlobalState.AUTH_ROTATION_LOCK.is_set():
-                 # Rotation in progress. Wait for lock to open with timeout.
-                 try:
-                     await asyncio.wait_for(GlobalState.AUTH_ROTATION_LOCK.wait(), timeout=30.0)
-                 except asyncio.TimeoutError:
-                     logger.warning("🚨 Lock wait timeout after 30s. Service may be unavailable.")
-                     from fastapi import HTTPException
-                     raise HTTPException(status_code=503, detail="Service temporarily unavailable - timeout waiting for system lock")
+                # Rotation in progress. Wait for lock to open with timeout.
+                try:
+                    await asyncio.wait_for(
+                        GlobalState.AUTH_ROTATION_LOCK.wait(), timeout=30.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "🚨 Lock wait timeout after 30s. Service may be unavailable."
+                    )
+                    from fastapi import HTTPException
+
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Service temporarily unavailable - timeout waiting for system lock",
+                    )
             else:
-                 # Lock is Open, but Quota is still marked Exceeded.
-                 # This implies the Watchdog is about to rotate, or we are in a race.
-                 # We wait briefly to allow the state to resolve.
-                 await asyncio.sleep(0.1)
+                # Lock is Open, but Quota is still marked Exceeded.
+                # This implies the Watchdog is about to rotate, or we are in a race.
+                # We wait briefly to allow the state to resolve.
+                await asyncio.sleep(0.1)
     finally:
         if is_waiting:
             GlobalState.queued_request_count -= 1

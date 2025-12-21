@@ -1,49 +1,49 @@
-# 依赖版本说明
+# Dependency Versions Guide
 
-本文档详细说明了项目的 Python 版本要求、Poetry 依赖管理和版本控制策略。
+This document details the project's Python version requirements, Poetry dependency management, and version control strategy.
 
-## 📦 依赖管理工具
+## 📦 Dependency Management Tool
 
-> ⚠️ **重要提示**: 本项目的依赖关系完全由 **Poetry** 管理。`pyproject.toml` 和 `poetry.lock` 是依赖配置的**唯一事实来源 (Single Source of Truth)**。请勿手动维护 `requirements.txt` 文件。
+> ⚠️ **Important Note**: This project's dependencies are entirely managed by **Poetry**. `pyproject.toml` and `poetry.lock` are the **Single Source of Truth** for dependency configuration. Please do not manually maintain `requirements.txt`.
 
-项目使用 **Poetry** 进行现代化的依赖管理，相比传统的 `requirements.txt` 提供：
+The project uses **Poetry** for modern Python dependency management, offering advantages over traditional `requirements.txt`:
 
-- ✅ **依赖解析**: 自动解决版本冲突
-- ✅ **锁定文件**: `poetry.lock` 确保环境一致性
-- ✅ **虚拟环境**: 自动创建和管理虚拟环境
-- ✅ **依赖分组**: 区分生产依赖和开发依赖
-- ✅ **语义化版本**: 更精确的版本控制
-- ✅ **构建系统**: 内置打包和发布功能
+- ✅ **Dependency Resolution**: Automatically resolves version conflicts
+- ✅ **Lock File**: `poetry.lock` ensures environment consistency
+- ✅ **Virtual Environment**: Automatically creates and manages virtual environments
+- ✅ **Dependency Groups**: Distinguishes between production and development dependencies
+- ✅ **Semantic Versioning**: More precise version control
+- ✅ **Build System**: Built-in packaging and publishing features
 
-## 🐍 Python 版本要求
+## 🐍 Python Version Requirements
 
-### Poetry 配置
+### Poetry Configuration
 
 ```toml
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"
 ```
 
-### 推荐配置
+### Recommended Configuration
 
-- **生产环境**: Python 3.10+ 或 3.11+ (最佳性能和稳定性)
-- **开发环境**: Python 3.11+ 或 3.12+ (获得最佳开发体验)
-- **最低要求**: Python 3.9 (基础功能支持)
+- **Production**: Python 3.10+ or 3.11+ (Best performance and stability)
+- **Development**: Python 3.11+ or 3.12+ (Best development experience)
+- **Minimum Requirement**: Python 3.9 (Basic feature support)
 
-### 版本兼容性矩阵
+### Version Compatibility Matrix
 
-| Python版本 | 支持状态    | 推荐程度 | 主要特性       | 说明                       |
+| Python Version | Support Status | Recommendation | Key Features | Note |
 | ---------- | ----------- | -------- | -------------- | -------------------------- |
-| 3.8        | ❌ 不支持   | 不推荐   | -              | 缺少必要的类型注解特性     |
-| 3.9        | ✅ 完全支持 | 可用     | 基础功能       | 最低支持版本，所有功能正常 |
-| 3.10       | ✅ 完全支持 | 推荐     | 结构化模式匹配 | Docker 默认版本，稳定可靠  |
-| 3.11       | ✅ 完全支持 | 强烈推荐 | 性能优化       | 显著性能提升，类型提示增强 |
-| 3.12       | ✅ 完全支持 | 推荐     | 更快启动       | 更快启动时间，最新稳定特性 |
-| 3.13       | ✅ 完全支持 | 可用     | 最新特性       | 最新版本，开发环境推荐     |
+| 3.8 | ❌ Not Supported | Not Recommended | - | Missing necessary type annotation features |
+| 3.9 | ✅ Fully Supported | Usable | Basic Features | Minimum supported version, all features normal |
+| 3.10 | ✅ Fully Supported | Recommended | Structured Pattern Matching | Docker default version, stable and reliable |
+| 3.11 | ✅ Fully Supported | Highly Recommended | Performance Optimization | Significant performance boost, enhanced type hints |
+| 3.12 | ✅ Fully Supported | Recommended | Faster Startup | Faster startup time, latest stable features |
+| 3.13 | ✅ Fully Supported | Usable | Latest Features | Latest version, recommended for dev environment |
 
-## 📋 Poetry 依赖配置
+## 📋 Poetry Dependency Configuration
 
-### pyproject.toml 结构
+### pyproject.toml Structure
 
 ```toml
 [tool.poetry]
@@ -52,31 +52,31 @@ version = "0.1.0"
 package-mode = false
 
 [tool.poetry.dependencies]
-# 生产依赖
+# Production dependencies
 python = ">=3.9,<4.0"
 fastapi = "==0.115.12"
-# ... 其他依赖
+# ... other dependencies
 
 [tool.poetry.group.dev.dependencies]
-# 开发依赖 (可选安装)
+# Development dependencies (Optional install)
 pytest = "^7.0.0"
 black = "^23.0.0"
-# ... 其他开发工具
+# ... other development tools
 ```
 
-### 版本约束语法
+### Version Constraint Syntax
 
-Poetry 使用语义化版本约束：
+Poetry uses semantic version constraints:
 
-- `==1.2.3` - 精确版本
-- `^1.2.3` - 兼容版本 (>=1.2.3, <2.0.0)
-- `~1.2.3` - 补丁版本 (>=1.2.3, <1.3.0)
-- `>=1.2.3,<2.0.0` - 版本范围
-- `*` - 最新版本
+- `==1.2.3` - Exact version
+- `^1.2.3` - Compatible version (>=1.2.3, <2.0.0)
+- `~1.2.3` - Patch version (>=1.2.3, <1.3.0)
+- `>=1.2.3,<2.0.0` - Version range
+- `*` - Latest version
 
-## 🔧 核心依赖版本
+## 🔧 Core Dependency Versions
 
-### Web 框架相关
+### Web Framework Related
 
 ```toml
 fastapi = "==0.115.12"
@@ -84,25 +84,25 @@ pydantic = ">=2.7.1,<3.0.0"
 uvicorn = "==0.29.0"
 ```
 
-**版本说明**:
+**Version Notes**:
 
-- **FastAPI**: 使用最新稳定版本，包含性能优化和新功能（如 Query/Header/Cookie 参数模型支持）。
-- **Pydantic**: 现代数据验证库，使用版本范围确保兼容性。
-- **Uvicorn**: 高性能 ASGI 服务器。
+- **FastAPI**: Uses latest stable version, includes performance optimizations and new features (like Query/Header/Cookie parameter model support).
+- **Pydantic**: Modern data validation library, uses version range to ensure compatibility.
+- **Uvicorn**: High-performance ASGI server.
 
-### 浏览器自动化
+### Browser Automation
 
 ```toml
 playwright = "*"
 camoufox = {version = "0.4.11", extras = ["geoip"]}
 ```
 
-**版本说明**:
+**Version Notes**:
 
-- **Playwright**: 使用最新版本 (`*`)，确保浏览器兼容性。
-- **Camoufox**: 反指纹检测浏览器，包含地理位置数据扩展。
+- **Playwright**: Uses latest version (`*`) to ensure browser compatibility.
+- **Camoufox**: Anti-fingerprinting browser, includes geoip data extension.
 
-### 网络和安全
+### Network and Security
 
 ```toml
 aiohttp = "~=3.9.5"
@@ -114,14 +114,14 @@ aiosocks = "~=0.2.6"
 python-socks = "~=2.7.1"
 ```
 
-**版本说明**:
+**Version Notes**:
 
-- **aiohttp**: 异步HTTP客户端，允许补丁版本更新。
-- **cryptography**: 加密库，固定版本确保安全性。
-- **websockets**: WebSocket 支持。
-- **requests**: HTTP 客户端库。
+- **aiohttp**: Async HTTP client, allows patch version updates.
+- **cryptography**: Crypto library, fixed version ensures security.
+- **websockets**: WebSocket support.
+- **requests**: HTTP client library.
 
-### 系统工具
+### System Tools
 
 ```toml
 python-dotenv = "==1.0.1"
@@ -131,137 +131,137 @@ Flask = "==3.0.3"
 tzdata = "^2025.2"
 ```
 
-**版本说明**:
+**Version Notes**:
 
-- **uvloop**: 仅在非 Windows 系统安装，显著提升性能。
-- **httptools**: HTTP 解析优化。
-- **python-dotenv**: 环境变量管理。
-- **Flask**: 用于特定功能的轻量级 Web 框架。
-- **tzdata**: 时区数据支持。
+- **uvloop**: Only installed on non-Windows systems, significantly improves performance.
+- **httptools**: HTTP parsing optimization.
+- **python-dotenv**: Environment variable management.
+- **Flask**: Lightweight Web framework for specific features.
+- **tzdata**: Timezone data support.
 
-## 🔄 Poetry 依赖管理命令
+## 🔄 Poetry Dependency Management Commands
 
-### 基础命令
+### Basic Commands
 
 ```bash
-# 安装所有依赖
+# Install all dependencies
 poetry install
 
-# 安装包括开发依赖
+# Install including dev dependencies
 poetry install --with dev
 
-# 添加新依赖
+# Add new dependency
 poetry add package_name
 
-# 添加开发依赖
+# Add dev dependency
 poetry add --group dev package_name
 
-# 移除依赖
+# Remove dependency
 poetry remove package_name
 
-# 更新依赖
+# Update dependencies
 poetry update
 
-# 更新特定依赖
+# Update specific dependency
 poetry update package_name
 
-# 查看依赖树
+# View dependency tree
 poetry show --tree
 
-# 导出 requirements.txt (仅用于构建/兼容性，勿手动编辑)
+# Export requirements.txt (Only for build/compatibility, do not manually edit)
 poetry export -f requirements.txt --output requirements.txt
 ```
 
-### 锁定文件管理
+### Lock File Management
 
 ```bash
-# 更新锁定文件
+# Update lock file
 poetry lock
 
-# 不更新锁定文件的情况下安装
+# Install without updating lock file
 poetry install --no-update
 
-# 检查锁定文件是否最新
+# Check if lock file is up to date
 poetry check
 ```
 
-## 📊 依赖更新策略
+## 📊 Dependency Update Strategy
 
-### 自动更新 (使用 ~ 版本范围)
+### Auto Update (Using ~ version range)
 
-- `aiohttp~=3.9.5` - 允许补丁版本更新 (3.9.5 → 3.9.x)
-- `aiosocks~=0.2.6` - 允许补丁版本更新 (0.2.6 → 0.2.x)
-- `python-socks~=2.7.1` - 允许补丁版本更新 (2.7.1 → 2.7.x)
+- `aiohttp~=3.9.5` - Allows patch version update (3.9.5 → 3.9.x)
+- `aiosocks~=0.2.6` - Allows patch version update (0.2.6 → 0.2.x)
+- `python-socks~=2.7.1` - Allows patch version update (2.7.1 → 2.7.x)
 
-### 固定版本 (使用 == 精确版本)
+### Fixed Version (Using == exact version)
 
-- 核心框架组件 (FastAPI, Uvicorn, python-dotenv)
-- 安全相关库 (cryptography, pyjwt, requests)
-- 稳定性要求高的组件 (websockets, httptools)
+- Core framework components (FastAPI, Uvicorn, python-dotenv)
+- Security related libraries (cryptography, pyjwt, requests)
+- Components requiring high stability (websockets, httptools)
 
-### 兼容版本 (使用版本范围)
+### Compatible Version (Using version range)
 
-- `pydantic>=2.7.1,<3.0.0` - 主版本内兼容更新
+- `pydantic>=2.7.1,<3.0.0` - Compatible update within major version
 
-### 最新版本 (使用 \* 或无限制)
+### Latest Version (Using * or unlimited)
 
-- `playwright = "*"` - 浏览器自动化，需要最新功能
-- `uvloop = "*"` - 性能优化库，持续更新
+- `playwright = "*"` - Browser automation, needs latest features
+- `uvloop = "*"` - Performance optimization library, continuous updates
 
-## 💡 升级注意事项
+## 💡 Upgrade Notes
 
-- **测试验证**: 在升级依赖后，务必在开发环境中运行完整测试套件。
-- **Breaking Changes**: 关注主要框架（如 FastAPI, Pydantic）的版本更新日志，注意潜在的破坏性变更。
-- **安全更新**: 定期检查依赖的安全漏洞更新。
+- **Verification Testing**: After upgrading dependencies, be sure to run the full test suite in the development environment.
+- **Breaking Changes**: Pay attention to version changelogs of major frameworks (like FastAPI, Pydantic) for potential breaking changes.
+- **Security Updates**: Regularly check for security vulnerability updates in dependencies.
 
-## 环境特定配置
+## Environment Specific Configuration
 
-### Docker 环境
+### Docker Environment
 
-- **基础镜像**: `python:3.10-slim-bookworm`
-- **系统依赖**: 自动安装浏览器运行时依赖
-- **Python版本**: 固定为 3.10 (容器内)
+- **Base Image**: `python:3.10-slim-bookworm`
+- **System Dependencies**: Automatically installs browser runtime dependencies
+- **Python Version**: Fixed to 3.10 (Inside container)
 
-### 开发环境
+### Development Environment
 
-- **推荐**: Python 3.11+
-- **虚拟环境**: 强烈推荐使用 venv 或 conda
-- **IDE支持**: 配置了 pyrightconfig.json (Python 3.13)
+- **Recommended**: Python 3.11+
+- **Virtual Environment**: Highly recommended to use venv or conda
+- **IDE Support**: pyrightconfig.json configured (Python 3.13)
 
-### 生产环境
+### Production Environment
 
-- **推荐**: Python 3.10 或 3.11
-- **稳定性**: 使用固定版本依赖
-- **监控**: 定期检查依赖安全更新
+- **Recommended**: Python 3.10 or 3.11
+- **Stability**: Use fixed version dependencies
+- **Monitoring**: Regularly check dependency security updates
 
-## 故障排除
+## Troubleshooting
 
-### 常见版本冲突
+### Common Version Conflicts
 
-1. **Python 3.8 兼容性问题**
-   - 升级到 Python 3.9+
-   - 检查类型提示语法兼容性
+1. **Python 3.8 Compatibility Issue**
+   - Upgrade to Python 3.9+
+   - Check type hint syntax compatibility
 
-2. **依赖版本冲突**
-   - 使用虚拟环境隔离
-   - 清理 pip 缓存: `pip cache purge`
+2. **Dependency Version Conflict**
+   - Use virtual environment isolation
+   - Clear pip cache: `pip cache purge`
 
-3. **系统依赖缺失**
-   - Linux: 安装 `xvfb` 用于虚拟显示
-   - 运行 `playwright install-deps`
+3. **System Dependency Missing**
+   - Linux: Install `xvfb` for virtual display
+   - Run `playwright install-deps`
 
-### 版本检查命令
+### Version Check Commands
 
 ```bash
-# 检查 Python 版本
+# Check Python version
 python --version
 
-# 检查已安装包版本
+# Check installed package versions
 pip list
 
-# 检查过时的包
+# Check outdated packages
 pip list --outdated
 
-# 检查特定包信息
+# Check specific package info
 pip show fastapi
 ```

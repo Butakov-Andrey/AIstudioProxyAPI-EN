@@ -173,7 +173,7 @@ class TestHelperEndpoints:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
-            assert data["message"] == "Helper 配置已保存"
+            assert data["message"] == "Helper configuration saved"
             assert data["config"]["enabled"] is True
             assert data["config"]["endpoint"] == "http://new.example.com"
 

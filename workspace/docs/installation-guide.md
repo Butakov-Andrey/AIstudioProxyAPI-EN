@@ -1,45 +1,45 @@
-# 安装指南
+# Installation Guide
 
-本文档提供基于 Poetry 的详细安装步骤和环境配置说明。
+This document provides detailed installation steps and environment configuration instructions based on Poetry.
 
-## 🔧 系统要求
+## 🔧 System Requirements
 
-### 基础要求
+### Basic Requirements
 
-- **Python**: 3.9+ (推荐 3.10+ 或 3.11+)
-  - **推荐版本**: Python 3.11+ 以获得最佳性能和兼容性
-  - **最低要求**: Python 3.9
-  - **完全支持**: Python 3.9, 3.10, 3.11, 3.12, 3.13
-- **Poetry**: 1.4+ (现代化 Python 依赖管理工具)
-- **Git**: 用于克隆仓库 (推荐)
-- **Google AI Studio 账号**: 需能正常访问和使用
-- **Node.js**: 18+ (可选，用于前端开发。如不需要，可使用 `--skip-frontend-build` 跳过构建)
+- **Python**: 3.9+ (Recommended 3.10+ or 3.11+)
+  - **Recommended Version**: Python 3.11+ for best performance and compatibility
+  - **Minimum Requirement**: Python 3.9
+  - **Fully Supported**: Python 3.9, 3.10, 3.11, 3.12, 3.13
+- **Poetry**: 1.4+ (Modern Python dependency management tool)
+- **Git**: For cloning the repository (Recommended)
+- **Google AI Studio Account**: Must be able to access and use normally
+- **Node.js**: 18+ (Optional, for frontend development. If not needed, use `--skip-frontend-build` to skip build)
 
-### 系统依赖
+### System Dependencies
 
-- **Linux**: `xvfb` (虚拟显示，可选)
+- **Linux**: `xvfb` (Virtual display, optional)
   - Debian/Ubuntu: `sudo apt-get update && sudo apt-get install -y xvfb`
   - Fedora: `sudo dnf install -y xorg-x11-server-Xvfb`
-- **macOS**: 通常无需额外依赖
-- **Windows**: 通常无需额外依赖
+- **macOS**: Usually no extra dependencies required
+- **Windows**: Usually no extra dependencies required
 
-## 🚀 快速安装 (推荐)
+## 🚀 Quick Installation (Recommended)
 
-### 一键安装脚本
+### One-Click Installation Script
 
 ```bash
-# macOS/Linux 用户
+# macOS/Linux Users
 curl -sSL https://raw.githubusercontent.com/CJackHwang/AIstudioProxyAPI/main/scripts/install.sh | bash
 
-# Windows 用户 (PowerShell)
+# Windows Users (PowerShell)
 iwr -useb https://raw.githubusercontent.com/CJackHwang/AIstudioProxyAPI/main/scripts/install.ps1 | iex
 ```
 
-## 📋 手动安装步骤
+## 📋 Manual Installation Steps
 
-### 1. 安装 Poetry
+### 1. Install Poetry
 
-如果您尚未安装 Poetry，请先安装：
+If you haven't installed Poetry yet, please install it first:
 
 ```bash
 # macOS/Linux
@@ -48,253 +48,253 @@ curl -sSL https://install.python-poetry.org | python3 -
 # Windows (PowerShell)
 (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
 
-# 或使用包管理器
+# Or using package managers
 # macOS: brew install poetry
 # Ubuntu/Debian: apt install python3-poetry
 # Windows: winget install Python.Poetry
 ```
 
-### 2. 克隆仓库
+### 2. Clone Repository
 
 ```bash
 git clone https://github.com/CJackHwang/AIstudioProxyAPI.git
 cd AIstudioProxyAPI
 ```
 
-### 3. 安装依赖
+### 3. Install Dependencies
 
-Poetry 会自动创建虚拟环境并安装所有依赖：
+Poetry will automatically create a virtual environment and install all dependencies:
 
 ```bash
-# 安装生产依赖
+# Install production dependencies
 poetry install
 
-# 安装包括开发依赖 (推荐开发者)
+# Install including development dependencies (Recommended for developers)
 poetry install --with dev
 ```
 
-**Poetry 优势**:
+**Poetry Advantages**:
 
-- ✅ 自动创建和管理虚拟环境
-- ✅ 依赖解析和版本锁定 (`poetry.lock`)
-- ✅ 区分生产依赖和开发依赖
-- ✅ 语义化版本控制
+- ✅ Automatically creates and manages virtual environments
+- ✅ Dependency resolution and version locking (`poetry.lock`)
+- ✅ Distinguishes between production and development dependencies
+- ✅ Semantic versioning
 
-### 4. 激活虚拟环境
+### 4. Activate Virtual Environment
 
 ```bash
-# 激活 Poetry 创建的虚拟环境
+# Activate the virtual environment created by Poetry
 poetry env activate
 
-# 或者在每个命令前加上 poetry run
+# Or prefix every command with poetry run
 poetry run python --version
 ```
 
-### 5. 下载 Camoufox 浏览器
+### 5. Download Camoufox Browser
 
 ```bash
-# 在 Poetry 环境中下载 Camoufox 浏览器
+# Download Camoufox browser in Poetry environment
 poetry run camoufox fetch
 
-# 或在激活的环境中
+# Or in the activated environment
 camoufox fetch
 ```
 
-**关键依赖说明** (由 Poetry 自动管理版本):
+**Key Dependencies** (Managed automatically by Poetry versions):
 
-- **FastAPI**: 高性能 Web 框架，提供 API 服务
-- **Pydantic**: 现代数据验证库
-- **Uvicorn**: 高性能 ASGI 服务器
-- **Playwright**: 浏览器自动化、页面交互和网络拦截
-- **Camoufox**: 反指纹检测浏览器，包含 geoip 数据和增强隐蔽性
-- **WebSockets**: 用于实时日志传输、状态监控和 Web UI 通信
-- **aiohttp**: 异步 HTTP 客户端
-- **python-dotenv**: 环境变量管理
+- **FastAPI**: High-performance Web framework, providing API services
+- **Pydantic**: Modern data validation library
+- **Uvicorn**: High-performance ASGI server
+- **Playwright**: Browser automation, page interaction, and network interception
+- **Camoufox**: Anti-fingerprinting browser, includes geoip data and enhanced stealth
+- **WebSockets**: For real-time log transmission, status monitoring, and Web UI communication
+- **aiohttp**: Asynchronous HTTP client
+- **python-dotenv**: Environment variable management
 
-### 6. 安装 Playwright 依赖与浏览器（可选）
+### 6. Install Playwright Dependencies & Browser (Optional)
 
-虽然 Camoufox 使用自己的 Firefox，但在某些 Linux 发行版上可能需要安装系统依赖，或者开发者可能需要标准 Playwright 浏览器进行调试：
+Although Camoufox uses its own Firefox, on some Linux distributions you might need to install system dependencies, or developers might need standard Playwright browsers for debugging:
 
 ```bash
-# 1. 安装系统依赖 (Linux 用户推荐)
+# 1. Install system dependencies (Recommended for Linux users)
 poetry run playwright install-deps firefox
 
-# 2. 安装标准 Playwright 浏览器 (仅用于调试或开发)
+# 2. Install standard Playwright browser (For debugging or development only)
 poetry run playwright install
 ```
 
-如果 `camoufox fetch` 因网络问题失败，可以尝试运行项目中的 [`fetch_camoufox_data.py`](../fetch_camoufox_data.py) 脚本 (详见[故障排除指南](troubleshooting.md))。
+If `camoufox fetch` fails due to network issues, try running the project's [`fetch_camoufox_data.py`](../fetch_camoufox_data.py) script (see [Troubleshooting Guide](troubleshooting.md)).
 
-## 🔍 验证安装
+## 🔍 Verify Installation
 
-### 检查 Poetry 环境
+### Check Poetry Environment
 
 ```bash
-# 查看 Poetry 环境信息
+# View Poetry environment info
 poetry env info
 
-# 查看已安装的依赖
+# View installed dependencies
 poetry show
 
-# 检查 Python 版本
+# Check Python version
 poetry run python --version
 ```
 
-### 检查关键组件
+### Check Key Components
 
 ```bash
-# 检查 Camoufox
+# Check Camoufox
 poetry run camoufox --version
 
-# 检查 FastAPI
+# Check FastAPI
 poetry run python -c "import fastapi; print(f'FastAPI: {fastapi.__version__}')"
 
-# 检查 Playwright
+# Check Playwright
 poetry run python -c "import playwright; print('Playwright: OK')"
 ```
 
-## 🚀 如何启动服务
+## 🚀 How to Start the Service
 
-在您完成安装和环境配置后，强烈建议您先将 `.env.example` 文件复制为 `.env` 并根据您的需求进行修改。这会极大地简化后续的启动命令。
+After completing installation and environment configuration, it is highly recommended to copy `.env.example` to `.env` and modify it according to your needs. This will greatly simplify subsequent startup commands.
 
 ```bash
-# 复制配置模板
+# Copy configuration template
 cp .env.example .env
 
-# 编辑配置文件
-nano .env  # 或使用其他编辑器
+# Edit configuration file
+nano .env  # Or use another editor
 ```
 
-完成配置后，您可以选择以下几种方式启动服务：
+After configuration, you can choose one of the following ways to start the service:
 
-### 1. 命令行启动 (推荐)
+### 1. Command Line Start (Recommended)
 
-对于熟悉命令行的用户，可以直接使用 `launch_camoufox.py` 脚本启动服务。
+For users familiar with the command line, use the `launch_camoufox.py` script to start the service directly.
 
 ```bash
-# 启动无头 (headless) 模式，这是服务器部署的常用方式
+# Start in headless mode, this is the common way for server deployment
 poetry run python launch_camoufox.py --headless
 
-# 启动调试 (debug) 模式，会显示浏览器界面
+# Start in debug mode, shows browser interface
 poetry run python launch_camoufox.py --debug
 ```
 
-您可以通过添加不同的参数来控制启动行为，例如：
+You can control startup behavior by adding different parameters, e.g.:
 
-- `--headless`: 在后台运行浏览器，不显示界面。
-- `--debug`: 启动时显示浏览器界面，方便调试。
-- 更多参数请参阅[高级配置指南](advanced-configuration.md)。
+- `--headless`: Run browser in background, no interface shown.
+- `--debug`: Show browser interface at startup for easy debugging.
+- For more parameters, see [Advanced Configuration Guide](advanced-configuration.md).
 
-### 2. Docker 启动
+### 2. Docker Start
 
-如果您熟悉 Docker，也可以使用容器化方式部署服务。这种方式可以提供更好的环境隔离。
+If you are familiar with Docker, you can also deploy the service using containers. This method provides better environment isolation.
 
-详细的 Docker 启动指南，请参阅：
+For detailed Docker startup instructions, please see:
 
-- **[Docker 部署指南](../docker/README-Docker.md)**
+- **[Docker Deployment Guide](../docker/README-Docker.md)**
 
-## 多平台指南
+## Multi-Platform Guide
 
 ### macOS / Linux
 
-- 通常安装过程比较顺利。确保 Python 和 pip 已正确安装并配置在系统 PATH 中。
-- 使用 `source venv/bin/activate` 激活虚拟环境 (如果未使用 Poetry shell)。
-- `playwright install-deps firefox` 可能需要系统包管理器（如 `apt`, `dnf`, `brew`）安装一些依赖库。如果命令失败，请根据错误提示安装缺失的系统包。
-- 防火墙通常不会阻止本地访问，但如果从其他机器访问，需要确保端口（默认 2048）是开放的。
-- 对于 Linux 用户，可以考虑使用 `--virtual-display` 标志启动 (需要预先安装 `xvfb`)，它会利用 Xvfb 创建一个虚拟显示环境来运行浏览器，这可能有助于进一步降低被检测的风险。
+- Installation is usually smooth. Ensure Python and pip are correctly installed and configured in system PATH.
+- Use `source venv/bin/activate` to activate the virtual environment (if not using Poetry shell).
+- `playwright install-deps firefox` might require system package managers (like `apt`, `dnf`, `brew`) to install some dependency libraries. If the command fails, install missing system packages according to the error prompt.
+- Firewalls usually don't block local access, but if accessing from another machine, ensure the port (default 2048) is open.
+- For Linux users, consider starting with the `--virtual-display` flag (requires pre-installed `xvfb`), which uses Xvfb to create a virtual display environment to run the browser, potentially helping to further reduce detection risks.
 
 ### Windows
 
-#### 原生 Windows
+#### Native Windows
 
-- 确保在安装 Python 时勾选了 "Add Python to PATH" 选项。
-- Windows 防火墙可能会阻止 Uvicorn/FastAPI 监听端口。如果遇到连接问题，请检查防火墙设置。
-- `playwright install-deps` 命令在原生 Windows 上作用有限，但运行 `camoufox fetch` 会确保下载正确的浏览器。
-- **推荐使用 `python launch_camoufox.py --headless` 启动**。
+- Ensure "Add Python to PATH" is checked when installing Python.
+- Windows Firewall might block Uvicorn/FastAPI listening ports. If connection issues occur, check firewall settings.
+- `playwright install-deps` has limited effect on native Windows, but running `camoufox fetch` ensures the correct browser is downloaded.
+- **Recommended to start with `python launch_camoufox.py --headless`**.
 
 #### WSL (Windows Subsystem for Linux)
 
-- **推荐**: 对于习惯 Linux 环境的用户，WSL (特别是 WSL2) 提供了更好的体验。
-- 在 WSL 环境内，按照 **macOS / Linux** 的步骤进行安装。
-- 网络访问注意：
-  - 从 Windows 访问 WSL 服务：通常可以通过 `localhost` 访问。
-  - 从局域网访问：可能需要配置 Windows 防火墙及 WSL 网络设置。
-- 所有命令都应在 WSL 终端内执行。
-- 在 WSL 中运行 `--debug` 模式：如果配置了 WSLg 或 X Server，可以看到浏览器界面。否则建议使用无头模式。
+- **Recommended**: For users used to Linux environments, WSL (especially WSL2) offers a better experience.
+- Inside the WSL environment, follow the **macOS / Linux** steps for installation.
+- Network access notes:
+  - Accessing WSL service from Windows: Usually via `localhost`.
+  - Accessing from LAN: May require configuring Windows Firewall and WSL network settings.
+- All commands should be executed within the WSL terminal.
+- Running `--debug` mode in WSL: If WSLg or X Server is configured, you can see the browser interface. Otherwise, headless mode is recommended.
 
-## 配置环境变量（推荐）
+## Configure Environment Variables (Recommended)
 
-安装完成后，强烈建议配置 `.env` 文件来简化后续使用：
+After installation, it is strongly recommended to configure the `.env` file to simplify future use:
 
-### 创建配置文件
+### Create Configuration File
 
 ```bash
-# 复制配置模板
+# Copy configuration template
 cp .env.example .env
 
-# 编辑配置文件
-nano .env  # 或使用其他编辑器
+# Edit configuration file
+nano .env  # Or use another editor
 ```
 
-### 基本配置示例
+### Basic Configuration Example
 
 ```env
-# 服务端口配置
+# Service Port Configuration
 DEFAULT_FASTAPI_PORT=2048
 STREAM_PORT=3120
 
-# 代理配置（如需要）
+# Proxy Configuration (If needed)
 # UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
 
-# 日志配置
+# Log Configuration
 SERVER_LOG_LEVEL=INFO
 DEBUG_LOGS_ENABLED=false
 ```
 
-配置完成后，启动命令将变得非常简单：
+After configuration, the startup command becomes very simple:
 
 ```bash
-# 简单启动，无需复杂参数
+# Simple start, no complex parameters needed
 python launch_camoufox.py --headless
 ```
 
-详细配置说明请参见 [环境变量配置指南](environment-configuration.md)。
+For detailed configuration instructions, see [Environment Configuration Guide](environment-configuration.md).
 
-## 可选：配置 API 密钥
+## Optional: Configure API Keys
 
-您也可以选择配置 API 密钥来保护您的服务：
+You can also choose to configure API keys to protect your service:
 
-### 创建密钥文件
+### Create Key File
 
-在 `auth_profiles` 目录中创建 `key.txt` 文件（如果它不存在）：
+Create a `key.txt` file in the `auth_profiles` directory (if it doesn't exist):
 
 ```bash
-# 创建目录和密钥文件
+# Create directory and key file
 mkdir -p auth_profiles && touch auth_profiles/key.txt
 
-# 添加密钥（每行一个）
+# Add key (one per line)
 echo "your-first-api-key" >> auth_profiles/key.txt
 ```
 
-### 密钥格式要求
+### Key Format Requirements
 
-- 每行一个密钥
-- 至少 8 个字符
-- 支持空行和注释行（以 `#` 开头）
-- 使用 UTF-8 编码
+- One key per line
+- At least 8 characters
+- Supports empty lines and comment lines (starting with `#`)
+- Use UTF-8 encoding
 
-### 安全说明
+### Security Notes
 
-- **无密钥文件**: 服务不需要认证，任何人都可以访问 API
-- **有密钥文件**: 所有 API 请求都需要提供有效的密钥
-- **密钥保护**: 请妥善保管密钥文件，不要提交到版本控制系统
+- **No Key File**: Service requires no authentication, anyone can access the API
+- **Key File Exists**: All API requests require a valid key
+- **Key Protection**: Keep the key file safe, do not commit it to version control systems
 
-## 下一步
+## Next Steps
 
-安装完成后，请参考：
+After installation is complete, please refer to:
 
-- **[环境变量配置指南](environment-configuration.md)** - ⭐ 推荐先配置
-- [首次运行与认证指南](authentication-setup.md)
-- [日常运行指南](daily-usage.md)
-- [API 使用指南](api-usage.md)
-- [故障排除指南](troubleshooting.md)
+- **[Environment Configuration Guide](environment-configuration.md)** - ⭐ Recommended to configure first
+- [First Run & Authentication Setup](authentication-setup.md)
+- [Daily Usage Guide](daily-usage.md)
+- [API Usage Guide](api-usage.md)
+- [Troubleshooting Guide](troubleshooting.md)

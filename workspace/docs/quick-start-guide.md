@@ -1,76 +1,76 @@
-# 快速开始指南
+# Quick Start Guide
 
-本指南将帮助您快速部署和运行 AI Studio Proxy API，适合新用户快速上手。
-
----
-
-## 🎯 目标
-
-完成本指南后，您将能够：
-
-- ✅ 在本地成功运行 AI Studio Proxy API 服务器
-- ✅ 通过 OpenAI 兼容的 API 访问 Google AI Studio
-- ✅ 使用内置 Web UI 进行测试
-- ✅ 了解基本配置和故障排查
-
-**预计时间**: 15-30 分钟
+This guide helps you quickly deploy and run the AI Studio Proxy API, suitable for new users to get started fast.
 
 ---
 
-## 📋 前置条件
+## 🎯 Goals
 
-在开始之前，请确保您的系统满足以下要求：
+By completing this guide, you will be able to:
 
-- ✅ **Python 3.9+** (推荐 3.10 或 3.11)
-- ✅ **稳定的互联网连接** (访问 Google AI Studio)
-- ✅ **2GB+ 可用内存**
-- ✅ **Google 账号** (用于访问 AI Studio)
+- ✅ Successfully run the AI Studio Proxy API server locally
+- ✅ Access Google AI Studio via an OpenAI-compatible API
+- ✅ Use the built-in Web UI for testing
+- ✅ Understand basic configuration and troubleshooting
 
-### 检查 Python 版本
+**Estimated Time**: 15-30 minutes
+
+---
+
+## 📋 Prerequisites
+
+Before starting, ensure your system meets the following requirements:
+
+- ✅ **Python 3.9+** (Recommended 3.10 or 3.11)
+- ✅ **Stable Internet Connection** (To access Google AI Studio)
+- ✅ **2GB+ Available RAM**
+- ✅ **Google Account** (For accessing AI Studio)
+
+### Check Python Version
 
 ```bash
 python --version
-# 或
+# Or
 python3 --version
 ```
 
-如果版本低于 3.9，请先升级 Python。
+If the version is lower than 3.9, please upgrade Python first.
 
 ---
 
-## 🚀 方式一：一键安装（推荐新手）
+## 🚀 Method 1: One-Click Installation (Recommended for Beginners)
 
 ### macOS / Linux
 
 ```bash
-# 下载并执行安装脚本
+# Download and execute the installation script
 curl -sSL https://raw.githubusercontent.com/CJackHwang/AIstudioProxyAPI/main/scripts/install.sh | bash
 
-# 进入项目目录
+# Enter the project directory
 cd AIstudioProxyAPI
 
-# 跳到"配置服务"步骤
+# Skip to the "Configure Service" step
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-# 下载并执行安装脚本
+# Download and execute the installation script
 iwr -useb https://raw.githubusercontent.com/CJackHwang/AIstudioProxyAPI/main/scripts/install.ps1 | iex
 
-# 进入项目目录
+# Enter the project directory
 cd AIstudioProxyAPI
 
-# 跳到"配置服务"步骤
+# Skip to the "Configure Service" step
 ```
 
 ---
 
-## 📦 方式二：手动安装
+## 📦 Method 2: Manual Installation
 
-### 步骤 1: 安装 Poetry
+### Step 1: Install Poetry
 
-**Poetry** 是现代化的 Python 依赖管理工具，项目使用它管理所有依赖。
+**Poetry** is a modern Python dependency management tool used by this project to manage all dependencies.
 
 #### macOS / Linux
 
@@ -84,7 +84,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
 ```
 
-#### 使用包管理器（可选）
+#### Using Package Managers (Optional)
 
 ```bash
 # macOS (Homebrew)
@@ -97,187 +97,187 @@ apt install python3-poetry
 dnf install poetry
 ```
 
-**验证安装**:
+**Verify Installation**:
 
 ```bash
 poetry --version
 ```
 
-### 步骤 2: 克隆项目
+### Step 2: Clone the Project
 
 ```bash
 git clone https://github.com/CJackHwang/AIstudioProxyAPI.git
 cd AIstudioProxyAPI
 ```
 
-### 步骤 3: 安装依赖
+### Step 3: Install Dependencies
 
 ```bash
-# Poetry 会自动创建虚拟环境并安装所有依赖
+# Poetry will automatically create a virtual environment and install all dependencies
 poetry install
 ```
 
-这个过程可能需要几分钟，请耐心等待。
+This process may take a few minutes, please wait patiently.
 
-### 步骤 4: 激活虚拟环境
+### Step 4: Activate Virtual Environment
 
-有两种方式激活虚拟环境：
+There are two ways to activate the virtual environment:
 
-**方式 A: 进入 Shell (推荐日常使用)**
+**Method A: Enter Shell (Recommended for daily use)**
 
 ```bash
 poetry shell
 ```
 
-激活后，您的命令提示符会显示虚拟环境名称。
+After activation, your command prompt will show the virtual environment name.
 
-**方式 B: 使用 `poetry run` (推荐自动化)**
+**Method B: Use `poetry run` (Recommended for automation)**
 
 ```bash
-# 每次运行命令时加上 poetry run 前缀
+# Add the poetry run prefix every time you run a command
 poetry run python launch_camoufox.py --headless
 ```
 
 ---
 
-## ⚙️ 配置服务
+## ⚙️ Configure Service
 
-### 步骤 1: 创建配置文件
+### Step 1: Create Configuration File
 
 ```bash
-# 复制配置模板
+# Copy the configuration template
 cp .env.example .env
 ```
 
-### 步骤 2: 编辑配置 (可选)
+### Step 2: Edit Configuration (Optional)
 
 ```bash
-# 使用您喜欢的编辑器
+# Use your preferred editor
 nano .env
-# 或
+# Or
 code .env
-# 或
+# Or
 vim .env
 ```
 
-**基本配置示例**:
+**Basic Configuration Example**:
 
 ```env
-# 服务端口（默认 2048）
+# Service Port (Default 2048)
 PORT=2048
 
-# 流式代理端口（默认 3120，设为 0 禁用）
+# Streaming Proxy Port (Default 3120, set to 0 to disable)
 STREAM_PORT=3120
 
-# 代理配置（如果需要）
+# Proxy Configuration (If needed)
 UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
 
-# 日志级别（DEBUG, INFO, WARNING, ERROR）
+# Log Level (DEBUG, INFO, WARNING, ERROR)
 SERVER_LOG_LEVEL=INFO
 ```
 
-**💡 提示**: 首次运行可以使用默认配置，稍后根据需要调整。
+**💡 Tip**: You can use the default configuration for the first run and adjust it later as needed.
 
 ---
 
-## 🔐 首次认证
+## 🔐 Initial Authentication
 
-首次运行需要进行 Google 账号认证，获取访问 AI Studio 所需的 Cookie。
+Authentication with a Google account is required for the first run to obtain the Cookies needed to access AI Studio.
 
-### 配置认证保存
+### Configure Auth Saving
 
-在 `.env` 文件中确保设置了自动保存认证：
+Ensure automatic auth saving is set in the `.env` file:
 
 ```env
-# [IMPORTANT] 必须设置为 true 才能保存认证配置文件！
+# [IMPORTANT] Must be set to true to save auth profiles!
 AUTO_SAVE_AUTH=true
 ```
 
-### 使用调试模式认证
+### Use Debug Mode for Authentication
 
 ```bash
-# 启动调试模式（会打开浏览器窗口）
+# Start debug mode (will open a browser window)
 poetry run python launch_camoufox.py --debug
 ```
 
-### 认证步骤
+### Authentication Steps
 
-1. **浏览器窗口打开** - Camoufox 浏览器会自动打开
-2. **登录 Google 账号** - 在浏览器中登录您的 Google 账号
-3. **访问 AI Studio** - 浏览器会自动导航到 AI Studio 页面
-4. **等待保存** - 认证信息会自动保存到 `auth_profiles/saved/` 目录
-5. **查看日志** - 终端会显示认证文件保存成功的消息
+1. **Browser Window Opens** - Camoufox browser will open automatically.
+2. **Login to Google Account** - Log in to your Google account in the browser.
+3. **Access AI Studio** - The browser will automatically navigate to the AI Studio page.
+4. **Wait for Save** - Authentication information will be automatically saved to the `auth_profiles/saved/` directory.
+5. **Check Logs** - The terminal will display a message indicating the auth file was saved successfully.
 
-**成功标志**:
+**Success Indicator**:
 
 ```
-✅ 认证文件已保存到: auth_profiles/saved/XXXXXXXX.json
+✅ Auth file saved to: auth_profiles/saved/XXXXXXXX.json
 ```
 
-### 激活认证文件
+### Activate Auth File
 
-将保存的认证文件移动到 `active` 目录：
+Move the saved auth file to the `active` directory:
 
 ```bash
-# 将认证文件从 saved 移到 active
+# Move auth file from saved to active
 mv auth_profiles/saved/*.json auth_profiles/active/
 ```
 
-### 关闭调试模式
+### Close Debug Mode
 
-认证完成后，按 `Ctrl+C` 停止调试模式服务器。
+After authentication is complete, press `Ctrl+C` to stop the debug mode server.
 
 ---
 
-## 🎮 日常运行
+## 🎮 Daily Operation
 
-认证完成后，您有多种方式启动服务：
+After authentication is complete, you have multiple ways to start the service:
 
-### 方式 1: 命令行启动（推荐）
+### Method 1: Command Line Start (Recommended)
 
-**无头模式**（推荐，后台运行浏览器）:
+**Headless Mode** (Recommended, runs browser in background):
 
 ```bash
 poetry run python launch_camoufox.py --headless
 ```
 
-**普通模式**（显示浏览器窗口）:
+**Normal Mode** (Shows browser window):
 
 ```bash
 poetry run python launch_camoufox.py
 ```
 
-**虚拟显示模式**（Linux 无显示环境）:
+**Virtual Display Mode** (For Linux headless environments):
 
 ```bash
 poetry run python launch_camoufox.py --virtual-display
 ```
 
-### 方式 2: 直接启动 FastAPI (开发调试)
+### Method 2: Direct FastAPI Start (Development/Debug)
 
 ```bash
-# 仅启动 API 服务器（不启动浏览器）
+# Start only the API server (does not start browser)
 poetry run python -m uvicorn server:app --host 0.0.0.0 --port 2048
 ```
 
-**注意**: 这种方式需要手动配置 `CAMOUFOX_WS_ENDPOINT` 环境变量。
+**Note**: This method requires manually configuring the `CAMOUFOX_WS_ENDPOINT` environment variable.
 
 ---
 
-## 🧪 测试服务
+## 🧪 Test Service
 
-### 1. 健康检查
+### 1. Health Check
 
-打开浏览器或使用 `curl`:
+Open a browser or use `curl`:
 
 ```bash
-# 检查服务状态
+# Check service status
 curl http://127.0.0.1:2048/health
 
-# 预期输出（成功）
+# Expected Output (Success)
 {
   "status": "OK",
-  "message": "服务运行中;队列长度: 0。",
+  "message": "Service running; Queue length: 0.",
   "details": {
     "isPlaywrightReady": true,
     "isBrowserConnected": true,
@@ -288,12 +288,12 @@ curl http://127.0.0.1:2048/health
 }
 ```
 
-### 2. 查看模型列表
+### 2. View Model List
 
 ```bash
 curl http://127.0.0.1:2048/v1/models
 
-# 预期输出
+# Expected Output
 {
   "object": "list",
   "data": [
@@ -308,9 +308,9 @@ curl http://127.0.0.1:2048/v1/models
 }
 ```
 
-### 3. 测试聊天接口
+### 3. Test Chat Interface
 
-**非流式请求**:
+**Non-Streaming Request**:
 
 ```bash
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
@@ -324,7 +324,7 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   }'
 ```
 
-**流式请求**:
+**Streaming Request**:
 
 ```bash
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
@@ -338,169 +338,169 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   }' --no-buffer
 ```
 
-### 4. 使用内置 Web UI
+### 4. Use Built-in Web UI
 
-打开浏览器访问:
+Open a browser and visit:
 
 ```
 http://127.0.0.1:2048
 ```
 
-**Web UI 功能**:
+**Web UI Features**:
 
-- 💬 实时聊天测试
-- 📊 服务状态监控
-- 🔑 API 密钥管理
-- 📝 实时日志查看
+- 💬 Real-time chat testing
+- 📊 Service status monitoring
+- 🔑 API key management
+- 📝 Real-time log viewing
 
 ---
 
-## 🔧 常见问题
+## 🔧 Common Issues
 
-### 问题 1: 端口被占用
+### Issue 1: Port Occupied
 
-**错误信息**:
+**Error Message**:
 
 ```
 Error: Address already in use
 ```
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 查找占用端口的进程
+# Find the process occupying the port
 # Windows
 netstat -ano | findstr 2048
 
 # macOS/Linux
 lsof -i :2048
 
-# 修改 .env 文件使用其他端口
+# Modify .env file to use another port
 PORT=3048
 ```
 
-### 问题 2: 认证文件过期
+### Issue 2: Auth File Expired
 
-**现象**: 服务启动后无法访问 AI Studio，日志显示认证错误。
+**Symptom**: Unable to access AI Studio after service start, logs show authentication error.
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 1. 删除旧的认证文件
+# 1. Delete old auth files
 rm -rf auth_profiles/active/*.json
 
-# 2. 重新运行调试模式认证
+# 2. Re-run debug mode authentication
 poetry run python launch_camoufox.py --debug
 
-# 3. 重新登录 Google 账号
+# 3. Re-login to Google Account
 ```
 
-### 问题 3: 无法安装 Camoufox
+### Issue 3: Unable to Install Camoufox
 
-**错误信息**:
+**Error Message**:
 
 ```
 Error downloading Camoufox binary
 ```
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 方案 A: 使用项目提供的下载脚本
+# Option A: Use the provided download script
 poetry run python fetch_camoufox_data.py
 
-# 方案 B: 手动下载（需要代理）
+# Option B: Manual download (Requires proxy)
 export HTTPS_PROXY=http://127.0.0.1:7890
 poetry run camoufox fetch
 
-# 方案 C: 使用不带 geoip 的版本
+# Option C: Use version without geoip
 pip install camoufox --no-deps
 ```
 
-### 问题 4: Playwright 依赖缺失（Linux）
+### Issue 4: Playwright Dependencies Missing (Linux)
 
-**错误信息**:
+**Error Message**:
 
 ```
 Error: libgbm-dev not found
 ```
 
-**解决方案**:
+**Solution**:
 
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
 sudo apt-get install -y libgbm-dev libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2
 
-# 或使用 Playwright 自动安装
+# Or use Playwright auto-install
 playwright install-deps
 ```
 
-### 问题 5: 模型列表为空
+### Issue 5: Model List Empty
 
-**现象**: `/v1/models` 返回空列表或只有默认模型。
+**Symptom**: `/v1/models` returns an empty list or only default models.
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 1. 检查服务状态
+# 1. Check service status
 curl http://127.0.0.1:2048/health
 
-# 2. 查看日志
+# 2. View logs
 tail -f logs/app.log
 
-# 3. 检查认证文件
+# 3. Check auth files
 ls -la auth_profiles/active/
 
-# 4. 等待服务完全启动（可能需要 30-60 秒）
+# 4. Wait for service to fully start (may take 30-60 seconds)
 ```
 
 ---
 
-## 📚 下一步
+## 📚 Next Steps
 
-恭喜！您已经成功运行了 AI Studio Proxy API。
+Congratulations! You have successfully run the AI Studio Proxy API.
 
-### 推荐阅读
+### Recommended Reading
 
-1. **[环境变量配置指南](environment-configuration.md)** - 了解所有配置选项
-2. **[API 使用指南](api-usage.md)** - 学习如何使用 API
-3. **[OpenAI 兼容性说明](openai-compatibility.md)** - 了解与 OpenAI API 的差异
-4. **[Web UI 使用指南](webui-guide.md)** - 探索 Web UI 功能
+1. **[Environment Configuration Guide](environment-configuration.md)** - Understand all configuration options
+2. **[API Usage Guide](api-usage.md)** - Learn how to use the API
+3. **[OpenAI Compatibility Note](openai-compatibility.md)** - Understand differences from OpenAI API
+4. **[Web UI Guide](webui-guide.md)** - Explore Web UI features
 
-### 高级话题
+### Advanced Topics
 
-- **[Docker 部署](../docker/README-Docker.md)** - 使用 Docker 容器化部署
-- **[流式处理模式详解](streaming-modes.md)** - 理解三层响应获取机制
-- **[高级配置](advanced-configuration.md)** - 性能优化和高级功能
-- **[故障排除指南](troubleshooting.md)** - 更多问题解决方案
-
----
-
-## 🆘 获取帮助
-
-如果遇到问题，可以：
-
-1. **查看文档** - 本项目包含详细的文档
-2. **查看日志** - `logs/app.log` 包含详细的运行日志
-3. **检查快照** - `errors_py/` 目录包含错误时的页面快照
-4. **提交 Issue** - [GitHub Issues](https://github.com/CJackHwang/AIstudioProxyAPI/issues)
-5. **社区讨论** - [Linux.do 社区](https://linux.do/)
+- **[Docker Deployment](../docker/README-Docker.md)** - Deploy using Docker containers
+- **[Streaming Modes Explained](streaming-modes.md)** - Understand the three-layer response mechanism
+- **[Advanced Configuration](advanced-configuration.md)** - Performance optimization and advanced features
+- **[Troubleshooting Guide](troubleshooting.md)** - More solutions to problems
 
 ---
 
-## 🎉 成功运行检查清单
+## 🆘 Get Help
 
-- [ ] 服务成功启动，无错误日志
-- [ ] `/health` 端点返回 `"status": "OK"`
-- [ ] `/v1/models` 返回模型列表
-- [ ] 成功完成一次聊天请求（非流式）
-- [ ] 成功完成一次聊天请求（流式）
-- [ ] Web UI 可以正常访问
-- [ ] 能够查看实时日志
+If you encounter problems, you can:
 
-全部勾选？🎊 恭喜您已经掌握了基本用法！
+1. **Check Documentation** - This project contains detailed documentation
+2. **Check Logs** - `logs/app.log` contains detailed runtime logs
+3. **Check Snapshots** - `errors_py/` directory contains page snapshots on error
+4. **Submit Issue** - [GitHub Issues](https://github.com/CJackHwang/AIstudioProxyAPI/issues)
+5. **Community Discussion** - [Linux.do Community](https://linux.do/)
 
 ---
 
-祝您使用愉快！如有问题，欢迎反馈。
+## 🎉 Success Checklist
+
+- [ ] Service started successfully, no error logs
+- [ ] `/health` endpoint returns `"status": "OK"`
+- [ ] `/v1/models` returns model list
+- [ ] Successfully completed one chat request (non-streaming)
+- [ ] Successfully completed one chat request (streaming)
+- [ ] Web UI is accessible
+- [ ] Real-time logs are visible
+
+All checked? 🎊 Congratulations, you have mastered the basic usage!
+
+---
+
+Enjoy using it! Feedback is welcome if you have any questions.

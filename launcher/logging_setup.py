@@ -11,20 +11,20 @@ logger = logging.getLogger("CamoufoxLauncher")
 
 def setup_launcher_logging(log_level: int = logging.INFO) -> None:
     """
-    设置启动器日志系统 (使用 GridFormatter)
+    Set up launcher logging system (using GridFormatter)
 
     Args:
-        log_level: 日志级别
+        log_level: Log level
     """
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    # 设置 source 为 LAUNCHER
+    # Set source to LAUNCHER
     set_source("LAUNCHER")
 
-    # 使用 PlainGridFormatter 用于文件日志
+    # Use PlainGridFormatter for file logging
     file_log_formatter = PlainGridFormatter()
 
-    # 使用 GridFormatter 用于控制台 (彩色输出)
+    # Use GridFormatter for console (colored output)
     console_log_formatter = GridFormatter(show_tree=True, colorize=True)
 
     if logger.hasHandlers():
@@ -52,5 +52,5 @@ def setup_launcher_logging(log_level: int = logging.INFO) -> None:
     stream_handler.setFormatter(console_log_formatter)
     logger.addHandler(stream_handler)
 
-    logger.info(f"日志级别设置为: {logging.getLevelName(logger.getEffectiveLevel())}")
-    logger.debug(f"日志文件路径: {LAUNCHER_LOG_FILE_PATH}")
+    logger.info(f"Log level set to: {logging.getLevelName(logger.getEffectiveLevel())}")
+    logger.debug(f"Log file path: {LAUNCHER_LOG_FILE_PATH}")

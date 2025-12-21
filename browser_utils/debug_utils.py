@@ -434,7 +434,7 @@ async def save_comprehensive_snapshot(
         page: Playwright page instance
         error_name: Base error name (e.g., "stream_post_button_check_disconnect")
         req_id: Request ID
-        error_stage: Description of error stage (e.g., "流式响应后按钮状态检查")
+        error_stage: Description of error stage (e.g., "Post-stream response button state check")
         additional_context: Extra context to include in metadata
         locators: Dict of named locators to capture states for
         error_exception: Exception object (if available)
@@ -736,7 +736,7 @@ async def save_error_snapshot_enhanced(
         or page_to_snapshot.is_closed()
     ):
         logger.warning(
-            f"[{req_id}] 浏览器/页面不可用 ({base_error_name})，保存最小化快照..."
+            f"[{req_id}] Browser/page unavailable ({base_error_name}), saving minimal snapshot..."
         )
         # Fallback to minimal snapshot
         from browser_utils.operations_modules.errors import save_minimal_snapshot

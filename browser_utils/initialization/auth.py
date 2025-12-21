@@ -1,8 +1,8 @@
 # --- browser_utils/initialization/auth.py ---
 """
-认证保存模块 - 简化版
+Authentication Saving Module - Simplified Version
 
-处理登录后的认证状态保存。自动保存到 SAVED_AUTH_DIR。
+Handles saving authentication state after login. Automatically saves to SAVED_AUTH_DIR.
 """
 
 import asyncio
@@ -16,16 +16,18 @@ logger = logging.getLogger("AIStudioProxyServer")
 
 
 async def wait_for_model_list_and_handle_auth_save(temp_context, launch_mode, loop):
-    """等待模型列表响应并处理认证保存"""
+    """Wait for model list response and handle authentication saving"""
     import server
 
-    # 等待模型列表响应，确认登录成功
-    logger.info("等待模型列表响应以确认登录成功...")
+    # Wait for model list response to confirm login success
+    logger.info("Waiting for model list response to confirm login success...")
     try:
         await asyncio.wait_for(server.model_list_fetch_event.wait(), timeout=30.0)
-        logger.info("检测到模型列表响应，登录确认成功！")
+        logger.info("Model list response detected, login confirmed!")
     except asyncio.TimeoutError:
-        logger.warning("等待模型列表响应超时，但继续处理认证保存...")
+        logger.warning(
+            "Timeout waiting for model list response, but continuing with auth save..."
+        )
 
     # Determine filename: env var > auto-generate
     filename = os.environ.get("SAVE_AUTH_FILENAME", "").strip()
@@ -36,7 +38,7 @@ async def wait_for_model_list_and_handle_auth_save(temp_context, launch_mode, lo
 
 
 async def _save_auth_state(temp_context, filename: str):
-    """统一的认证保存函数"""
+    """Unified authentication saving function"""
     os.makedirs(SAVED_AUTH_DIR, exist_ok=True)
 
     if not filename.endswith(".json"):
@@ -44,16 +46,16 @@ async def _save_auth_state(temp_context, filename: str):
     auth_save_path = os.path.join(SAVED_AUTH_DIR, filename)
 
     print("\n" + "=" * 50, flush=True)
-    print("登录成功！将自动保存认证状态...", flush=True)
+    print("Login successful! Saving authentication state...", flush=True)
 
     try:
         await temp_context.storage_state(path=auth_save_path)
-        logger.info(f"认证状态已保存到: {auth_save_path}")
-        print(f"认证状态已保存到: {auth_save_path}", flush=True)
+        logger.info(f"Authentication state saved to: {auth_save_path}")
+        print(f"Authentication state saved to: {auth_save_path}", flush=True)
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"保存认证状态失败: {e}", exc_info=True)
-        print(f"保存认证状态失败: {e}", flush=True)
+        logger.error(f"Failed to save authentication state: {e}", exc_info=True)
+        print(f"Failed to save authentication state: {e}", flush=True)
 
     print("=" * 50 + "\n", flush=True)

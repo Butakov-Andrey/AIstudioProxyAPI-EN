@@ -18,8 +18,8 @@ class TestReadIndex:
     @pytest.mark.asyncio
     async def test_read_index_react_exists(self):
         """
-        测试场景: React index.html 存在
-        预期: 返回 FileResponse with React index.html
+        Test scenario: React index.html exists
+        Expected: Return FileResponse with React index.html
         """
         from api_utils.routers.static import read_index
 
@@ -33,8 +33,8 @@ class TestReadIndex:
     @pytest.mark.asyncio
     async def test_read_index_not_built(self):
         """
-        测试场景: React build 不存在
-        预期: 返回 503 错误 (Service Unavailable)
+        Test scenario: React build does not exist
+        Expected: Return 503 error (Service Unavailable)
         """
         from api_utils.routers.static import read_index
 
@@ -55,8 +55,8 @@ class TestServeReactAssets:
     @pytest.mark.asyncio
     async def test_serve_react_assets_js(self):
         """
-        测试场景: JS asset 存在
-        预期: 返回 FileResponse with application/javascript media type
+        Test scenario: JS asset exists
+        Expected: Return FileResponse with application/javascript media type
         """
         from api_utils.routers.static import serve_react_assets
 
@@ -71,8 +71,8 @@ class TestServeReactAssets:
     @pytest.mark.asyncio
     async def test_serve_react_assets_css(self):
         """
-        测试场景: CSS asset 存在
-        预期: 返回 FileResponse with text/css media type
+        Test scenario: CSS asset exists
+        Expected: Return FileResponse with text/css media type
         """
         from api_utils.routers.static import serve_react_assets
 
@@ -87,8 +87,8 @@ class TestServeReactAssets:
     @pytest.mark.asyncio
     async def test_serve_react_assets_map(self):
         """
-        测试场景: Source map asset 存在
-        预期: 返回 FileResponse with application/json media type
+        Test scenario: Source map asset exists
+        Expected: Return FileResponse with application/json media type
         """
         from api_utils.routers.static import serve_react_assets
 
@@ -103,8 +103,8 @@ class TestServeReactAssets:
     @pytest.mark.asyncio
     async def test_serve_react_assets_not_found(self):
         """
-        测试场景: Asset 不存在
-        预期: 返回 404 错误
+        Test scenario: Asset not found
+        Expected: Return 404 error
         """
         from api_utils.routers.static import serve_react_assets
 
@@ -124,8 +124,8 @@ class TestGetStaticFilesApp:
 
     def test_get_static_files_app_exists(self):
         """
-        测试场景: Assets 目录存在
-        预期: 返回 StaticFiles 实例 (或 None if directory doesn't actually exist)
+        Test scenario: Assets directory exists
+        Expected: Return StaticFiles instance (or None if directory doesn't actually exist)
         """
         from api_utils.routers.static import get_static_files_app
 
@@ -137,8 +137,8 @@ class TestGetStaticFilesApp:
 
     def test_get_static_files_app_not_exists(self):
         """
-        测试场景: Assets 目录不存在
-        预期: 返回 None
+        Test scenario: Assets directory does not exist
+        Expected: Return None
         """
         from api_utils.routers.static import get_static_files_app
 
@@ -154,8 +154,8 @@ class TestDirectoryTraversalProtection:
     @pytest.mark.asyncio
     async def test_serve_react_assets_traversal_blocked(self):
         """
-        测试场景: 尝试目录遍历攻击
-        预期: 返回 403 错误
+        Test scenario: Attempt directory traversal attack
+        Expected: Return 403 error
         """
         from api_utils.routers.static import serve_react_assets
 
@@ -181,8 +181,8 @@ class TestDirectoryTraversalProtection:
     @pytest.mark.asyncio
     async def test_serve_react_assets_additional_mime_types(self):
         """
-        测试场景: 额外的 MIME 类型支持
-        预期: 正确识别更多文件类型
+        Test scenario: Additional MIME type support
+        Expected: Correctly identify more file types
         """
         from api_utils.routers.static import serve_react_assets
 

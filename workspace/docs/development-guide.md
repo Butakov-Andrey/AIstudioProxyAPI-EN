@@ -1,162 +1,162 @@
-# 开发者指南
+# Developer Guide
 
-本文档面向希望参与项目开发、贡献代码或深度定制功能的开发者。
+This document is intended for developers who wish to participate in project development, contribute code, or deeply customize features.
 
-## 🛠️ 开发环境设置
+## 🛠️ Development Environment Setup
 
-### 前置要求
+### Prerequisites
 
-- **Python**: ≥3.9, <4.0 (推荐 3.10+)
-- **Poetry**: 依赖管理工具
-- **Node.js**: ≥18 (用于前端开发，可选)
-- **Git**: 版本控制
+- **Python**: ≥3.9, <4.0 (Recommended 3.10+)
+- **Poetry**: Dependency management tool
+- **Node.js**: ≥18 (For frontend development, optional)
+- **Git**: Version control
 
-> **提示**: 如果不进行前端开发，可以使用 `--skip-frontend-build` 或设置 `SKIP_FRONTEND_BUILD=1` 跳过前端构建。
+> **Tip**: If not doing frontend development, you can use `--skip-frontend-build` or set `SKIP_FRONTEND_BUILD=1` to skip frontend build.
 
-### 快速开始
+### Quick Start
 
 ```bash
-# 克隆项目
+# Clone project
 git clone https://github.com/CJackHwang/AIstudioProxyAPI.git
 cd AIstudioProxyAPI
 
-# 安装 Poetry
+# Install Poetry
 curl -sSL https://install.python-poetry.org | python3 -
 
-# 安装依赖 (包括开发依赖)
+# Install dependencies (including dev dependencies)
 poetry install --with dev
 
-# 激活虚拟环境
+# Activate virtual environment
 poetry shell
 ```
 
 ---
 
-## 📁 项目结构
+## 📁 Project Structure
 
-> 详细架构说明请参阅 [项目架构指南](architecture-guide.md)
+> For detailed architecture description, see [Project Architecture Guide](architecture-guide.md)
 
 ```
 AIstudioProxyAPI/
-├── api_utils/              # FastAPI 应用核心
-│   ├── app.py             # 应用入口
-│   ├── routers/           # API 路由 (chat, health, models 等)
+├── api_utils/              # FastAPI application core
+│   ├── app.py             # Application entry
+│   ├── routers/           # API routers (chat, health, models, etc.)
 │   ├── request_processor.py
 │   └── queue_worker.py
-├── browser_utils/          # 浏览器自动化
+├── browser_utils/          # Browser automation
 │   ├── page_controller.py
-│   ├── page_controller_modules/  # Mixin 子模块
-│   ├── initialization/    # 初始化模块
-│   └── operations_modules/ # 操作子模块
-├── launcher/               # 启动器模块
-├── config/                 # 配置管理
-├── models/                 # 数据模型
-├── stream/                 # 流式代理
-├── logging_utils/          # 日志工具
-├── tests/                  # 测试目录
-├── pyproject.toml         # Poetry 配置
-└── pyrightconfig.json     # Pyright 配置
+│   ├── page_controller_modules/  # Mixin submodules
+│   ├── initialization/    # Initialization module
+│   └── operations_modules/ # Operation submodules
+├── launcher/               # Launcher module
+├── config/                 # Configuration management
+├── models/                 # Data models
+├── stream/                 # Streaming proxy
+├── logging_utils/          # Logging tools
+├── tests/                  # Test directory
+├── pyproject.toml         # Poetry configuration
+└── pyrightconfig.json     # Pyright configuration
 ```
 
 ---
 
-## 🔧 依赖管理 (Poetry)
+## 🔧 Dependency Management (Poetry)
 
-### 常用命令
+### Common Commands
 
 ```bash
-# 查看依赖树
+# View dependency tree
 poetry show --tree
 
-# 添加依赖
+# Add dependency
 poetry add package_name
-poetry add --group dev package_name  # 开发依赖
+poetry add --group dev package_name  # Dev dependency
 
-# 更新依赖
+# Update dependencies
 poetry update
 
-# 导出 requirements.txt
+# Export requirements.txt
 poetry export -f requirements.txt --output requirements.txt
 ```
 
-### 虚拟环境
+### Virtual Environment
 
 ```bash
-# 查看环境信息
+# View environment info
 poetry env info
 
-# 激活环境
+# Activate environment
 poetry shell
 
-# 运行命令
+# Run command
 poetry run python script.py
 ```
 
 ---
 
-## 🎨 前端开发 (React)
+## 🎨 Frontend Development (React)
 
-前端使用 React + Vite + TypeScript 构建。
+Frontend is built using React + Vite + TypeScript.
 
-### 开发模式
+### Development Mode
 
 ```bash
 cd static/frontend
 
-# 安装依赖
+# Install dependencies
 npm install
 
-# 开发服务器 (热重载)
+# Development server (Hot Reload)
 npm run dev
 
-# 构建生产版本
+# Build production version
 npm run build
 
-# 运行测试
+# Run tests
 npm run test
 ```
 
-### 跳过前端构建
+### Skip Frontend Build
 
-如果只进行后端开发，可以跳过前端构建：
+If only doing backend development, you can skip frontend build:
 
 ```bash
-# 命令行方式
+# Command line method
 python -m launcher.runner --skip-frontend-build
 
-# 环境变量方式
+# Environment variable method
 SKIP_FRONTEND_BUILD=1 python -m launcher.runner
 ```
 
-### 配置文件
+### Configuration Files
 
-| 文件                               | 用途            |
+| File | Usage |
 | ---------------------------------- | --------------- |
-| `static/frontend/package.json`     | 依赖和脚本配置  |
-| `static/frontend/vite.config.ts`   | Vite 构建配置   |
-| `static/frontend/tsconfig.json`    | TypeScript 配置 |
-| `static/frontend/vitest.config.ts` | Vitest 测试配置 |
+| `static/frontend/package.json` | Dependencies and scripts config |
+| `static/frontend/vite.config.ts` | Vite build config |
+| `static/frontend/tsconfig.json` | TypeScript config |
+| `static/frontend/vitest.config.ts` | Vitest test config |
 
 ---
 
-## 🔍 类型检查 (Pyright)
+## 🔍 Type Checking (Pyright)
 
-项目使用 Pyright 进行类型检查。
+The project uses Pyright for type checking.
 
-### 运行检查
+### Run Check
 
 ```bash
-# 检查整个项目
+# Check entire project
 pyright
 
-# 检查特定文件
+# Check specific file
 pyright api_utils/app.py
 
-# 监视模式
+# Watch mode
 pyright --watch
 ```
 
-### 配置
+### Configuration
 
 `pyrightconfig.json`:
 
@@ -170,136 +170,136 @@ pyright --watch
 
 ---
 
-## 🧪 测试
+## 🧪 Testing
 
-### ⚠️ 防挂起协议
+### ⚠️ Anti-Hang Protocol
 
-项目严格执行防挂起协议：
+The project strictly enforces anti-hang protocol:
 
-1. **强制超时**: 全局 `timeout = 120` (在 `pyproject.toml`)
-2. **资源清理**: Fixtures 必须在 `yield` 后关闭资源
-3. **Async 安全**: 禁止吞掉 `asyncio.CancelledError`
+1. **Forced Timeout**: Global `timeout = 120` (in `pyproject.toml`)
+2. **Resource Cleanup**: Fixtures must close resources after `yield`
+3. **Async Safety**: Forbid swallowing `asyncio.CancelledError`
 
-### 运行测试
+### Run Tests
 
 ```bash
-# 运行所有测试
+# Run all tests
 poetry run pytest
 
-# 运行特定测试
+# Run specific test
 poetry run pytest tests/test_api.py
 
-# 覆盖率报告
+# Coverage report
 poetry run pytest --cov=api_utils --cov-report=html
 ```
 
 ---
 
-## 🔄 开发工作流程
+## 🔄 Development Workflow
 
-### 1. 代码格式化
+### 1. Code Formatting
 
 ```bash
-# Ruff 格式化和 Lint
+# Ruff format and Lint
 poetry run ruff check .
 poetry run ruff format .
 ```
 
-### 2. 类型检查
+### 2. Type Checking
 
 ```bash
 pyright
 ```
 
-### 3. 运行测试
+### 3. Run Tests
 
 ```bash
 poetry run pytest
 ```
 
-### 4. 提交代码
+### 4. Commit Code
 
 ```bash
 git add .
-git commit -m "feat: 添加新功能"
+git commit -m "feat: Add new feature"
 git push origin feature-branch
 ```
 
 ---
 
-## 📝 代码规范
+## 📝 Code Standards
 
-### 命名规范
+### Naming Conventions
 
-| 类型   | 规范         | 示例                   |
+| Type | Convention | Example |
 | ------ | ------------ | ---------------------- |
-| 文件名 | `snake_case` | `request_processor.py` |
-| 类名   | `PascalCase` | `QueueManager`         |
-| 函数名 | `snake_case` | `process_request`      |
-| 常量   | `UPPER_CASE` | `DEFAULT_PORT`         |
+| File Name | `snake_case` | `request_processor.py` |
+| Class Name | `PascalCase` | `QueueManager` |
+| Function Name | `snake_case` | `process_request` |
+| Constant | `UPPER_CASE` | `DEFAULT_PORT` |
 
-### 文档字符串
+### Docstrings
 
 ```python
 def process_request(request: ChatRequest) -> ChatResponse:
     """
-    处理聊天请求
+    Process chat request
 
     Args:
-        request: 聊天请求对象
+        request: Chat request object
 
     Returns:
-        ChatResponse: 聊天响应对象
+        ChatResponse: Chat response object
 
     Raises:
-        ValidationError: 当请求数据无效时
+        ValidationError: When request data is invalid
     """
     pass
 ```
 
 ---
 
-## 🧭 新增端点规范
+## 🧭 New Endpoint Standards
 
-1. 在 `api_utils/routers/` 下创建对应模块
-2. 在 `api_utils/routers/__init__.py` 中重导出
-3. 使用 `api_utils.error_utils` 构造错误
-4. 环境变量使用 `config.get_environment_variable`
+1. Create corresponding module under `api_utils/routers/`
+2. Re-export in `api_utils/routers/__init__.py`
+3. Use `api_utils.error_utils` to construct errors
+4. Use `config.get_environment_variable` for environment variables
 
-### 错误码规范
+### Error Code Standards
 
-| 错误码 | 场景                 |
+| Error Code | Scenario |
 | ------ | -------------------- |
-| 499    | 客户端断开/取消      |
-| 502    | 上游/Playwright 失败 |
-| 503    | 服务不可用           |
-| 504    | 处理超时             |
+| 499 | Client disconnected/cancelled |
+| 502 | Upstream/Playwright failed |
+| 503 | Service unavailable |
+| 504 | Processing timeout |
 
 ---
 
-## 🤝 贡献指南
+## 🤝 Contribution Guide
 
-### 提交 Pull Request
+### Submit Pull Request
 
-1. Fork 项目
-2. 创建分支: `git checkout -b feature/amazing-feature`
-3. 提交: `git commit -m 'feat: 添加功能'`
-4. 推送: `git push origin feature/amazing-feature`
-5. 创建 Pull Request
+1. Fork the project
+2. Create branch: `git checkout -b feature/amazing-feature`
+3. Commit: `git commit -m 'feat: Add feature'`
+4. Push: `git push origin feature/amazing-feature`
+5. Create Pull Request
 
-### 代码审查清单
+### Code Review Checklist
 
-- [ ] 代码遵循项目规范
-- [ ] 添加了必要测试
-- [ ] 测试通过
-- [ ] 类型检查通过
-- [ ] 文档已更新
+- [ ] Code follows project standards
+- [ ] Added necessary tests
+- [ ] Tests passed
+- [ ] Type check passed
+- [ ] Documentation updated
 
 ---
 
-## 🔗 相关资源
+## 🔗 Related Resources
 
-- [Poetry 文档](https://python-poetry.org/docs/)
-- [Pyright 文档](https://github.com/microsoft/pyright)
-- [FastAPI 文档](https://fastapi.tiangolo.com/)
-- [Playwright 文档](https://playwright.dev/python/)
+- [Poetry Documentation](https://python-poetry.org/docs/)
+- [Pyright Documentation](https://github.com/microsoft/pyright)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Playwright Documentation](https://playwright.dev/python/)

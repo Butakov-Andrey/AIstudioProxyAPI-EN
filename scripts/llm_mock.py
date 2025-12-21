@@ -188,7 +188,7 @@ def print_request_params(data: Dict[str, Any], endpoint: str) -> None:
 
     messages_info = []
     for msg in data.get("messages", []):
-        role = msg.get("role", "未知")
+        role = msg.get("role", "unknown")
         content = msg.get("content", "")
         content_preview = content[:50] + "..." if len(content) > 50 else content
         messages_info.append(f"[{role}] {content_preview}")

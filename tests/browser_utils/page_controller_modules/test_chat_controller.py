@@ -381,7 +381,7 @@ async def test_execute_chat_clear_wait_disappear_timeout(
                 clear_btn, confirm_btn, overlay, mock_check_disconnect
             )
 
-        assert "达到最大重试次数" in str(excinfo.value)
+        assert "Maximum retries reached" in str(excinfo.value)
 
 
 # ==================== New Tests for Improved Coverage ====================
@@ -838,7 +838,7 @@ async def test_execute_chat_clear_overlay_appear_timeout(
                 )
                 pytest.fail("Should have raised Exception")
             except Exception as e:
-                assert "等待清空聊天确认遮罩层超时" in str(e)
+                assert "Timed out waiting for clear chat confirmation overlay" in str(e)
 
             # Verify snapshot saved
             mock_save_snapshot.assert_awaited_once()
@@ -1016,7 +1016,7 @@ async def test_execute_chat_clear_disappear_client_disconnected(
 
         # Verify info log about disconnect
         mock_page_controller.logger.info.assert_any_call(
-            "客户端在等待清空确认对话框消失时断开连接。"
+            "Client disconnected while waiting for clear confirmation dialog to disappear."
         )
 
 
@@ -1289,7 +1289,7 @@ async def test_chat_tag_on_clear_start(
 async def test_chat_tag_on_button_available(
     chat_controller, mock_page_controller, mock_expect_async, mock_enable_temp_chat
 ):
-    """Verify [Chat] 清空按钮可用 log is issued."""
+    """Verify [Chat] clear button available log is issued."""
     mock_check_disconnect = MagicMock(return_value=False)
 
     submit_btn = MagicMock()
@@ -1304,19 +1304,20 @@ async def test_chat_tag_on_button_available(
     ):
         await chat_controller.clear_chat_history(mock_check_disconnect)
 
-        # Verify [Chat] 清空按钮可用 log
+        # Verify [Chat] clear button available log
         debug_calls = [
             str(call) for call in mock_page_controller.logger.debug.call_args_list
         ]
         assert any(
-            "清空按钮可用" in str(call) or "[Chat]" in str(call) for call in debug_calls
+            "clear button available" in str(call).lower() or "[Chat]" in str(call)
+            for call in debug_calls
         )
 
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
 async def test_chat_tag_on_verify_success(chat_controller, mock_page_controller):
-    """Verify [Chat] 验证通过 log on successful verification."""
+    """Verify [Chat] verification passed log on successful verification."""
     mock_check_disconnect = MagicMock(return_value=False)
 
     response_container = MagicMock()
@@ -1330,10 +1331,11 @@ async def test_chat_tag_on_verify_success(chat_controller, mock_page_controller)
 
         await chat_controller._verify_chat_cleared(mock_check_disconnect)
 
-        # Verify [Chat] 验证通过 log
+        # Verify [Chat] verification passed log
         debug_calls = [
             str(call) for call in mock_page_controller.logger.debug.call_args_list
         ]
         assert any(
-            "验证通过" in str(call) or "[Chat]" in str(call) for call in debug_calls
+            "verification passed" in str(call).lower() or "[Chat]" in str(call)
+            for call in debug_calls
         )

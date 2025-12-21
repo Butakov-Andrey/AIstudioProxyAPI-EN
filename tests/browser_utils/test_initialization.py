@@ -202,7 +202,7 @@ async def test_init_storage_state_explicit_exists(
 @pytest.mark.asyncio
 async def test_init_storage_state_explicit_missing(mock_browser):
     with patch("os.path.exists", return_value=False):
-        with pytest.raises(RuntimeError, match="指定的认证文件不存在"):
+        with pytest.raises(RuntimeError, match="Specified auth file does not exist"):
             await _initialize_page_logic(
                 mock_browser, storage_state_path="/path/to/missing.json"
             )
@@ -246,7 +246,7 @@ async def test_init_headless_auth_invalid(mock_browser):
         ),
         patch("os.path.exists", return_value=False),
     ):
-        with pytest.raises(RuntimeError, match="headless 模式认证文件无效"):
+        with pytest.raises(RuntimeError, match="headless mode auth file invalid"):
             await _initialize_page_logic(mock_browser)
 
 
@@ -483,7 +483,7 @@ async def test_init_login_headless_fail(mock_browser, mock_browser_context, mock
 
         with pytest.raises(RuntimeError) as exc:
             await _initialize_page_logic(mock_browser)
-        assert "无头模式认证失败" in str(exc.value)
+        assert "Auth failed in headless mode" in str(exc.value)
 
 
 @pytest.mark.asyncio
@@ -593,7 +593,9 @@ async def test_init_login_interactive_fail_still_login_page(
             return_value="https://accounts.google.com/signin"
         )
 
-        with pytest.raises(RuntimeError, match="手动登录尝试后仍在登录页面"):
+        with pytest.raises(
+            RuntimeError, match="Still on login page after manual login attempt"
+        ):
             await _initialize_page_logic(mock_browser)
 
 
@@ -757,7 +759,9 @@ async def test_init_generic_exception_cleanup(mock_browser, mock_browser_context
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             side_effect=Exception("Setup Fail"),
         ):
-            with pytest.raises(RuntimeError, match="页面初始化意外错误"):
+            with pytest.raises(
+                RuntimeError, match="Unexpected page initialization error"
+            ):
                 await _initialize_page_logic(mock_browser)
 
             # Verify context was closed

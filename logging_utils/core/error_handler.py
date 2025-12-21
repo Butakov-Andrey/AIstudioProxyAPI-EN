@@ -79,13 +79,15 @@ def log_error(
                 )
             except RuntimeError:
                 # No running event loop - can't save async snapshot
-                logger.debug("[Snapshot] 无法保存错误快照: 无运行事件循环")
+                logger.debug(
+                    "[Snapshot] Cannot save error snapshot: no running event loop"
+                )
         except ImportError:
             # debug_utils not available (e.g., in tests or standalone mode)
             pass
         except Exception as snapshot_err:
             # Don't let snapshot failures break the main error handling
-            logger.debug(f"[Snapshot] 保存错误快照失败: {snapshot_err}")
+            logger.debug(f"[Snapshot] Failed to save error snapshot: {snapshot_err}")
 
 
 def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
@@ -207,7 +209,7 @@ def setup_global_exception_handlers(
         try:
             loop = asyncio.get_running_loop()
             loop.set_exception_handler(_asyncio_exception_handler)
-            logger.debug("[Init] 全局异常处理器已安装 (Asyncio)")
+            logger.debug("[Init] Global exception handlers installed (Asyncio)")
         except RuntimeError:
             # No running event loop yet - will be installed when loop starts
             # This is common during module import
@@ -217,7 +219,7 @@ def setup_global_exception_handlers(
         # Python 3.8+
         if hasattr(threading, "excepthook"):
             threading.excepthook = _threading_exception_handler
-            logger.debug("[Init] 全局异常处理器已安装 (Threading)")
+            logger.debug("[Init] Global exception handlers installed (Threading)")
 
 
 def install_asyncio_handler_on_loop(loop: asyncio.AbstractEventLoop) -> None:

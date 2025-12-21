@@ -1,33 +1,33 @@
-# 客户端集成示例
+# Client Integration Examples
 
-本文档提供各种编程语言和客户端工具集成 AI Studio Proxy API 的示例代码。
+This document provides example code for integrating AI Studio Proxy API with various programming languages and client tools.
 
 ---
 
-## 📋 目录
+## 📋 Table of Contents
 
-- [cURL 命令行](#curl-命令行)
+- [cURL Command Line](#curl-command-line)
 - [Python](#python)
 - [JavaScript / Node.js](#javascript--nodejs)
-- [客户端工具](#客户端工具)
+- [Client Tools](#client-tools)
 
 ---
 
-## cURL 命令行
+## cURL Command Line
 
-### 健康检查
+### Health Check
 
 ```bash
 curl http://127.0.0.1:2048/health
 ```
 
-### 获取模型列表
+### Get Model List
 
 ```bash
 curl http://127.0.0.1:2048/v1/models
 ```
 
-### 非流式聊天请求
+### Non-Streaming Chat Request
 
 ```bash
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
@@ -38,7 +38,7 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
     "messages": [
       {
         "role": "user",
-        "content": "你好，请介绍一下自己"
+        "content": "Hello, please introduce yourself"
       }
     ],
     "stream": false,
@@ -47,7 +47,7 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   }'
 ```
 
-### 流式聊天请求 (SSE)
+### Streaming Chat Request (SSE)
 
 ```bash
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
@@ -58,14 +58,14 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
     "messages": [
       {
         "role": "user",
-        "content": "请讲一个关于人工智能的故事"
+        "content": "Tell me a story about AI"
       }
     ],
     "stream": true
   }' --no-buffer
 ```
 
-### 带参数的请求
+### Request with Parameters
 
 ```bash
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
@@ -75,11 +75,11 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
     "messages": [
       {
         "role": "system",
-        "content": "你是一位专业的 Python 开发者"
+        "content": "You are a professional Python developer"
       },
       {
         "role": "user",
-        "content": "如何使用 asyncio 实现并发?"
+        "content": "How to implement concurrency using asyncio?"
       }
     ],
     "stream": false,
@@ -94,32 +94,32 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
 
 ## Python
 
-### 使用 OpenAI SDK
+### Using OpenAI SDK
 
-#### 安装
+#### Installation
 
 ```bash
 pip install openai
 ```
 
-#### 基本用法
+#### Basic Usage
 
 ```python
 from openai import OpenAI
 
-# 初始化客户端
+# Initialize client
 client = OpenAI(
     base_url="http://127.0.0.1:2048/v1",
-    api_key="your-api-key"  # 如果服务器不需要认证，可以是任意值
+    api_key="your-api-key"  # Can be any value if server doesn't require auth
 )
 
-# 非流式请求
+# Non-streaming request
 def basic_chat():
     response = client.chat.completions.create(
         model="gemini-1.5-pro",
         messages=[
-            {"role": "system", "content": "你是一个有用的助手"},
-            {"role": "user", "content": "什么是 FastAPI?"}
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": "What is FastAPI?"}
         ]
     )
 
@@ -128,7 +128,7 @@ def basic_chat():
 basic_chat()
 ```
 
-#### 流式响应
+#### Streaming Response
 
 ```python
 from openai import OpenAI
@@ -142,7 +142,7 @@ def streaming_chat():
     stream = client.chat.completions.create(
         model="gemini-1.5-pro",
         messages=[
-            {"role": "user", "content": "请讲一个关于机器学习的故事"}
+            {"role": "user", "content": "Tell me a story about machine learning"}
         ],
         stream=True
     )
@@ -151,12 +151,12 @@ def streaming_chat():
     for chunk in stream:
         if chunk.choices[0].delta.content:
             print(chunk.choices[0].delta.content, end="", flush=True)
-    print()  # 换行
+    print()  # Newline
 
 streaming_chat()
 ```
 
-#### 带参数的请求
+#### Request with Parameters
 
 ```python
 from openai import OpenAI
@@ -170,22 +170,22 @@ def advanced_chat():
     response = client.chat.completions.create(
         model="gemini-1.5-pro",
         messages=[
-            {"role": "system", "content": "你是一个 Python 专家"},
-            {"role": "user", "content": "解释装饰器的工作原理"}
+            {"role": "system", "content": "You are a Python expert"},
+            {"role": "user", "content": "Explain how decorators work"}
         ],
         temperature=0.7,
         max_tokens=2048,
         top_p=0.9,
-        stop=["\n\n用户:", "\n\n助手:"]
+        stop=["\n\nUser:", "\n\nAssistant:"]
     )
 
     print(response.choices[0].message.content)
-    print(f"\n使用的 tokens: {response.usage.total_tokens}")
+    print(f"\nTokens used: {response.usage.total_tokens}")
 
 advanced_chat()
 ```
 
-#### 错误处理
+#### Error Handling
 
 ```python
 from openai import OpenAI, APIError, APIConnectionError
@@ -198,7 +198,7 @@ client = OpenAI(
 )
 
 def chat_with_retry(messages, max_retries=3):
-    """带重试机制的聊天"""
+    """Chat with retry mechanism"""
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
@@ -208,35 +208,35 @@ def chat_with_retry(messages, max_retries=3):
             return response.choices[0].message.content
 
         except APIConnectionError as e:
-            print(f"连接错误 (尝试 {attempt + 1}/{max_retries}): {e}")
+            print(f"Connection error (Attempt {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)  # 指数退避
+                time.sleep(2 ** attempt)  # Exponential backoff
                 continue
             raise
 
         except APIError as e:
-            print(f"API 错误: {e}")
+            print(f"API Error: {e}")
             raise
 
-# 使用示例
+# Usage example
 try:
     result = chat_with_retry([
-        {"role": "user", "content": "你好"}
+        {"role": "user", "content": "Hello"}
     ])
     print(result)
 except Exception as e:
-    print(f"请求失败: {e}")
+    print(f"Request failed: {e}")
 ```
 
-### 使用 requests 库
+### Using requests Library
 
-#### 安装
+#### Installation
 
 ```bash
 pip install requests
 ```
 
-#### 非流式请求
+#### Non-Streaming Request
 
 ```python
 import requests
@@ -251,7 +251,7 @@ def chat_non_streaming():
     data = {
         "model": "gemini-1.5-pro",
         "messages": [
-            {"role": "user", "content": "什么是深度学习?"}
+            {"role": "user", "content": "What is Deep Learning?"}
         ],
         "stream": False
     }
@@ -262,12 +262,12 @@ def chat_non_streaming():
         result = response.json()
         print(result['choices'][0]['message']['content'])
     else:
-        print(f"错误 {response.status_code}: {response.text}")
+        print(f"Error {response.status_code}: {response.text}")
 
 chat_non_streaming()
 ```
 
-#### 流式请求 (SSE)
+#### Streaming Request (SSE)
 
 ```python
 import requests
@@ -282,7 +282,7 @@ def chat_streaming():
     data = {
         "model": "gemini-1.5-pro",
         "messages": [
-            {"role": "user", "content": "请讲一个故事"}
+            {"role": "user", "content": "Tell me a story"}
         ],
         "stream": True
     }
@@ -294,7 +294,7 @@ def chat_streaming():
         if line:
             line = line.decode('utf-8')
             if line.startswith('data: '):
-                data_str = line[6:]  # 移除 'data: ' 前缀
+                data_str = line[6:]  # Remove 'data: ' prefix
 
                 if data_str.strip() == '[DONE]':
                     print("\n")
@@ -317,21 +317,21 @@ chat_streaming()
 
 ## JavaScript / Node.js
 
-> **注意**: 以下代码示例展示了如何作为**客户端**连接到 AI Studio Proxy API。这些代码旨在您的应用程序中运行，用于向 Proxy 服务器发送请求，而不是作为服务器代码运行。
+> **Note**: The following code examples show how to connect to the AI Studio Proxy API as a **client**. These codes are intended to run in your application to send requests to the Proxy server, not to run as server code.
 
-### 使用 OpenAI SDK
+### Using OpenAI SDK
 
-#### 安装
+#### Installation
 
 ```bash
 npm install openai
 ```
 
-#### 基本用法
+#### Basic Usage
 
 ```javascript
-// 注意：此示例使用 ES Modules 语法。
-// 如果您使用 CommonJS (require)，请改用: const OpenAI = require('openai');
+// Note: This example uses ES Modules syntax.
+// If you use CommonJS (require), use: const OpenAI = require('openai');
 import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -339,13 +339,13 @@ const client = new OpenAI({
   apiKey: "your-api-key",
 });
 
-// 非流式请求
+// Non-streaming request
 async function basicChat() {
   const response = await client.chat.completions.create({
     model: "gemini-1.5-pro",
     messages: [
-      { role: "system", content: "你是一个有用的助手" },
-      { role: "user", content: "什么是 Node.js?" },
+      { role: "system", content: "You are a helpful assistant" },
+      { role: "user", content: "What is Node.js?" },
     ],
   });
 
@@ -355,7 +355,7 @@ async function basicChat() {
 basicChat();
 ```
 
-#### 流式响应
+#### Streaming Response
 
 ```javascript
 import OpenAI from "openai";
@@ -368,7 +368,7 @@ const client = new OpenAI({
 async function streamingChat() {
   const stream = await client.chat.completions.create({
     model: "gemini-1.5-pro",
-    messages: [{ role: "user", content: "请讲一个关于编程的故事" }],
+    messages: [{ role: "user", content: "Tell me a story about programming" }],
     stream: true,
   });
 
@@ -383,7 +383,7 @@ async function streamingChat() {
 streamingChat();
 ```
 
-#### 错误处理
+#### Error Handling
 
 ```javascript
 import OpenAI from "openai";
@@ -391,7 +391,7 @@ import OpenAI from "openai";
 const client = new OpenAI({
   baseURL: "http://127.0.0.1:2048/v1",
   apiKey: "your-api-key",
-  timeout: 60 * 1000, // 60秒超时
+  timeout: 60 * 1000, // 60s timeout
 });
 
 async function chatWithRetry(messages, maxRetries = 3) {
@@ -404,10 +404,10 @@ async function chatWithRetry(messages, maxRetries = 3) {
 
       return response.choices[0].message.content;
     } catch (error) {
-      console.error(`尝试 ${attempt + 1}/${maxRetries} 失败:`, error.message);
+      console.error(`Attempt ${attempt + 1}/${maxRetries} failed:`, error.message);
 
       if (attempt < maxRetries - 1) {
-        // 指数退避
+        // Exponential backoff
         await new Promise((resolve) =>
           setTimeout(resolve, 2 ** attempt * 1000),
         );
@@ -419,22 +419,22 @@ async function chatWithRetry(messages, maxRetries = 3) {
   }
 }
 
-// 使用示例
-chatWithRetry([{ role: "user", content: "你好" }])
+// Usage example
+chatWithRetry([{ role: "user", content: "Hello" }])
   .then((result) => {
     console.log(result);
   })
   .catch((error) => {
-    console.error("请求失败:", error);
+    console.error("Request failed:", error);
   });
 ```
 
-### 使用 Fetch API
+### Using Fetch API
 
-> **注意**: Node.js 18+ 内置了 fetch API。如果您使用旧版本，可能需要安装 `node-fetch`。
+> **Note**: Node.js 18+ has built-in fetch API. If you use an older version, you may need to install `node-fetch`.
 
 ```javascript
-// 非流式请求
+// Non-streaming request
 async function chatNonStreaming() {
   const response = await fetch("http://127.0.0.1:2048/v1/chat/completions", {
     method: "POST",
@@ -444,7 +444,7 @@ async function chatNonStreaming() {
     },
     body: JSON.stringify({
       model: "gemini-1.5-pro",
-      messages: [{ role: "user", content: "什么是 JavaScript?" }],
+      messages: [{ role: "user", content: "What is JavaScript?" }],
       stream: false,
     }),
   });
@@ -453,7 +453,7 @@ async function chatNonStreaming() {
   console.log(data.choices[0].message.content);
 }
 
-// 流式请求
+// Streaming request
 async function chatStreaming() {
   const response = await fetch("http://127.0.0.1:2048/v1/chat/completions", {
     method: "POST",
@@ -463,7 +463,7 @@ async function chatStreaming() {
     },
     body: JSON.stringify({
       model: "gemini-1.5-pro",
-      messages: [{ role: "user", content: "请讲一个故事" }],
+      messages: [{ role: "user", content: "Tell me a story" }],
       stream: true,
     }),
   });
@@ -492,7 +492,7 @@ async function chatStreaming() {
           const content = parsed.choices[0]?.delta?.content || "";
           process.stdout.write(content);
         } catch (e) {
-          // 忽略解析错误
+          // Ignore parse errors
         }
       }
     }
@@ -505,54 +505,54 @@ chatStreaming();
 
 ---
 
-## 客户端工具
+## Client Tools
 
 ### Open WebUI
 
-**配置步骤**:
+**Configuration Steps**:
 
-1. 打开 Open WebUI
-2. 进入 "设置" → "连接"
-3. 在 "模型" 部分，点击 "添加模型"
-4. 配置如下:
-   - **模型名称**: `aistudio-gemini`
-   - **API 基础 URL**: `http://127.0.0.1:2048/v1`
-   - **API 密钥**: 输入有效密钥或留空（根据服务器配置）
-5. 保存设置
+1. Open Open WebUI
+2. Go to "Settings" -> "Connections"
+3. In "Models" section, click "Add Model"
+4. Configure as follows:
+   - **Model Name**: `aistudio-gemini`
+   - **API Base URL**: `http://127.0.0.1:2048/v1`
+   - **API Key**: Enter valid key or leave blank (depending on server config)
+5. Save settings
 
 ### ChatBox
 
-**配置步骤**:
+**Configuration Steps**:
 
-1. 打开 ChatBox
-2. 进入 "设置" → "AI 提供商"
-3. 选择 "OpenAI API"
-4. 配置如下:
-   - **API 域名**: `http://127.0.0.1:2048`
-   - **API 密钥**: 输入有效密钥
-   - **模型**: 从下拉列表选择模型
-5. 保存设置
+1. Open ChatBox
+2. Go to "Settings" -> "AI Provider"
+3. Select "OpenAI API"
+4. Configure as follows:
+   - **API Domain**: `http://127.0.0.1:2048`
+   - **API Key**: Enter valid key
+   - **Model**: Select model from dropdown
+5. Save settings
 
 ### LobeChat
 
-**配置步骤**:
+**Configuration Steps**:
 
-1. 打开 LobeChat
-2. 点击右上角设置图标
-3. 进入 "语言模型" 设置
-4. 选择 "OpenAI"
-5. 配置如下:
-   - **API 地址**: `http://127.0.0.1:2048/v1`
-   - **API Key**: 输入有效密钥
-6. 保存设置
+1. Open LobeChat
+2. Click settings icon on top right
+3. Go to "Language Model" settings
+4. Select "OpenAI"
+5. Configure as follows:
+   - **API Proxy URL**: `http://127.0.0.1:2048/v1`
+   - **API Key**: Enter valid key
+6. Save settings
 
-### Continue (VS Code 扩展)
+### Continue (VS Code Extension)
 
-**配置步骤**:
+**Configuration Steps**:
 
-1. 在 VS Code 中安装 Continue 扩展
-2. 打开 Continue 设置 (JSON)
-3. 添加配置:
+1. Install Continue extension in VS Code
+2. Open Continue settings (JSON)
+3. Add configuration:
 
 ```json
 {
@@ -568,15 +568,15 @@ chatStreaming();
 }
 ```
 
-4. 保存并重载 VS Code
+4. Save and reload VS Code
 
 ---
 
-## 最佳实践
+## Best Practices
 
-### 1. 错误处理
+### 1. Error Handling
 
-始终实现错误处理和重试机制：
+Always implement error handling and retry mechanisms:
 
 ```python
 def robust_chat(client, messages, max_retries=3):
@@ -594,26 +594,26 @@ def robust_chat(client, messages, max_retries=3):
             time.sleep(2 ** attempt)
 ```
 
-### 2. 超时设置
+### 2. Timeout Settings
 
-为请求设置合理的超时时间：
+Set reasonable timeouts for requests:
 
 ```python
 client = OpenAI(
     base_url="http://127.0.0.1:2048/v1",
     api_key="your-api-key",
-    timeout=60.0  # 60秒超时
+    timeout=60.0  # 60s timeout
 )
 ```
 
-### 3. 流式处理
+### 3. Streaming
 
-对于长文本生成，优先使用流式响应：
+Prefer streaming response for long text generation:
 
 ```python
 stream = client.chat.completions.create(
     model="gemini-1.5-pro",
-    messages=[{"role": "user", "content": "写一篇长文"}],
+    messages=[{"role": "user", "content": "Write a long article"}],
     stream=True
 )
 
@@ -623,23 +623,23 @@ for chunk in stream:
         print(content, end="", flush=True)
 ```
 
-### 4. 参数调优
+### 4. Parameter Tuning
 
-根据场景调整参数：
+Adjust parameters based on scenario:
 
 ```python
-# 创意写作 - 高温度
+# Creative Writing - High Temperature
 response = client.chat.completions.create(
     model="gemini-1.5-pro",
-    messages=[{"role": "user", "content": "写一首诗"}],
+    messages=[{"role": "user", "content": "Write a poem"}],
     temperature=0.9,
     max_tokens=2048
 )
 
-# 技术问答 - 低温度
+# Technical Q&A - Low Temperature
 response = client.chat.completions.create(
     model="gemini-1.5-pro",
-    messages=[{"role": "user", "content": "什么是REST API?"}],
+    messages=[{"role": "user", "content": "What is REST API?"}],
     temperature=0.3,
     max_tokens=1024
 )
@@ -647,59 +647,59 @@ response = client.chat.completions.create(
 
 ---
 
-## 故障排除
+## Troubleshooting
 
-### 连接错误
+### Connection Error
 
-**问题**: 无法连接到服务器
+**Issue**: Unable to connect to server
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 检查服务器是否运行
+# Check if server is running
 curl http://127.0.0.1:2048/health
 
-# 检查端口是否正确
-# 如果使用自定义端口，需要修改 base_url
+# Check if port is correct
+# If using custom port, modify base_url
 ```
 
-### 认证错误
+### Authentication Error
 
-**问题**: 401 Unauthorized
+**Issue**: 401 Unauthorized
 
-**解决方案**:
+**Solution**:
 
 ```python
-# 确保提供了有效的 API 密钥
+# Ensure valid API key is provided
 client = OpenAI(
     base_url="http://127.0.0.1:2048/v1",
-    api_key="your-valid-api-key"  # 使用有效密钥
+    api_key="your-valid-api-key"  # Use valid key
 )
 ```
 
-### 超时错误
+### Timeout Error
 
-**问题**: 请求超时
+**Issue**: Request timeout
 
-**解决方案**:
+**Solution**:
 
 ```python
-# 增加超时时间
+# Increase timeout duration
 client = OpenAI(
     base_url="http://127.0.0.1:2048/v1",
     api_key="your-api-key",
-    timeout=120.0  # 增加到 120 秒
+    timeout=120.0  # Increase to 120 seconds
 )
 ```
 
 ---
 
-## 相关文档
+## Related Documentation
 
-- [API 使用指南](api-usage.md) - 详细的 API 端点说明
-- [OpenAI 兼容性说明](openai-compatibility.md) - 兼容性和限制
-- [故障排除指南](troubleshooting.md) - 常见问题解决
+- [API Usage Guide](api-usage.md) - Detailed API endpoint description
+- [OpenAI Compatibility Note](openai-compatibility.md) - Compatibility and limitations
+- [Troubleshooting Guide](troubleshooting.md) - Common issue solutions
 
 ---
 
-如有问题或需要更多示例，请提交 Issue。
+If you have questions or need more examples, please submit an Issue.

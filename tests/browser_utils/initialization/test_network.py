@@ -302,7 +302,8 @@ async def test_inject_models_no_array_found():
         # Should return unmodified data and log warning
         assert result == data
         assert any(
-            "未找到模型数组" in str(call) for call in mock_logger.warning.call_args_list
+            "Models array structure not found" in str(call)
+            for call in mock_logger.warning.call_args_list
         )
 
 
@@ -332,7 +333,8 @@ async def test_inject_models_no_template_found():
         # Should return unmodified data and log warning
         assert result == data
         assert any(
-            "未找到模板模型" in str(call) for call in mock_logger.warning.call_args_list
+            "Template model not found" in str(call)
+            for call in mock_logger.warning.call_args_list
         )
 
 

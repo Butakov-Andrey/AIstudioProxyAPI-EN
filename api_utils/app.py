@@ -152,14 +152,16 @@ async def _start_stream_proxy():
         try:
             ready_signal = await asyncio.to_thread(state.STREAM_QUEUE.get, timeout=15)
             if ready_signal == "READY":
-                state.logger.info("✅ Received 'READY' signal from STREAM proxy.")
+                state.logger.info(
+                    "[SUCCESS] Received 'READY' signal from STREAM proxy."
+                )
             else:
                 state.logger.warning(
                     f"Received unexpected signal from proxy: {ready_signal}"
                 )
         except queue.Empty:
             state.logger.error(
-                "❌ Timed out waiting for STREAM proxy to become ready. Startup will likely fail."
+                "[ERROR] Timed out waiting for STREAM proxy to become ready. Startup will likely fail."
             )
             raise RuntimeError("STREAM proxy failed to start in time.")
 
@@ -276,7 +278,7 @@ async def lifespan(app: FastAPI):
         else:
             raise RuntimeError("Failed to initialize browser/page, worker not started.")
 
-        logger.info("👀 Starting Quota Watchdog Task...")
+        logger.info("[WATCHDOG] Starting Quota Watchdog Task...")
         app.state.watchdog_task = asyncio.create_task(server.quota_watchdog())
 
         startup_duration = time.time() - startup_start_time
@@ -290,7 +292,7 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("Shutting down server...")
         if hasattr(app.state, "watchdog_task"):
-            logger.info("💤 Stopping Quota Watchdog...")
+            logger.info("[STOP] Stopping Quota Watchdog...")
             app.state.watchdog_task.cancel()
             try:
                 await app.state.watchdog_task
@@ -337,7 +339,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 content={
                     "error": {
-                        "message": "Invalid or missing API key.",
+                        "message": "Invalid or missing API key. Please provide a valid API key using 'Authorization: Bearer <your_key>' or 'X-API-Key: <your_key>' header.",
                         "type": "invalid_request_error",
                         "param": None,
                         "code": "invalid_api_key",

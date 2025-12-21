@@ -1,112 +1,112 @@
-# 高级配置指南
+# Advanced Configuration Guide
 
-本文档介绍项目的高级配置选项和功能。
+This document introduces advanced configuration options and features of the project.
 
-## 代理配置管理
+## Proxy Configuration Management
 
-### 代理配置优先级
+### Proxy Configuration Priority
 
-项目采用统一的代理配置管理系统，按以下优先级顺序确定代理设置：
+The project uses a unified proxy configuration management system, determining proxy settings in the following priority order:
 
-1. **`--internal-camoufox-proxy` 命令行参数** (最高优先级)
-   - 明确指定代理：`--internal-camoufox-proxy 'http://127.0.0.1:7890'`
-   - 明确禁用代理：`--internal-camoufox-proxy ''`
-2. **`UNIFIED_PROXY_CONFIG` 环境变量** (推荐，.env 文件配置)
-3. **`HTTP_PROXY` / `HTTPS_PROXY` 环境变量**
-4. **系统代理设置** (Linux 下的 gsettings，最低优先级)
+1. **`--internal-camoufox-proxy` command line argument** (Highest priority)
+   - Explicitly specify proxy: `--internal-camoufox-proxy 'http://127.0.0.1:7890'`
+   - Explicitly disable proxy: `--internal-camoufox-proxy ''`
+2. **`UNIFIED_PROXY_CONFIG` environment variable** (Recommended, configured in .env file)
+3. **`HTTP_PROXY` / `HTTPS_PROXY` environment variables**
+4. **System proxy settings** (gsettings under Linux, lowest priority)
 
-**推荐配置方式**:
+**Recommended Configuration Method**:
 
 ```env
-# .env 文件中统一配置代理
+# Unified proxy configuration in .env file
 UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
-# 或禁用代理
+# Or disable proxy
 UNIFIED_PROXY_CONFIG=
 ```
 
-### 统一代理配置
+### Unified Proxy Configuration
 
-此代理配置会同时应用于 Camoufox 浏览器和流式代理服务的上游连接，确保整个系统的代理行为一致。
+This proxy configuration applies to both the Camoufox browser and the upstream connection of the streaming proxy service, ensuring consistent proxy behavior across the system.
 
-## 响应获取模式配置
+## Response Acquisition Mode Configuration
 
-### 模式 1: 优先使用集成的流式代理 (默认推荐)
+### Mode 1: Prefer Integrated Streaming Proxy (Default Recommended)
 
-**推荐使用 .env 配置方式**:
+**Recommended using .env configuration**:
 
 ```env
-# .env 文件配置
+# .env file configuration
 DEFAULT_FASTAPI_PORT=2048
 STREAM_PORT=3120
 UNIFIED_PROXY_CONFIG=
 ```
 
 ```bash
-# 简化启动命令 (推荐)
+# Simplified start command (Recommended)
 python launch_camoufox.py --headless
 
-# 传统命令行方式 (仍然支持)
+# Traditional command line way (Still supported)
 python launch_camoufox.py --headless --server-port 2048 --stream-port 3120 --helper '' --internal-camoufox-proxy ''
 ```
 
 ```bash
-# 启用统一代理配置（同时应用于浏览器和流式代理）
+# Enable unified proxy configuration (Applies to both browser and streaming proxy)
 python launch_camoufox.py --headless --server-port 2048 --stream-port 3120 --helper '' --internal-camoufox-proxy 'http://127.0.0.1:7890'
 ```
 
-在此模式下，主服务器会优先尝试通过端口 `3120` (或指定的 `--stream-port`) 上的集成流式代理获取响应。如果失败，则回退到 Playwright 页面交互。
+In this mode, the main server prioritizes attempting to get response via the integrated streaming proxy on port `3120` (or specified `--stream-port`). If it fails, it falls back to Playwright page interaction.
 
-### 模式 2: 优先使用外部 Helper 服务 (禁用集成流式代理)
+### Mode 2: Prefer External Helper Service (Disable Integrated Streaming Proxy)
 
 ```bash
-# 基本外部Helper模式，明确禁用代理
+# Basic External Helper mode, explicitly disable proxy
 python launch_camoufox.py --headless --server-port 2048 --stream-port 0 --helper 'http://your-helper-service.com/api/getStreamResponse' --internal-camoufox-proxy ''
 
-# 外部Helper模式 + 统一代理配置
+# External Helper mode + Unified proxy configuration
 python launch_camoufox.py --headless --server-port 2048 --stream-port 0 --helper 'http://your-helper-service.com/api/getStreamResponse' --internal-camoufox-proxy 'http://127.0.0.1:7890'
 ```
 
-在此模式下，主服务器会优先尝试通过 `--helper` 指定的端点获取响应 (需要有效的 `auth_profiles/active/*.json` 以提取 `SAPISID`)。如果失败，则回退到 Playwright 页面交互。
+In this mode, the main server prioritizes attempting to get response via the endpoint specified by `--helper` (requires valid `auth_profiles/active/*.json` to extract `SAPISID`). If it fails, it falls back to Playwright page interaction.
 
-### 模式 3: 仅使用 Playwright 页面交互 (禁用所有流式代理和 Helper)
+### Mode 3: Use Playwright Page Interaction Only (Disable All Streaming Proxies and Helpers)
 
 ```bash
-# 纯Playwright模式，明确禁用代理
+# Pure Playwright mode, explicitly disable proxy
 python launch_camoufox.py --headless --server-port 2048 --stream-port 0 --helper '' --internal-camoufox-proxy ''
 
-# Playwright模式 + 统一代理配置
+# Playwright mode + Unified proxy configuration
 python launch_camoufox.py --headless --server-port 2048 --stream-port 0 --helper '' --internal-camoufox-proxy 'http://127.0.0.1:7890'
 ```
 
-在此模式下，主服务器将仅通过 Playwright 与 AI Studio 页面交互 (模拟点击"编辑"或"复制"按钮) 来获取响应。这是传统的后备方法。
+In this mode, the main server will only get response by interacting with the AI Studio page via Playwright (simulating clicking "Edit" or "Copy" buttons). This is the traditional fallback method.
 
-## 虚拟显示模式 (Linux)
+## Virtual Display Mode (Linux)
 
-### 关于 `--virtual-display`
+### About `--virtual-display`
 
-- **为什么使用**: 与标准的无头模式相比，虚拟显示模式通过创建一个完整的虚拟 X 服务器环境 (Xvfb) 来运行浏览器。这可以模拟一个更真实的桌面环境，从而可能进一步降低被网站检测为自动化脚本或机器人的风险
-- **什么时候使用**: 当您在 Linux 环境下运行，并且希望以无头模式操作
-- **如何使用**:
-  1. 确保您的 Linux 系统已安装 `xvfb`
-  2. 在运行时添加 `--virtual-display` 标志：
+- **Why use it**: Compared to standard headless mode, virtual display mode runs the browser by creating a complete virtual X server environment (Xvfb). This can simulate a more realistic desktop environment, potentially further reducing the risk of being detected as an automated script or bot.
+- **When to use it**: When you run under Linux environment and wish to operate in headless mode.
+- **How to use it**:
+  1. Ensure your Linux system has `xvfb` installed.
+  2. Add `--virtual-display` flag at runtime:
      ```bash
      python launch_camoufox.py --virtual-display --server-port 2048 --stream-port 3120 --internal-camoufox-proxy ''
      ```
 
-## 流式代理服务配置
+## Streaming Proxy Service Configuration
 
-### 自签名证书管理
+### Self-Signed Certificate Management
 
-集成的流式代理服务会在 `certs` 文件夹内生成自签名的根证书。
+The integrated streaming proxy service generates self-signed root certificates in the `certs` folder.
 
-#### 证书删除与重新生成
+#### Certificate Deletion and Regeneration
 
-- 可以删除 `certs` 目录下的根证书 (`ca.crt`, `ca.key`)，代码会在下次启动时重新生成
-- **重要**: 删除根证书时，**强烈建议同时删除 `certs` 目录下的所有其他文件**，避免信任链错误
+- You can delete root certificates (`ca.crt`, `ca.key`) in `certs` directory, the code will regenerate them at next startup.
+- **Important**: When deleting root certificates, **it is strongly recommended to delete all other files in `certs` directory** to avoid trust chain errors.
 
-#### 手动生成证书
+#### Manual Certificate Generation
 
-如果需要重新生成证书，可以使用以下命令：
+If you need to regenerate certificates, you can use the following commands:
 
 ```bash
 openssl genrsa -out certs/ca.key 2048
@@ -114,22 +114,22 @@ openssl req -new -x509 -days 3650 -key certs/ca.key -out certs/ca.crt -subj "/C=
 openssl rsa -in certs/ca.key -out certs/ca.key
 ```
 
-### 工作原理
+### How It Works
 
-流式代理服务的特性：
+Streaming proxy service features:
 
-- 创建一个 HTTP 代理服务器（默认端口：3120）
-- 拦截针对 Google 域名的 HTTPS 请求
-- 使用自签名 CA 证书动态自动生成服务器证书
-- 将 AIStudio 响应解析为 OpenAI 兼容格式
+- Creates an HTTP proxy server (Default port: 3120)
+- Intercepts HTTPS requests to Google domains
+- Dynamically auto-generates server certificates using self-signed CA certificate
+- Parses AIStudio responses into OpenAI compatible format
 
-## 模型排除配置
+## Model Exclusion Configuration
 
 ### excluded_models.txt
 
-项目根目录下的 `excluded_models.txt` 文件可用于从 `/v1/models` 端点返回的列表中排除特定的模型 ID。
+The `excluded_models.txt` file in the project root can be used to exclude specific model IDs from the list returned by `/v1/models` endpoint.
 
-每行一个模型 ID，例如：
+One model ID per line, for example:
 
 ```
 gemini-1.0-pro
@@ -137,90 +137,90 @@ gemini-1.0-pro-vision
 deprecated-model-id
 ```
 
-## 脚本注入配置
+## Script Injection Configuration
 
-脚本注入功能允许您动态挂载油猴脚本来增强 AI Studio 的模型列表。该功能使用 Playwright 原生网络拦截技术，确保可靠性。
+The script injection feature allows you to dynamically mount Tampermonkey scripts to enhance AI Studio's model list. This feature uses Playwright native network interception technology to ensure reliability.
 
-详细的使用指南、工作原理和故障排除请参考 [脚本注入指南](script_injection_guide.md)。
+For detailed usage guide, working principles, and troubleshooting, please refer to [Script Injection Guide](script_injection_guide.md).
 
-### 关键配置
+### Key Configuration
 
 ```env
-# 启用脚本注入功能
+# Enable script injection feature
 ENABLE_SCRIPT_INJECTION=true
 
-# 指定自定义脚本路径 (默认为 browser_utils/more_models.js)
+# Specify custom script path (Defaults to browser_utils/more_models.js)
 USERSCRIPT_PATH=custom_scripts/my_enhanced_script.js
 ```
 
-### 调试
+### Debugging
 
-如果遇到问题，可以启用详细日志：
+If you encounter issues, you can enable verbose logs:
 
 ```env
 DEBUG_LOGS_ENABLED=true
 ```
 
-## 功能特性开关 (Feature Flags)
+## Feature Flags
 
-以下环境变量可用于启用实验性功能或调整特定行为：
+The following environment variables can be used to enable experimental features or adjust specific behaviors:
 
-### 思考模型预算控制
+### Thinking Model Budget Control
 
 ```env
-# 启用思考模型的 Token 预算控制
+# Enable Token budget control for Thinking models
 ENABLE_THINKING_BUDGET=true
-# 设置默认思考预算 (Token数)
+# Set default thinking budget (Tokens)
 DEFAULT_THINKING_BUDGET=8192
 ```
 
-### 联网搜索增强
+### Web Search Enhancement
 
 ```env
-# 启用 Google 搜索工具 (如果模型支持)
+# Enable Google Search tool (If model supports it)
 ENABLE_GOOGLE_SEARCH=true
 ```
 
-### URL 上下文获取
+### URL Context Retrieval
 
 ```env
-# 允许解析 Prompt 中的 URL 内容
+# Allow parsing URL content in Prompt
 ENABLE_URL_CONTEXT=true
 ```
 
-### 附件处理优化
+### Attachment Processing Optimization
 
 ```env
-# 仅收集当前用户消息中的附件 (忽略历史消息中的附件，减少 Token 消耗)
+# Only collect attachments from current user message (Ignore attachments in history messages, reduce Token consumption)
 ONLY_COLLECT_CURRENT_USER_ATTACHMENTS=true
 ```
 
-### 前端构建控制
+### Frontend Build Control
 
 ```env
-# 跳过启动时的前端资源构建检查 (适用于无 Node.js 环境或使用预构建资源)
+# Skip frontend resource build check at startup (Suitable for environments without Node.js or using pre-built resources)
 SKIP_FRONTEND_BUILD=true
 ```
 
-也可以通过命令行参数设置：
+Can also be set via command line argument:
 
 ```bash
 python launch_camoufox.py --headless --skip-frontend-build
 ```
 
-## 模型能力配置
+## Model Capability Configuration
 
 ### config/model_capabilities.json
 
-模型能力配置已外部化到 `config/model_capabilities.json` 文件。此配置定义了各模型的：
+Model capability configuration has been externalized to `config/model_capabilities.json` file. This configuration defines each model's:
 
-- **thinkingType**: 思考模式类型 (`none`, `level`, `budget`)
-- **supportsGoogleSearch**: 是否支持 Google Search 工具
-- **levels/budgetRange**: 思考等级或预算范围
+- **thinkingType**: Thinking mode type (`none`, `level`, `budget`)
+- **supportsGoogleSearch**: Whether supports Google Search tool
+- **levels/budgetRange**: Thinking levels or budget range
 
-**优势**：当 Google 发布新模型时，只需编辑 JSON 文件，无需修改代码。
+**Advantage**: When Google releases new models, just edit the JSON file, no code changes needed.
 
-示例结构：
+Example structure:
 
 ```json
 {
@@ -235,77 +235,77 @@ python launch_camoufox.py --headless --skip-frontend-build
 }
 ```
 
-## GUI 启动器高级功能
+## GUI Launcher Advanced Features
 
-### 本地 LLM 模拟服务
+### Local LLM Mock Service
 
-GUI 集成了启动和管理一个本地 LLM 模拟服务的功能：
+GUI integrates the function to start and manage a local LLM mock service:
 
-- **功能**: 监听 `11434` 端口，模拟部分 Ollama API 端点和 OpenAI 兼容的 `/v1/chat/completions` 端点
-- **启动**: 在 GUI 的"启动选项"区域，点击"启动本地 LLM 模拟服务"按钮
-- **依赖检测**: 启动前会自动检测 `localhost:2048` 端口是否可用
-- **用途**: 主要用于测试客户端与 Ollama 或 OpenAI 兼容 API 的对接
+- **Function**: Listens on port `11434`, simulates partial Ollama API endpoints and OpenAI compatible `/v1/chat/completions` endpoint.
+- **Start**: In GUI "Launch Options" area, click "Start Local LLM Mock Service" button.
+- **Dependency Check**: Before starting, it automatically detects if `localhost:2048` port is available.
+- **Usage**: Mainly used for testing client integration with Ollama or OpenAI compatible API.
 
-### 端口进程管理
+### Port Process Management
 
-GUI 提供端口进程管理功能：
+GUI provides port process management function:
 
-- 查询指定端口上当前正在运行的进程
-- 选择并尝试停止在指定端口上找到的进程
-- 手动输入 PID 终止进程
+- Query processes currently running on specific ports
+- Select and try to stop processes found on specified ports
+- Manually enter PID to terminate process
 
-**安全机制**：进程终止功能会验证 PID 是否属于配置的端口（FastAPI、Camoufox、Stream Proxy），防止意外终止无关进程。
+**Safety Mechanism**: Process termination function verifies if PID belongs to configured ports (FastAPI, Camoufox, Stream Proxy), preventing accidental termination of unrelated processes.
 
-## 环境变量配置
+## Environment Variable Configuration
 
-### 代理配置
+### Proxy Configuration
 
 ```bash
-# 使用环境变量配置代理（不推荐，建议明确指定）
+# Use environment variable to configure proxy (Not recommended, explicit specification suggested)
 export UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
 python launch_camoufox.py --headless --server-port 2048 --stream-port 3120 --helper ''
 ```
 
-### 日志控制
+### Log Control
 
-详见 [日志控制指南](logging-control.md)。
+See [Log Control Guide](logging-control.md).
 
-## 重要提示
+## Important Notes
 
-### 代理配置建议
+### Proxy Configuration Recommendation
 
-**强烈建议在所有 `launch_camoufox.py` 命令中明确指定 `--internal-camoufox-proxy` 参数，即使其值为空字符串 (`''`)，以避免意外使用系统环境变量中的代理设置。**
+**It is strongly recommended to explicitly specify `--internal-camoufox-proxy` argument in all `launch_camoufox.py` commands, even if the value is an empty string (`''`), to avoid accidentally using proxy settings from system environment variables.**
 
-### 参数控制限制
+### Parameter Control Limitation
 
-API 请求中的模型参数（如 `temperature`, `max_output_tokens`, `top_p`, `stop`）**仅在通过 Playwright 页面交互获取响应时生效**。当使用集成的流式代理或外部 Helper 服务时，这些参数的传递和应用方式取决于这些服务自身的实现。
+Model parameters in API requests (like `temperature`, `max_output_tokens`, `top_p`, `stop`) **only take effect when obtaining response via Playwright page interaction**. When using integrated streaming proxy or external Helper service, how these parameters are passed and applied depends on the implementation of these services themselves.
 
-### 首次访问性能
+### First Access Performance
 
-当通过流式代理首次访问一个新的 HTTPS 主机时，服务需要为该主机动态生成并签署一个新的子证书。这个过程可能会比较耗时，导致对该新主机的首次连接请求响应较慢。一旦证书生成并缓存后，后续访问同一主机将会显著加快。
+When accessing a new HTTPS host via streaming proxy for the first time, the service needs to dynamically generate and sign a new child certificate for that host. This process can be time-consuming, causing slow response for the first connection request to that new host. Once the certificate is generated and cached, subsequent access to the same host will be significantly faster.
 
-## 下一步
+## Next Steps
 
-高级配置完成后，请参考：
+After advanced configuration is complete, please refer to:
 
-- [脚本注入指南](script_injection_guide.md) - 详细的脚本注入功能使用说明
-- [日志控制指南](logging-control.md)
-- [故障排除指南](troubleshooting.md)
+- [Script Injection Guide](script_injection_guide.md) - Detailed usage instructions for script injection
+- [Log Control Guide](logging-control.md)
+- [Troubleshooting Guide](troubleshooting.md)
 
-## Toolcall / MCP 兼容性说明
+## Toolcall / MCP Compatibility Note
 
-- 请求结构需遵循 OpenAI Completions 兼容格式：
-  - `messages`: 标准消息数组，含 `role` 与 `content`
-  - `tools`: 工具声明数组，元素形如 `{ "type": "function", "function": { "name": "sum", "parameters": { ... } } }`
-  - `tool_choice`: 可为具体函数名或 `{ "type": "function", "function": { "name": "sum" } }`；当为 `"auto"` 且仅声明一个工具时自动执行
-- 工具执行行为：
-  - 内置工具（`get_current_time`, `echo`, `sum`）直接执行；结果以 JSON 字符串注入
-  - 非内置但在本次请求 `tools` 中声明的工具，若提供 MCP 端点（请求字段 `mcp_endpoint` 或环境变量 `MCP_HTTP_ENDPOINT`），则调用 MCP 服务并返回结果
-  - 未声明或端点缺失时返回 `Unknown tool`
-- 响应兼容：
-  - 流式与非流式均输出 OpenAI 兼容的 `tool_calls` 结构与 `finish_reason: "tool_calls"`；最终包含 `usage` 统计和 `[DONE]`
+- Request structure must follow OpenAI Completions compatible format:
+  - `messages`: Standard message array, containing `role` and `content`
+  - `tools`: Tool declaration array, elements like `{ "type": "function", "function": { "name": "sum", "parameters": { ... } } }`
+  - `tool_choice`: Can be specific function name or `{ "type": "function", "function": { "name": "sum" } }`; when `"auto"` and only one tool declared, executes automatically
+- Tool execution behavior:
+  - Built-in tools (`get_current_time`, `echo`, `sum`) execute directly; results injected as JSON string
+  - Non-built-in tools declared in current request `tools`, if MCP endpoint provided (request field `mcp_endpoint` or env var `MCP_HTTP_ENDPOINT`), invoke MCP service and return result
+  - Returns `Unknown tool` if undeclared or endpoint missing
+- Response compatibility:
+  - Both streaming and non-streaming output OpenAI compatible `tool_calls` structure and `finish_reason: "tool_calls"`; finally includes `usage` stats and `[DONE]`
 
-### 请求示例（Python requests）
+### Request Example (Python requests)
 
 ```python
 import requests
@@ -316,7 +316,7 @@ data = {
   "model": "AI-Studio_Proxy_API",
   "stream": True,
   "messages": [
-    {"role": "user", "content": "请计算这组数的和: {\"values\": [1, 2.5, 3]}"}
+    {"role": "user", "content": "Please calculate the sum of these numbers: {\"values\": [1, 2.5, 3]}"}
   ],
   "tools": [
     {
@@ -334,7 +334,7 @@ data = {
     }
   ],
   "tool_choice": {"type": "function", "function": {"name": "sum"}},
-  # 可选：本次请求的 MCP 端点（非内置工具时启用）
+  # Optional: MCP endpoint for this request (enabled for non-built-in tools)
   # "mcp_endpoint": "http://127.0.0.1:7000"
 }
 
@@ -345,7 +345,7 @@ for line in resp.iter_lines():
   print(line.decode("utf-8"))
 ```
 
-### 行为说明
+### Behavior Description
 
-- 当工具执行发生时，响应中会包含 `tool_calls` 片段与 `finish_reason: "tool_calls"`；客户端需按 OpenAI Completions 的解析方式处理。
-- 若声明非内置工具且提供 `mcp_endpoint`（或设置环境 `MCP_HTTP_ENDPOINT`），服务器会将调用转发到 MCP 服务并返回其结果。
+- When tool execution occurs, response will contain `tool_calls` fragments and `finish_reason: "tool_calls"`; client needs to handle parsing according to OpenAI Completions way.
+- If declaring non-built-in tool and providing `mcp_endpoint` (or setting env `MCP_HTTP_ENDPOINT`), server will forward call to MCP service and return its result.

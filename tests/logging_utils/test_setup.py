@@ -282,7 +282,8 @@ def test_setup_server_logging_websocket_handler_none(
         # Verify any of the write calls contains the warning
         calls = mock_sys_stderr.write.call_args_list
         warning_found = any(
-            "严重警告" in str(call.args[0]) or "log_ws_manager" in str(call.args[0])
+            "Critical Warning" in str(call.args[0])
+            or "log_ws_manager" in str(call.args[0])
             for call in calls
         )
         assert warning_found, f"Warning not found in sys.__stderr__ writes: {calls}"
@@ -334,7 +335,7 @@ def test_setup_server_logging_oserror_on_remove(
         # Should print warning to stderr (mocked)
         calls = mock_sys_stderr.write.call_args_list
         warning_found = any(
-            "警告" in str(call.args[0]) or "Permission denied" in str(call.args[0])
+            "Warning" in str(call.args[0]) or "Permission denied" in str(call.args[0])
             for call in calls
         )
         assert warning_found, f"Warning not found in sys.__stderr__ writes: {calls}"

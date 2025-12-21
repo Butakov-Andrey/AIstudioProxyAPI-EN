@@ -92,10 +92,10 @@ def real_mock_page():
 
 
 class TestGetTexasTimestamp:
-    """测试 Texas 时区时间戳生成函数"""
+    """Tests for Texas timezone timestamp generation function."""
 
     def test_timestamp_format_iso(self):
-        """测试 ISO 格式时间戳"""
+        """Test ISO format timestamp."""
         iso, human = get_texas_timestamp()
 
         # ISO format: "2025-11-21T18:37:32.440"
@@ -105,7 +105,7 @@ class TestGetTexasTimestamp:
         assert iso.count(":") == 2  # HH:MM:SS
 
     def test_timestamp_format_human_readable(self):
-        """测试人类可读时间戳格式"""
+        """Test human-readable timestamp format."""
         iso, human = get_texas_timestamp()
 
         # Human format: "2025-11-21 18:37:32.440 <TZ>" where TZ is local timezone
@@ -117,7 +117,7 @@ class TestGetTexasTimestamp:
         assert len(parts[2]) >= 2  # Timezone abbreviation (at least 2 chars)
 
     def test_timestamp_consistency(self):
-        """测试时间戳一致性"""
+        """Test timestamp consistency."""
         iso, human = get_texas_timestamp()
 
         # Both should represent same time
@@ -126,7 +126,7 @@ class TestGetTexasTimestamp:
         assert iso_date == human_date
 
     def test_timestamp_milliseconds_precision(self):
-        """测试毫秒精度"""
+        """Test millisecond precision."""
         iso, human = get_texas_timestamp()
 
         # Should have 3 decimal places
@@ -137,7 +137,7 @@ class TestGetTexasTimestamp:
 
     @patch("browser_utils.debug_utils.datetime")
     def test_timezone_offset_local(self, mock_datetime):
-        """测试本地时区偏移（使用系统时区）"""
+        """Test local timezone offset (using system timezone)."""
         from datetime import datetime as real_datetime, timezone as real_timezone
 
         # Create a mock datetime that returns a proper aware datetime
@@ -163,11 +163,11 @@ class TestGetTexasTimestamp:
 
 
 class TestCaptureDomStructure:
-    """测试 DOM 树结构捕获函数"""
+    """Tests for DOM tree structure capture function."""
 
     @pytest.mark.asyncio
     async def test_dom_structure_basic_success(self, real_mock_page):
-        """测试基本 DOM 树捕获成功"""
+        """Test basic DOM tree capture success."""
         dom_tree = "BODY\n  DIV#app.container\n    P.text\n"
         real_mock_page.evaluate.return_value = dom_tree
 
@@ -178,7 +178,7 @@ class TestCaptureDomStructure:
 
     @pytest.mark.asyncio
     async def test_dom_structure_with_hierarchy(self, real_mock_page):
-        """测试层次结构 DOM 捕获"""
+        """Test hierarchical DOM capture."""
         complex_dom = """BODY
   DIV#root.app-container
     HEADER.navbar
@@ -196,7 +196,7 @@ class TestCaptureDomStructure:
 
     @pytest.mark.asyncio
     async def test_dom_structure_playwright_error(self, real_mock_page):
-        """测试 Playwright 错误处理"""
+        """Test Playwright error handling."""
         real_mock_page.evaluate.side_effect = PlaywrightError("Page closed")
 
         result = await capture_dom_structure(real_mock_page)
@@ -206,7 +206,7 @@ class TestCaptureDomStructure:
 
     @pytest.mark.asyncio
     async def test_dom_structure_generic_exception(self, real_mock_page):
-        """测试通用异常处理"""
+        """Test general exception handling."""
         real_mock_page.evaluate.side_effect = RuntimeError("Unexpected error")
 
         result = await capture_dom_structure(real_mock_page)
@@ -216,7 +216,7 @@ class TestCaptureDomStructure:
 
     @pytest.mark.asyncio
     async def test_dom_structure_javascript_evaluation(self, real_mock_page):
-        """测试 JavaScript 执行逻辑"""
+        """Test JavaScript execution logic."""
         real_mock_page.evaluate.return_value = "BODY\n  DIV#test\n"
 
         await capture_dom_structure(real_mock_page)
@@ -232,11 +232,11 @@ class TestCaptureDomStructure:
 
 
 class TestCaptureSystemContext:
-    """测试系统上下文捕获函数"""
+    """Tests for system context capture function."""
 
     @pytest.mark.asyncio
     async def test_system_context_basic_structure(self, mock_server_state):
-        """测试基本系统上下文结构"""
+        """Test basic system context structure."""
         with patch.dict("sys.modules", {"server": mock_server_state}):
             context = await capture_system_context("req123", "test_error")
 
@@ -250,7 +250,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_meta_fields(self, mock_server_state):
-        """测试 meta 字段内容"""
+        """Test meta field content."""
         with patch.dict("sys.modules", {"server": mock_server_state}):
             context = await capture_system_context("abc123", "timeout_error")
 
@@ -262,7 +262,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_system_info(self, mock_server_state):
-        """测试系统信息字段"""
+        """Test system info fields."""
         with patch.dict("sys.modules", {"server": mock_server_state}):
             context = await capture_system_context()
 
@@ -276,7 +276,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_application_flags(self, mock_server_state):
-        """测试应用状态标志"""
+        """Test application state flags."""
         # Customize state for this test
         mock_server_state.is_playwright_ready = True
         mock_server_state.is_browser_connected = False
@@ -294,7 +294,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_queue_size(self, mock_server_state):
-        """测试队列大小捕获"""
+        """Test queue size capture."""
         mock_server_state.request_queue.qsize.return_value = 5
 
         with patch.dict("sys.modules", {"server": mock_server_state}):
@@ -305,7 +305,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_queue_not_implemented(self, mock_server_state):
-        """测试队列不支持 qsize 的情况"""
+        """Test case where queue does not support qsize."""
         mock_server_state.request_queue.qsize.side_effect = NotImplementedError()
 
         with patch.dict("sys.modules", {"server": mock_server_state}):
@@ -316,7 +316,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_lock_states(self, mock_server_state):
-        """测试锁状态检测"""
+        """Test lock state detection."""
         mock_server_state.processing_lock.locked.return_value = True
         mock_server_state.model_switching_lock.locked.return_value = True
 
@@ -329,7 +329,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_proxy_sanitization(self, mock_server_state):
-        """测试代理设置凭据脱敏"""
+        """Test proxy settings credential sanitization."""
         mock_server_state.PLAYWRIGHT_PROXY_SETTINGS = {
             "server": "http://user:password@proxy.com:8080"
         }
@@ -344,7 +344,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_console_logs(self, mock_server_state):
-        """测试控制台日志捕获"""
+        """Test console log capture."""
         mock_server_state.console_logs = [
             {"type": "log", "text": "Log 1"},
             {"type": "error", "text": "Error 1"},
@@ -364,7 +364,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_failed_network_responses(self, mock_server_state):
-        """测试失败的网络请求捕获"""
+        """Test failed network response capture."""
         mock_server_state.network_log = {
             "requests": [],
             "responses": [
@@ -383,7 +383,7 @@ class TestCaptureSystemContext:
 
     @pytest.mark.asyncio
     async def test_system_context_page_url(self, mock_server_state, real_mock_page):
-        """测试当前页面 URL 捕获"""
+        """Test current page URL capture."""
         real_mock_page.url = "https://ai.google.dev/chat"
         mock_server_state.page_instance = real_mock_page
 
@@ -397,11 +397,11 @@ class TestCaptureSystemContext:
 
 
 class TestCapturePlaywrightState:
-    """测试 Playwright 状态捕获函数"""
+    """Tests for Playwright state capture function."""
 
     @pytest.mark.asyncio
     async def test_playwright_state_basic_page_info(self, real_mock_page):
-        """测试基本页面信息捕获"""
+        """Test basic page info capture."""
         real_mock_page.url = "https://ai.google.dev"
         real_mock_page.title.return_value = "AI Studio"
         real_mock_page.viewport_size = {"width": 1920, "height": 1080}
@@ -414,7 +414,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_title_error(self, real_mock_page):
-        """测试获取页面标题失败"""
+        """Test failure to get page title."""
         real_mock_page.title.side_effect = PlaywrightError("Page closed")
 
         state = await capture_playwright_state(real_mock_page)
@@ -423,7 +423,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_locators_exists_and_visible(self, real_mock_page):
-        """测试定位器存在且可见"""
+        """Test locators exist and are visible."""
         mock_locator = AsyncMock()
         mock_locator.count.return_value = 1
         mock_locator.is_visible.return_value = True
@@ -440,7 +440,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_locators_not_exists(self, real_mock_page):
-        """测试定位器不存在"""
+        """Test locator does not exist."""
         mock_locator = AsyncMock()
         mock_locator.count.return_value = 0
 
@@ -452,7 +452,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_locators_with_input_value(self, real_mock_page):
-        """测试捕获输入元素的值"""
+        """Test capturing input element value."""
         mock_locator = AsyncMock()
         mock_locator.count.return_value = 1
         mock_locator.is_visible.return_value = True
@@ -468,7 +468,7 @@ class TestCapturePlaywrightState:
     async def test_playwright_state_locators_long_value_truncation(
         self, real_mock_page
     ):
-        """测试长输入值截断"""
+        """Test long input value truncation."""
         long_value = "a" * 150
         mock_locator = AsyncMock()
         mock_locator.count.return_value = 1
@@ -484,7 +484,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_locators_error_handling(self, real_mock_page):
-        """测试定位器错误处理"""
+        """Test locator error handling."""
         mock_locator = AsyncMock()
         mock_locator.count.side_effect = PlaywrightError("Locator failed")
 
@@ -495,7 +495,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_cookies_count(self, real_mock_page):
-        """测试 Cookie 数量统计"""
+        """Test cookie count statistics."""
         real_mock_page.context.cookies.return_value = [
             {"name": "session", "value": "abc"},
             {"name": "user", "value": "123"},
@@ -507,7 +507,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_localstorage_keys(self, real_mock_page):
-        """测试 localStorage 键捕获"""
+        """Test localStorage key capture."""
         real_mock_page.evaluate.return_value = ["theme", "user_id", "settings"]
 
         state = await capture_playwright_state(real_mock_page)
@@ -516,7 +516,7 @@ class TestCapturePlaywrightState:
 
     @pytest.mark.asyncio
     async def test_playwright_state_storage_error_handling(self, real_mock_page):
-        """测试存储信息获取失败"""
+        """Test failure to get storage information."""
         real_mock_page.context.cookies.side_effect = PlaywrightError("Context closed")
         real_mock_page.evaluate.side_effect = PlaywrightError("Evaluation failed")
 
@@ -531,11 +531,11 @@ class TestCapturePlaywrightState:
 
 
 class TestSaveComprehensiveSnapshot:
-    """测试综合快照保存函数"""
+    """Tests for comprehensive snapshot saving function."""
 
     @pytest.mark.asyncio
     async def test_snapshot_page_closed(self, real_mock_page):
-        """测试页面已关闭时不保存快照"""
+        """Test snapshot not saved when page is closed."""
         real_mock_page.is_closed.return_value = True
 
         result = await save_comprehensive_snapshot(
@@ -546,7 +546,7 @@ class TestSaveComprehensiveSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_page_none(self):
-        """测试页面为 None 时不保存快照"""
+        """Test snapshot not saved when page is None."""
         result = await save_comprehensive_snapshot(
             page=None,  # type: ignore[arg-type]
             error_name="test_error",
@@ -559,7 +559,7 @@ class TestSaveComprehensiveSnapshot:
     async def test_snapshot_directory_creation(
         self, real_mock_page, tmp_path, mock_server_state
     ):
-        """测试快照目录创建"""
+        """Test snapshot directory creation."""
         # Create mock Path that returns actual tmp_path for path operations
         mock_path_instance = MagicMock()
         mock_path_instance.__truediv__ = lambda self, other: tmp_path / str(other)
@@ -588,7 +588,7 @@ class TestSaveComprehensiveSnapshot:
     async def test_snapshot_screenshot_success(
         self, real_mock_page, tmp_path, mock_server_state
     ):
-        """测试截图保存成功"""
+        """Test successful screenshot saving."""
         snapshot_dir = tmp_path / "snapshot"
         snapshot_dir.mkdir()
 
@@ -627,7 +627,7 @@ class TestSaveComprehensiveSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_screenshot_failure(self, real_mock_page, mock_server_state):
-        """测试截图失败处理"""
+        """Test screenshot failure handling."""
         real_mock_page.screenshot.side_effect = PlaywrightError("Screenshot timeout")
 
         with (
@@ -656,11 +656,11 @@ class TestSaveComprehensiveSnapshot:
 
 
 class TestSaveErrorSnapshotEnhanced:
-    """测试增强错误快照函数"""
+    """Tests for enhanced error snapshot function."""
 
     @pytest.mark.asyncio
     async def test_enhanced_snapshot_browser_unavailable(self, mock_server_state):
-        """测试浏览器不可用时不保存快照"""
+        """Test snapshot not saved when browser is unavailable."""
         mock_server_state.browser_instance = None
         mock_server_state.page_instance = None
 
@@ -677,7 +677,7 @@ class TestSaveErrorSnapshotEnhanced:
 
     @pytest.mark.asyncio
     async def test_enhanced_snapshot_page_closed(self, mock_server_state):
-        """测试页面已关闭时不保存快照"""
+        """Test snapshot not saved when page is closed."""
         mock_server_state.browser_instance = MagicMock()
         mock_server_state.browser_instance.is_connected.return_value = True
 
@@ -699,7 +699,7 @@ class TestSaveErrorSnapshotEnhanced:
     async def test_enhanced_snapshot_req_id_parsing(
         self, mock_server_state, real_mock_page
     ):
-        """测试从错误名称解析 req_id"""
+        """Test parsing req_id from error name."""
         mock_server_state.browser_instance = MagicMock()
         mock_server_state.browser_instance.is_connected.return_value = True
         mock_server_state.page_instance = real_mock_page
@@ -721,7 +721,7 @@ class TestSaveErrorSnapshotEnhanced:
     async def test_enhanced_snapshot_with_exception(
         self, mock_server_state, real_mock_page
     ):
-        """测试包含异常信息"""
+        """Test including exception information."""
         mock_server_state.browser_instance = MagicMock()
         mock_server_state.browser_instance.is_connected.return_value = True
         mock_server_state.page_instance = real_mock_page

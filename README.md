@@ -394,4 +394,4 @@ Welcome to submit Issues and Pull Requests!
 
 If you find this project helpful and wish to support the author's continuous development, welcome to donate through the following methods. Your support is our greatest encouragement!
 
-![Development is difficult, please support the author](./支持作者.jpg)
+![Development is difficult, please support the author](./support_author.jpg)

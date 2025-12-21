@@ -1,81 +1,81 @@
-# API 使用指南
+# API Usage Guide
 
-本指南详细介绍如何使用 AI Studio Proxy API 的各种功能和端点。
+This guide details how to use various functions and endpoints of the AI Studio Proxy API.
 
-## 服务器配置
+## Server Configuration
 
-代理服务器默认监听 `http://127.0.0.1:2048`。
+The proxy server listens on `http://127.0.0.1:2048` by default.
 
-**配置方式**:
-- **环境变量**: `.env` 文件中设置 `PORT=2048`
-- **命令行参数**: `--server-port 2048`
-- **GUI 启动器**: 图形界面直接配置
+**Configuration Methods**:
+- **Environment Variable**: Set `PORT=2048` in `.env` file
+- **Command Line Argument**: `--server-port 2048`
+- **GUI Launcher**: Configure directly in the graphical interface
 
 ---
 
-## API 认证
+## API Authentication
 
-### 密钥配置
+### Key Configuration
 
-项目使用 `auth_profiles/key.txt` 管理 API 密钥：
+The project uses `auth_profiles/key.txt` to manage API keys:
 
 ```
 your-api-key-1
 your-api-key-2
-# 注释行会被忽略
+# Comment lines are ignored
 ```
 
-**验证逻辑**:
-- 文件为空或不存在时，不需要认证
-- 配置了密钥时，所有 `/v1/*` 请求需要有效密钥（除 `/v1/models`）
+**Validation Logic**:
+- If the file is empty or does not exist, authentication is not required
+- When keys are configured, all `/v1/*` requests require a valid key (except `/v1/models`)
 
-### 认证方式
+### Authentication Methods
 
 ```bash
-# Bearer Token (推荐)
+# Bearer Token (Recommended)
 Authorization: Bearer your-api-key
 
-# X-API-Key (备用)
+# X-API-Key (Alternative)
 X-API-Key: your-api-key
 ```
 
 ---
 
-## API 端点
+## API Endpoints
 
-### 聊天接口
+### Chat Interface
 
-**端点**: `POST /v1/chat/completions`
+**Endpoint**: `POST /v1/chat/completions`
 
-与 OpenAI API 完全兼容，支持流式和非流式响应。
+Fully compatible with OpenAI API, supports streaming and non-streaming responses.
 
-#### 支持的参数
+#### Supported Parameters
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `messages` | Array | 聊天消息数组 (必需) |
-| `model` | String | 模型 ID |
-| `stream` | Boolean | 是否流式输出 |
-| `temperature` | Number | 温度参数 (0.0-2.0) |
-| `max_output_tokens` | Number | 最大输出 token 数 |
-| `top_p` | Number | Top-P 采样 (0.0-1.0) |
-| `stop` | Array/String | 停止序列 |
-| `reasoning_effort` | String/Number | 思考模式控制 |
-| `tools` | Array | 工具定义 (支持 google_search) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `messages` | Array | Chat message array (Required) |
+| `model` | String | Model ID |
+| `stream` | Boolean | Whether to stream output |
+| `temperature` | Number | Temperature parameter (0.0-2.0) |
+| `max_output_tokens` | Number | Maximum output tokens |
+| `top_p` | Number | Top-P sampling (0.0-1.0) |
+| `stop` | Array/String | Stop sequences |
+| `reasoning_effort` | String/Number | Thinking mode control |
+| `tools` | Array | Tool definitions (Supports google_search) |
 
-#### reasoning_effort 参数详解
+#### reasoning_effort Parameter Details
 
-| 值 | 效果 |
-|----|------|
-| `0` 或 `"0"` | 关闭思考模式 |
-| 数值 (如 `8000`) | 开启思考，限制预算 |
-| `"none"` 或 `-1` | 开启思考，不限制预算 |
-| `"low"` / `"high"` | 思考等级 (部分模型) |
+| Value | Effect |
+|-------|--------|
+| `0` or `"0"` | Disable thinking mode |
+| Number (e.g. `8000`) | Enable thinking, limit budget |
+| `"none"` or `-1` | Enable thinking, unlimited budget |
+| `"low"` / `"high"` | Thinking level (Some models) |
 
-#### 示例请求
+#### Request Example
 
 ```bash
-# 非流式
+# Non-streaming
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -84,56 +84,56 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
     "temperature": 0.7
   }'
 
-# 流式
+# Streaming
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemini-2.5-pro-preview",
-    "messages": [{"role": "user", "content": "讲个故事"}],
+    "messages": [{"role": "user", "content": "Tell me a story"}],
     "stream": true
   }' --no-buffer
 ```
 
 ---
 
-### 模型列表
+### Model List
 
-**端点**: `GET /v1/models`
+**Endpoint**: `GET /v1/models`
 
-返回 AI Studio 可用模型列表。
+Returns the list of available models in AI Studio.
 
-**特点**:
-- 动态获取 AI Studio 页面模型
-- 支持 `excluded_models.txt` 排除特定模型
-- 脚本注入模型标记 `"injected": true`
-
----
-
-### 健康检查
-
-**端点**: `GET /health`
-
-返回服务状态：
-- Playwright 状态
-- 浏览器连接状态
-- 页面状态
-- 队列长度
+**Features**:
+- Dynamically retrieves models from AI Studio page
+- Supports excluding specific models via `excluded_models.txt`
+- Script-injected models are marked with `"injected": true`
 
 ---
 
-### 其他端点
+### Health Check
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/info` | GET | API 配置信息 |
-| `/v1/queue` | GET | 队列状态 |
-| `/v1/cancel/{req_id}` | POST | 取消请求 |
-| `/ws/logs` | WebSocket | 实时日志流 |
-| `/api/keys` | GET/POST/DELETE | 密钥管理 |
+**Endpoint**: `GET /health`
+
+Returns service status:
+- Playwright status
+- Browser connection status
+- Page status
+- Queue length
 
 ---
 
-## 客户端配置
+### Other Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/info` | GET | API configuration info |
+| `/v1/queue` | GET | Queue status |
+| `/v1/cancel/{req_id}` | POST | Cancel request |
+| `/ws/logs` | WebSocket | Real-time log stream |
+| `/api/keys` | GET/POST/DELETE | Key management |
+
+---
+
+## Client Configuration
 
 ### Python (OpenAI SDK)
 
@@ -142,7 +142,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://127.0.0.1:2048/v1",
-    api_key="your-api-key"  # 或任意值
+    api_key="your-api-key"  # Or any value
 )
 
 response = client.chat.completions.create(
@@ -171,35 +171,35 @@ console.log(response.choices[0].message.content);
 
 ### Open WebUI
 
-1. 进入 "设置" → "连接"
-2. 添加模型
-3. **API 基础 URL**: `http://127.0.0.1:2048/v1`
-4. **API 密钥**: 留空或任意值
-5. 保存设置
+1. Go to "Settings" -> "Connections"
+2. Add model
+3. **API Base URL**: `http://127.0.0.1:2048/v1`
+4. **API Key**: Leave blank or any value
+5. Save settings
 
 ---
 
-## 重要说明
+## Important Notes
 
-### 三层响应获取机制
+### Three-Layer Response Acquisition Mechanism
 
-1. **集成流式代理** (默认，端口 3120): 最佳性能
-2. **外部 Helper 服务** (可选): 备用方案
-3. **Playwright 页面交互** (后备): 完整参数支持
+1. **Integrated Streaming Proxy** (Default, port 3120): Best performance
+2. **External Helper Service** (Optional): Backup solution
+3. **Playwright Page Interaction** (Fallback): Full parameter support
 
-> 详见 [流式处理模式详解](streaming-modes.md)
+> See [Streaming Modes Explained](streaming-modes.md) for details
 
-### 注意事项
+### Considerations
 
-- **串行处理**: 单浏览器实例，请求排队处理
-- **客户端管理历史**: 客户端负责维护聊天记录
-- **模型切换延迟**: 首次切换需要 2-5 秒
+- **Serial Processing**: Single browser instance, requests are queued
+- **Client Managed History**: Client is responsible for maintaining chat history
+- **Model Switch Latency**: First switch takes 2-5 seconds
 
 ---
 
-## 相关文档
+## Related Documentation
 
-- [OpenAI 兼容性说明](openai-compatibility.md) - 与 OpenAI API 的差异
-- [环境变量完整参考](env-variables-reference.md) - 配置参数
-- [客户端集成示例](client-examples.md) - 更多代码示例
-- [故障排除指南](troubleshooting.md) - 问题解决
+- [OpenAI Compatibility Note](openai-compatibility.md) - Differences from OpenAI API
+- [Environment Variables Reference](env-variables-reference.md) - Configuration parameters
+- [Client Integration Examples](client-examples.md) - More code examples
+- [Troubleshooting Guide](troubleshooting.md) - Problem solving

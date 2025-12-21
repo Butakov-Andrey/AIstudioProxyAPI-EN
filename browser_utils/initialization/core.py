@@ -69,29 +69,46 @@ async def initialize_page_logic(  # pragma: no cover
         else:
             logger.error(f"Specified auth file does not exist: {storage_state_path}")
             # If it's a clearly specified path but does not exist, it should be an error
-            raise RuntimeError(f"Specified auth file does not exist: {storage_state_path}")
+            raise RuntimeError(
+                f"Specified auth file does not exist: {storage_state_path}"
+            )
     else:
         # Fall back to existing environment variable logic
         if launch_mode == "headless" or launch_mode == "virtual_headless":
             # Check for Auto-Auth Rotation on Startup
-            if os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP', 'false').lower() == 'true':
-                logger.info("   🤖 Auto-Auth Rotation on Startup is ENABLED. Selecting profile...")
+            if (
+                os.environ.get("AUTO_AUTH_ROTATION_ON_STARTUP", "false").lower()
+                == "true"
+            ):
+                logger.info(
+                    "   🤖 Auto-Auth Rotation on Startup is ENABLED. Selecting profile..."
+                )
                 try:
                     # Local import to avoid circular dependencies
                     from browser_utils.auth_rotation import _get_next_profile
+
                     next_profile = _get_next_profile()
                     if next_profile:
-                        os.environ['ACTIVE_AUTH_JSON_PATH'] = next_profile
+                        os.environ["ACTIVE_AUTH_JSON_PATH"] = next_profile
                         logger.info(f"   ✅ Auto-selected profile: {next_profile}")
                     else:
-                        logger.warning("   ⚠️ Auto-Auth Rotation: No available profiles found. Continuing with environment defaults.")
+                        logger.warning(
+                            "   ⚠️ Auto-Auth Rotation: No available profiles found. Continuing with environment defaults."
+                        )
                 except ImportError:
-                    logger.error("   ❌ Auto-Auth Rotation failed: Could not import auth_rotation module.")
+                    logger.error(
+                        "   ❌ Auto-Auth Rotation failed: Could not import auth_rotation module."
+                    )
                 except Exception as e:
-                    logger.error(f"   ❌ Error during Auto-Auth Rotation on Startup: {e}", exc_info=True)
+                    logger.error(
+                        f"   ❌ Error during Auto-Auth Rotation on Startup: {e}",
+                        exc_info=True,
+                    )
 
             auth_filename = os.environ.get("ACTIVE_AUTH_JSON_PATH")
-            logger.info(f"[DEBUG] Headless Init: ACTIVE_AUTH_JSON_PATH='{auth_filename}'")
+            logger.info(
+                f"[DEBUG] Headless Init: ACTIVE_AUTH_JSON_PATH='{auth_filename}'"
+            )
 
             if auth_filename:
                 constructed_path = auth_filename
@@ -102,7 +119,9 @@ async def initialize_page_logic(  # pragma: no cover
                         f"{launch_mode} mode auth file invalid or does not exist: '{constructed_path}'"
                     )
                     # DIAGNOSTIC: Check if we should have rotated
-                    logger.info(f"[DEBUG] Auth file missing. Auto-Rotation Flag: {os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP')}")
+                    logger.info(
+                        f"[DEBUG] Auth file missing. Auto-Rotation Flag: {os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP')}"
+                    )
                     raise RuntimeError(
                         f"{launch_mode} mode auth file invalid: '{constructed_path}'"
                     )
@@ -110,7 +129,9 @@ async def initialize_page_logic(  # pragma: no cover
                 logger.error(
                     f"{launch_mode} mode requires ACTIVE_AUTH_JSON_PATH environment variable, but it's not set or is empty."
                 )
-                raise RuntimeError(f"{launch_mode} mode requires ACTIVE_AUTH_JSON_PATH.")
+                raise RuntimeError(
+                    f"{launch_mode} mode requires ACTIVE_AUTH_JSON_PATH."
+                )
         elif launch_mode == "debug":
             logger.info(
                 "Debug mode: Attempting to load auth file from environment variable ACTIVE_AUTH_JSON_PATH..."
@@ -149,12 +170,14 @@ async def initialize_page_logic(  # pragma: no cover
         if storage_state_path_to_use:
             context_options["storage_state"] = storage_state_path_to_use
             import server
+
             server.current_auth_profile_path = storage_state_path_to_use
             logger.info(
                 f"   (Using storage_state='{os.path.basename(storage_state_path_to_use)}')"
             )
         else:
             import server
+
             server.current_auth_profile_path = None
             logger.info("   (Not using storage_state)")
 
@@ -224,7 +247,9 @@ async def initialize_page_logic(  # pragma: no cover
             logger.info(f"[Navigation] Opening new page: {target_full_url}")
             found_page = await temp_context.new_page()
             if found_page:
-                logger.debug("Adding model list response listener to new page (before navigation).")
+                logger.debug(
+                    "Adding model list response listener to new page (before navigation)."
+                )
                 found_page.on("response", _handle_model_list_response)
                 # Setup debug listeners for error snapshots
                 setup_debug_listeners(found_page)
@@ -233,7 +258,9 @@ async def initialize_page_logic(  # pragma: no cover
                     target_full_url, wait_until="domcontentloaded", timeout=90000
                 )
                 current_url = found_page.url
-                logger.debug(f"New page navigation attempt complete. Current URL: {current_url}")
+                logger.debug(
+                    f"New page navigation attempt complete. Current URL: {current_url}"
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as new_page_nav_err:
@@ -243,11 +270,15 @@ async def initialize_page_logic(  # pragma: no cover
                 await save_error_snapshot("init_new_page_nav_fail")
                 error_str = str(new_page_nav_err)
                 if "NS_ERROR_NET_INTERRUPT" in error_str:
-                    logger.error("\n" + "=" * 30 + " Network Navigation Error Tips " + "=" * 30)
+                    logger.error(
+                        "\n" + "=" * 30 + " Network Navigation Error Tips " + "=" * 30
+                    )
                     logger.error(
                         f"Navigation to '{target_full_url}' failed with network interrupt error (NS_ERROR_NET_INTERRUPT)."
                     )
-                    logger.error("This usually means the connection was unexpectedly disconnected while the browser was trying to load the page.")
+                    logger.error(
+                        "This usually means the connection was unexpectedly disconnected while the browser was trying to load the page."
+                    )
                     logger.error("Possible causes and troubleshooting suggestions:")
                     logger.error(
                         "     1. Network connection: Please check if your local network connection is stable and try to access the target URL in a normal browser."
@@ -274,7 +305,9 @@ async def initialize_page_logic(  # pragma: no cover
                 logger.error(
                     "Detected redirect to login page in headless mode, authentication may have expired. Please update the auth file."
                 )
-                raise RuntimeError("Auth failed in headless mode, auth file update required.")
+                raise RuntimeError(
+                    "Auth failed in headless mode, auth file update required."
+                )
             else:
                 print(f"\n{'=' * 20} Action Required {'=' * 20}", flush=True)
                 login_prompt = "   Detected login may be required. If the browser shows a login page, please complete the Google login in the browser window, then press Enter here to continue..."
@@ -284,7 +317,9 @@ async def initialize_page_logic(  # pragma: no cover
                     "true",
                     "yes",
                 ):
-                    logger.info("SUPPRESS_LOGIN_WAIT flag detected, skipping wait for user input.")
+                    logger.info(
+                        "SUPPRESS_LOGIN_WAIT flag detected, skipping wait for user input."
+                    )
                 else:
                     print(USER_INPUT_START_MARKER_SERVER, flush=True)
                     await loop.run_in_executor(None, input, login_prompt)
@@ -296,9 +331,15 @@ async def initialize_page_logic(  # pragma: no cover
                     )
                     current_url = found_page.url
                     if login_url_pattern in current_url:
-                        logger.error("Page still seems to be on the login page after manual login attempt.")
-                        raise RuntimeError("Still on login page after manual login attempt.")
-                    logger.info("Login successful! Please do not operate the browser window and wait for further instructions.")
+                        logger.error(
+                            "Page still seems to be on the login page after manual login attempt."
+                        )
+                        raise RuntimeError(
+                            "Still on login page after manual login attempt."
+                        )
+                    logger.info(
+                        "Login successful! Please do not operate the browser window and wait for further instructions."
+                    )
 
                     # Call auth save logic after successful login
                     if os.environ.get("AUTO_SAVE_AUTH", "false").lower() == "true":
@@ -327,7 +368,9 @@ async def initialize_page_logic(  # pragma: no cover
             logger.error(
                 f"Unexpected page URL after initial navigation: {current_url}. Expected it to contain '{target_url_base}' and '/prompts/'."
             )
-            raise RuntimeError(f"Unexpected page after initial navigation: {current_url}.")
+            raise RuntimeError(
+                f"Unexpected page after initial navigation: {current_url}."
+            )
 
         await found_page.bring_to_front()
 
@@ -345,14 +388,18 @@ async def initialize_page_logic(  # pragma: no cover
                     description="Input Container",
                     timeout_per_selector=30000,
                 )
-            
+
             find_task = asyncio.create_task(find_locator_task())
             shutdown_task = asyncio.create_task(_wait_for_shutdown())
 
-            done, pending = await asyncio.wait([find_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait(
+                [find_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
+            )
 
             if shutdown_task in done:
-                logger.info("🛑 Shutdown signal received during initialization. Aborting.")
+                logger.info(
+                    "🛑 Shutdown signal received during initialization. Aborting."
+                )
                 find_task.cancel()
                 raise RuntimeError("Initialization aborted due to shutdown signal.")
 
@@ -364,12 +411,14 @@ async def initialize_page_logic(  # pragma: no cover
                     "Could not find input container element. Tried selectors: "
                     + ", ".join(INPUT_WRAPPER_SELECTORS)
                 )
-            
+
             # Container confirmed visible by find_first_visible_locator, check input box directly
             await expect_async(found_page.locator(INPUT_SELECTOR)).to_be_visible(
                 timeout=10000
             )
-            logger.debug(f"[Selector] Input area located and visible ({matched_selector})")
+            logger.debug(
+                f"[Selector] Input area located and visible ({matched_selector})"
+            )
 
             model_name_locator = found_page.locator(MODEL_NAME_SELECTOR)
             try:
@@ -383,7 +432,9 @@ async def initialize_page_logic(  # pragma: no cover
             result_page_instance = found_page
             result_page_ready = True
 
-            logger.info(f"[Page] Logic initialization successful | Current Model: {model_name_on_page}")
+            logger.info(
+                f"[Page] Logic initialization successful | Current Model: {model_name_on_page}"
+            )
             return result_page_instance, result_page_ready
         except asyncio.CancelledError:
             raise
@@ -410,7 +461,8 @@ async def initialize_page_logic(  # pragma: no cover
         raise
     except Exception as e_init_page:
         logger.critical(
-            f"Serious unexpected error during page logic initialization: {e_init_page}", exc_info=True
+            f"Serious unexpected error during page logic initialization: {e_init_page}",
+            exc_info=True,
         )
         if temp_context:
             try:
@@ -421,7 +473,9 @@ async def initialize_page_logic(  # pragma: no cover
                 await asyncio.wait_for(temp_context.close(), timeout=2.0)
                 logger.info("   Temporary browser context closed.")
             except asyncio.TimeoutError:
-                logger.warning("   🚨 [ID-04] Browser context close timeout (2s), skipping forced close to speed up shutdown.")
+                logger.warning(
+                    "   🚨 [ID-04] Browser context close timeout (2s), skipping forced close to speed up shutdown."
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as close_err:
@@ -429,7 +483,9 @@ async def initialize_page_logic(  # pragma: no cover
         from browser_utils.operations import save_error_snapshot
 
         await save_error_snapshot("init_unexpected_error")
-        raise RuntimeError(f"Unexpected page initialization error: {e_init_page}") from e_init_page
+        raise RuntimeError(
+            f"Unexpected page initialization error: {e_init_page}"
+        ) from e_init_page
 
 
 async def close_page_logic() -> Tuple[None, bool]:  # pragma: no cover
@@ -444,7 +500,9 @@ async def close_page_logic() -> Tuple[None, bool]:  # pragma: no cover
             await asyncio.wait_for(state.page_instance.close(), timeout=2.0)
             logger.info("   Page closed")
         except asyncio.TimeoutError:
-            logger.warning("   🚨 [ID-04] Browser page close timeout (2s), skipping forced close to speed up shutdown.")
+            logger.warning(
+                "   🚨 [ID-04] Browser page close timeout (2s), skipping forced close to speed up shutdown."
+            )
         except PlaywrightAsyncError as pw_err:
             logger.warning(f"Playwright error closing page: {pw_err}")
         except asyncio.CancelledError:
@@ -462,17 +520,23 @@ async def close_page_logic() -> Tuple[None, bool]:  # pragma: no cover
 
 async def signal_camoufox_shutdown() -> None:  # pragma: no cover
     """Send shutdown signal to Camoufox server"""
-    logger.info("Attempting to send shutdown signal to Camoufox server (this feature may have been handled by parent process)...")
+    logger.info(
+        "Attempting to send shutdown signal to Camoufox server (this feature may have been handled by parent process)..."
+    )
     ws_endpoint = os.environ.get("CAMOUFOX_WS_ENDPOINT")
     if not ws_endpoint:
-        logger.warning("Could not send shutdown signal: CAMOUFOX_WS_ENDPOINT environment variable not found.")
+        logger.warning(
+            "Could not send shutdown signal: CAMOUFOX_WS_ENDPOINT environment variable not found."
+        )
         return
 
     # Need to access global browser instance
     import server
 
     if not server.browser_instance or not server.browser_instance.is_connected():
-        logger.warning("Browser instance disconnected or not initialized, skipping shutdown signal send.")
+        logger.warning(
+            "Browser instance disconnected or not initialized, skipping shutdown signal send."
+        )
         return
     try:
         await asyncio.sleep(0.2)
@@ -480,7 +544,9 @@ async def signal_camoufox_shutdown() -> None:  # pragma: no cover
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"Captured exception while sending shutdown signal: {e}", exc_info=True)
+        logger.error(
+            f"Captured exception while sending shutdown signal: {e}", exc_info=True
+        )
 
 
 async def enable_temporary_chat_mode(page: AsyncPage) -> None:  # pragma: no cover

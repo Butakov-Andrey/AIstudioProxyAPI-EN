@@ -1,46 +1,46 @@
-# 日志控制指南
+# Log Control Guide
 
-本文档介绍如何控制项目的日志输出详细程度和行为。
+This document describes how to control the logging verbosity and behavior of the project.
 
-## 日志系统概述
+## Log System Overview
 
-项目包含两个主要的日志系统：
+The project contains two main logging systems:
 
-1. **启动器日志** (`launch_camoufox.py`)
-2. **主服务器日志** (`server.py`)
+1. **Launcher Logs** (`launch_camoufox.py`)
+2. **Main Server Logs** (`server.py`)
 
-## 启动器日志控制
+## Launcher Log Control
 
-### 日志文件位置
+### Log File Location
 
-- 文件路径: `logs/launch_app.log`
-- 日志级别: 通常为 `INFO`
-- 内容: 启动和协调过程，以及内部启动的 Camoufox 进程的输出
+- File Path: `logs/launch_app.log`
+- Log Level: Usually `INFO`
+- Content: Startup and coordination process, and output from the internally started Camoufox process
 
-### 配置方式
+### Configuration
 
-启动器的日志级别在脚本内部通过 `setup_launcher_logging(log_level=logging.INFO)` 设置。
+The launcher's log level is set internally in the script via `setup_launcher_logging(log_level=logging.INFO)`.
 
-## 主服务器日志控制
+## Main Server Log Control
 
-### 日志文件位置
+### Log File Location
 
-- 文件路径: `logs/app.log`
-- 配置模块: `logging_utils/setup.py`
-- 内容: FastAPI 服务器详细运行日志
+- File Path: `logs/app.log`
+- Configuration Module: `logging_utils/setup.py`
+- Content: Detailed runtime logs of FastAPI server
 
-### 环境变量控制
+### Environment Variable Control
 
-主服务器日志主要通过**环境变量**控制，这些环境变量由 `launch_camoufox.py` 在启动主服务器之前设置：
+Main server logs are primarily controlled via **environment variables**, which are set by `launch_camoufox.py` before starting the main server:
 
 #### SERVER_LOG_LEVEL
 
-控制主服务器日志记录器 (`AIStudioProxyServer`) 的级别。
+Controls the level of the main server logger (`AIStudioProxyServer`).
 
-- **默认值**: `INFO`
-- **可选值**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+- **Default**: `INFO`
+- **Allowed Values**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
 
-**使用示例**:
+**Usage Example**:
 
 ```bash
 # Linux/macOS
@@ -58,19 +58,19 @@ python launch_camoufox.py --headless
 
 #### SERVER_REDIRECT_PRINT
 
-控制主服务器内部的 `print()` 和 `input()` 行为。
+Controls the behavior of `print()` and `input()` inside the main server.
 
-- **`'true'`**: `print()` 输出重定向到日志系统，`input()` 可能无响应（无头模式默认）
-- **`'false'`**: `print()` 输出到原始终端，`input()` 在终端等待用户输入（调试模式默认）
+- **`'true'`**: `print()` output is redirected to logging system, `input()` might be unresponsive (Default for headless mode)
+- **`'false'`**: `print()` outputs to original terminal, `input()` waits for user input in terminal (Default for debug mode)
 
 #### DEBUG_LOGS_ENABLED
 
-控制主服务器内部特定功能的详细调试日志点是否激活。
+Controls whether detailed debug log points for specific internal functions of the main server are activated.
 
-- **默认值**: `false`
-- **可选值**: `true`, `false`
+- **Default**: `false`
+- **Allowed Values**: `true`, `false`
 
-**使用示例**:
+**Usage Example**:
 
 ```bash
 # Linux/macOS
@@ -88,13 +88,13 @@ python launch_camoufox.py --headless
 
 #### TRACE_LOGS_ENABLED
 
-控制更深层次的跟踪日志。
+Controls deeper level tracing logs.
 
-- **默认值**: `false`
-- **可选值**: `true`, `false`
-- **注意**: 通常不需要启用，除非进行深度调试
+- **Default**: `false`
+- **Allowed Values**: `true`, `false`
+- **Note**: Usually not needed unless for deep debugging
 
-**使用示例**:
+**Usage Example**:
 
 ```bash
 # Linux/macOS
@@ -110,9 +110,9 @@ $env:TRACE_LOGS_ENABLED="true"
 python launch_camoufox.py --headless
 ```
 
-## 组合使用示例
+## Combination Examples
 
-### 启用详细调试日志
+### Enable Detailed Debug Logs
 
 ```bash
 # Linux/macOS
@@ -126,7 +126,7 @@ $env:DEBUG_LOGS_ENABLED="true"
 python launch_camoufox.py --headless --server-port 2048
 ```
 
-### 启用最详细的跟踪日志
+### Enable Most Detailed Trace Logs
 
 ```bash
 # Linux/macOS
@@ -142,130 +142,130 @@ $env:TRACE_LOGS_ENABLED="true"
 python launch_camoufox.py --headless
 ```
 
-## 日志查看方式
+## Log Viewing Methods
 
-### 文件日志
+### File Logs
 
-- `logs/app.log`: FastAPI 服务器详细日志
-- `logs/launch_app.log`: 启动器日志
-- 文件日志通常包含比终端或 Web UI 更详细的信息
+- `logs/app.log`: Detailed logs for FastAPI server
+- `logs/launch_app.log`: Launcher logs
+- File logs usually contain more detailed information than terminal or Web UI
 
-### 实时日志 (WebSocket)
+### Real-time Logs (WebSocket)
 
-除了文件和终端，您还可以通过 WebSocket 获取实时的日志流。这在 Web UI 的右侧边栏中已有应用。
+Besides files and terminal, you can get real-time log streams via WebSocket. This is applied in the right sidebar of Web UI.
 
-- **端点**: `/ws/logs` (例如 `ws://127.0.0.1:2048/ws/logs`)
-- **功能**: 实时推送主服务器的 `INFO` 及以上级别的日志
-- **格式**: 纯文本日志行，格式与 `app.log` 保持一致
-- **用途**: 供 Web UI 显示或集成到外部监控系统中
+- **Endpoint**: `/ws/logs` (e.g. `ws://127.0.0.1:2048/ws/logs`)
+- **Function**: Push real-time logs of `INFO` and above levels from main server
+- **Format**: Plain text log lines, consistent with `app.log` format
+- **Usage**: For display in Web UI or integration into external monitoring systems
 
-### Web UI 日志
+### Web UI Logs
 
-- Web UI 右侧边栏集成了上述 WebSocket 功能
-- 实时显示来自主服务器的日志
-- 提供清理日志的按钮
+- Web UI right sidebar integrates the above WebSocket feature
+- Real-time display of logs from main server
+- Provides button to clear logs
 
-### 终端日志
+### Terminal Logs
 
-- 调试模式 (`--debug`) 下，日志会直接输出到启动的终端
-- 无头模式下，终端日志较少，主要信息在日志文件中
+- In debug mode (`--debug`), logs are directly output to the starting terminal
+- In headless mode, terminal logs are fewer, main information is in log files
 
-## 日志级别说明
+## Log Level Explanation
 
 ### DEBUG
 
-- 最详细的日志信息
-- 包含函数调用、变量值、执行流程等
-- 用于深度调试和问题排查
+- Most detailed log information
+- Includes function calls, variable values, execution flow, etc.
+- Used for deep debugging and troubleshooting
 
 ### INFO
 
-- 一般信息日志
-- 包含重要的操作和状态变化
-- 日常运行的默认级别
+- General information logs
+- Includes important operations and state changes
+- Default level for daily operation
 
 ### WARNING
 
-- 警告信息
-- 表示可能的问题或异常情况
-- 不影响正常功能但需要注意
+- Warning information
+- Indicates potential problems or abnormal situations
+- Does not affect normal function but needs attention
 
 ### ERROR
 
-- 错误信息
-- 表示功能异常或失败
-- 需要立即关注和处理
+- Error information
+- Indicates functional abnormality or failure
+- Needs immediate attention and handling
 
 ### CRITICAL
 
-- 严重错误
-- 表示系统级别的严重问题
-- 可能导致服务不可用
+- Severe error
+- Indicates system-level serious problems
+- May lead to service unavailability
 
-## 性能考虑
+## Performance Considerations
 
-### 日志级别对性能的影响
+### Impact of Log Level on Performance
 
-- **DEBUG 级别**: 会产生大量日志，可能影响性能，仅在调试时使用
-- **INFO 级别**: 平衡了信息量和性能，适合日常运行
-- **WARNING 及以上**: 日志量最少，性能影响最小
+- **DEBUG Level**: Generates massive logs, may affect performance, use only when debugging
+- **INFO Level**: Balances information quantity and performance, suitable for daily operation
+- **WARNING and above**: Least logs, minimal performance impact
 
-### 日志文件大小管理
+### Log File Size Management
 
-- 日志文件会随时间增长，建议定期清理或轮转
-- 可以手动删除旧的日志文件
-- 考虑使用系统的日志轮转工具（如 logrotate）
+- Log files grow over time, regular cleaning or rotation is recommended
+- Old log files can be manually deleted
+- Consider using system log rotation tools (like logrotate)
 
-## 故障排除
+## Troubleshooting
 
-### 日志不显示
+### Logs Not Showing
 
-1. 检查环境变量是否正确设置
-2. 确认日志文件路径是否可写
-3. 检查 Web UI 的 WebSocket 连接是否正常
+1. Check if environment variables are set correctly
+2. Confirm log file path is writable
+3. Check if Web UI WebSocket connection is normal
 
-### 日志过多
+### Too Many Logs
 
-1. 降低日志级别（如从 DEBUG 改为 INFO）
-2. 禁用 DEBUG_LOGS_ENABLED 和 TRACE_LOGS_ENABLED
-3. 定期清理日志文件
+1. Lower log level (e.g. from DEBUG to INFO)
+2. Disable DEBUG_LOGS_ENABLED and TRACE_LOGS_ENABLED
+3. Regularly clean log files
 
-### 日志缺失重要信息
+### Missing Important Logs
 
-1. 提高日志级别（如从 WARNING 改为 INFO 或 DEBUG）
-2. 启用 DEBUG_LOGS_ENABLED 获取更多调试信息
-3. 检查日志文件而不仅仅是终端输出
+1. Raise log level (e.g. from WARNING to INFO or DEBUG)
+2. Enable DEBUG_LOGS_ENABLED to get more debug info
+3. Check log files instead of just terminal output
 
-## 最佳实践
+## Best Practices
 
-### 日常运行
+### Daily Operation
 
 ```bash
-# 推荐的日常运行配置
+# Recommended daily operation config
 export SERVER_LOG_LEVEL=INFO
 python launch_camoufox.py --headless
 ```
 
-### 调试问题
+### Debugging Issues
 
 ```bash
-# 推荐的调试配置
+# Recommended debug config
 export SERVER_LOG_LEVEL=DEBUG
 export DEBUG_LOGS_ENABLED=true
 python launch_camoufox.py --debug
 ```
 
-### 生产环境
+### Production Environment
 
 ```bash
-# 推荐的生产环境配置
+# Recommended production environment config
 export SERVER_LOG_LEVEL=WARNING
 python launch_camoufox.py --headless
 ```
 
-## 下一步
+## Next Steps
 
-日志控制配置完成后，请参考：
+After log control configuration is complete, please refer to:
 
-- [故障排除指南](troubleshooting.md)
-- [高级配置指南](advanced-configuration.md)
+- [Troubleshooting Guide](troubleshooting.md)
+- [Advanced Configuration Guide](advanced-configuration.md)

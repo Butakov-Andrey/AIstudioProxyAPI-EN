@@ -345,7 +345,7 @@ async def test_simulate_drag_drop_files(
 @pytest.mark.timeout(5)
 async def test_try_enter_submit(input_controller, mock_page_controller):
     """Test _try_enter_submit."""
-    mock_check_disconnect = MagicMock(return_value=False)
+    mock_check_disconnected = MagicMock(return_value=False)
     prompt_area = MagicMock()
     prompt_area.press = AsyncMock()
     prompt_area.focus = AsyncMock()
@@ -362,7 +362,7 @@ async def test_try_enter_submit(input_controller, mock_page_controller):
         mock_expect.return_value.to_be_visible = AsyncMock()
 
         result = await input_controller._try_enter_submit(
-            prompt_area, mock_check_disconnect
+            prompt_area, mock_check_disconnected
         )
 
         assert result is True
@@ -376,7 +376,7 @@ async def test_try_enter_submit(input_controller, mock_page_controller):
 @pytest.mark.timeout(5)
 async def test_try_combo_submit(input_controller, mock_page_controller):
     """Test _try_combo_submit."""
-    mock_check_disconnect = MagicMock(return_value=False)
+    mock_check_disconnected = MagicMock(return_value=False)
     prompt_area = MagicMock()
     prompt_area.focus = AsyncMock()
     prompt_area.input_value = AsyncMock(side_effect=["test", ""])  # Method 1: cleared
@@ -386,7 +386,7 @@ async def test_try_combo_submit(input_controller, mock_page_controller):
 
     with patch("os.environ.get", return_value="Windows"):
         result = await input_controller._try_combo_submit(
-            prompt_area, mock_check_disconnect
+            prompt_area, mock_check_disconnected
         )
 
         assert result is True
@@ -443,7 +443,7 @@ async def test_submit_prompt_timeout(
 
     mock_page_controller.page.locator.side_effect = locator_side_effect
 
-    # Mock config timeout to be very short for test
+    # Mock timeout constant to be very short for test
     with (
         patch("config.timeouts.SUBMIT_BUTTON_ENABLE_TIMEOUT_MS", 100),
         patch.object(
@@ -635,7 +635,7 @@ async def test_simulate_drag_drop_files_read_error(
         patch("os.path.exists", return_value=True),
     ):
         # Should raise exception because no files could be read -> payloads empty
-        with pytest.raises(Exception, match="无可用文件用于拖放"):
+        with pytest.raises(Exception, match="No available files for drag and drop"):
             await input_controller._simulate_drag_drop_files(target, ["/tmp/bad.png"])
 
 
@@ -1294,7 +1294,7 @@ async def test_simulate_drag_drop_file_read_error(input_controller):
     """Test _simulate_drag_drop_files handling file read error."""
     # If read fails, it logs warning and skips. If no files left, raises exception.
     with patch("builtins.open", side_effect=Exception("Read failed")):
-        with pytest.raises(Exception, match="无可用文件用于拖放"):
+        with pytest.raises(Exception, match="No available files for drag and drop"):
             await input_controller._simulate_drag_drop_files(
                 MagicMock(), ["bad_file.jpg"]
             )

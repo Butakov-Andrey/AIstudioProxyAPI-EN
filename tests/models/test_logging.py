@@ -324,7 +324,7 @@ async def test_websocketmanager_broadcast_runtimeerror_closed():
     assert "client1" not in manager.active_connections
     # Should log the closed connection
     assert any(
-        "已关闭" in str(call) or "client1" in str(call)
+        "is closed" in str(call) or "client1" in str(call)
         for call in mock_logger.info.call_args_list
     )
 

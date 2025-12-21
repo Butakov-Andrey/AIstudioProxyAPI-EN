@@ -1,109 +1,110 @@
-# 首次运行与认证设置指南
+# First Run & Authentication Setup Guide
 
-为了避免每次启动都手动登录 AI Studio，你需要先通过 [`launch_camoufox.py --debug`](../launch_camoufox.py) 模式运行一次来生成认证文件。
+To avoid manually logging into AI Studio every time you start, you need to run in [`launch_camoufox.py --debug`](../launch_camoufox.py) mode once to generate an authentication file.
 
-## 认证文件的重要性
+## Importance of Authentication File
 
-**认证文件是无头模式的关键**: 无头模式依赖于 `auth_profiles/active/` 目录下的有效 `.json` 文件来维持登录状态和访问权限。**文件可能会过期**，需要定期通过 [`launch_camoufox.py --debug`](../launch_camoufox.py) 模式手动运行、登录并保存新的认证文件来替换更新。
+**The authentication file is key to headless mode**: Headless mode relies on a valid `.json` file in the `auth_profiles/active/` directory to maintain login state and access permissions. **Files may expire**, requiring periodic manual runs of [`launch_camoufox.py --debug`](../launch_camoufox.py) mode to login and save a new authentication file for replacement.
 
-### 🐳 Docker 用户特别说明
+### 🐳 Special Note for Docker Users
 
-**Docker 容器通常运行在无头模式下，无法直接进行交互式登录。**
+**Docker containers typically run in headless mode and cannot support direct interactive login.**
 
-1.  请务必先在**宿主机**（你的 Windows/Mac/Linux 电脑）上按照本指南生成认证文件。
-2.  确保生成的 `.json` 文件位于宿主机的 `auth_profiles/active/` 目录下。
-3.  启动 Docker 容器时，该目录会被挂载，容器即可读取认证信息。
+1.  Please ensure you generate the authentication file on the **host machine** (your Windows/Mac/Linux computer) following this guide first.
+2.  Ensure the generated `.json` file is placed in the `auth_profiles/active/` directory on the host machine.
+3.  When starting the Docker container, this directory will be mounted, allowing the container to read the authentication information.
 
-## 方法一：通过命令行运行 Debug 模式
+## Method 1: Run Debug Mode via Command Line
 
-**推荐使用 .env 配置方式**:
+**Recommended configuration using .env**:
 
 ```env
-# .env 文件配置
+# .env file configuration
 DEFAULT_FASTAPI_PORT=2048
 STREAM_PORT=0
 LAUNCH_MODE=normal
 DEBUG_LOGS_ENABLED=true
 
-# [IMPORTANT] 必须设置为 true 才能保存认证配置文件！
+# [IMPORTANT] Must be set to true to save auth profiles!
 AUTO_SAVE_AUTH=true
 ```
 
-> [!WARNING] > `AUTO_SAVE_AUTH=true` 是保存认证配置文件的必要条件。如果设置为 `false`（默认值），登录成功后将不会保存认证状态。
+> [!WARNING]
+> `AUTO_SAVE_AUTH=true` is required to save the authentication profile. If set to `false` (default), the authentication state will not be saved after a successful login.
 
 ```bash
-# 简化启动命令 (推荐)
+# Simplified start command (Recommended)
 python launch_camoufox.py --debug
 
-# 传统命令行方式 (仍然支持)
+# Traditional command line way (Still supported)
 python launch_camoufox.py --debug --server-port 2048 --stream-port 0 --helper '' --internal-camoufox-proxy ''
 ```
 
-**重要参数说明:**
+**Important Parameters:**
 
-- `--debug`: 启动有头模式，用于首次认证和调试
-- `--server-port <端口号>`: 指定 FastAPI 服务器监听的端口 (默认: 2048)
-- `--stream-port <端口号>`: 启动集成的流式代理服务端口 (默认: 3120)。设置为 `0` 可禁用此服务，首次启动建议禁用
-- `--helper <端点URL>`: 指定外部 Helper 服务的地址。设置为空字符串 `''` 表示不使用外部 Helper
-- `--internal-camoufox-proxy <代理地址>`: 为 Camoufox 浏览器指定代理。设置为空字符串 `''` 表示不使用代理
-- **注意**: 如果需要启用流式代理服务，建议同时配置 `--internal-camoufox-proxy` 参数以确保正常运行
+- `--debug`: Starts in headed mode, used for first-time authentication and debugging.
+- `--server-port <port>`: Specifies the port for the FastAPI server (Default: 2048).
+- `--stream-port <port>`: Starts the integrated streaming proxy service port (Default: 3120). Set to `0` to disable this service; recommended to disable for first run.
+- `--helper <endpoint_url>`: Specifies the address of an external Helper service. Set to empty string `''` to not use external Helper.
+- `--internal-camoufox-proxy <proxy_address>`: Specifies a proxy for the Camoufox browser. Set to empty string `''` to not use a proxy.
+- **Note**: If enabling the streaming proxy service, it is recommended to also configure the `--internal-camoufox-proxy` parameter to ensure normal operation.
 
-### 操作步骤
+### Operational Steps
 
-1.  运行脚本后，程序会询问：`是否要创建并保存新的认证文件? (y/n)`。
-    - 输入 `y` 并回车：按提示输入文件名（例如 `my-auth`），登录成功后将自动保存。
-    - 输入 `n` 或直接回车：将在登录结束后询问是否保存。
-2.  脚本启动 Camoufox，你会看到一个 **带界面的 Firefox 浏览器窗口** 弹出。
-3.  **关键交互:** **在弹出的浏览器窗口中完成 Google 登录**，直到看到 AI Studio 聊天界面。 (脚本会自动处理浏览器连接，无需用户手动操作)。
-4.  **登录确认操作**: 当系统检测到登录页面并在终端显示类似以下提示时：
+1.  After running the script, the program will ask: `Do you want to create and save a new auth profile? (y/n)`.
+    - Input `y` and Enter: Follow prompts to enter a filename (e.g., `my-auth`), it will save automatically after successful login.
+    - Input `n` or just Enter: It will ask whether to save after login ends.
+2.  The script starts Camoufox, and you will see a **Firefox browser window with UI** pop up.
+3.  **Key Interaction:** **Complete Google Login in the popped-up browser window** until you see the AI Studio chat interface. (The script handles browser connection automatically, no manual user operation needed there).
+4.  **Login Confirmation:** When the system detects the login page and displays a prompt in the terminal like:
     ```
-    检测到可能需要登录。如果浏览器显示登录页面，请在浏览器窗口中完成 Google 登录，然后在此处按 Enter 键继续...
+    Login page detected. Please complete Google login in the browser window, then press Enter here to continue...
     ```
-    **用户必须在终端中按 Enter 键确认操作才能继续**。这个确认步骤是必需的，系统会等待用户的确认输入才会进行下一步的登录状态检查。
-5.  **保存文件**:
-    - 如果在第 1 步选择了自动保存，系统会自动将文件保存到 `auth_profiles/saved/`。
-    - 如果在第 1 步选择了不自动保存，终端会提示 `是否要将当前的浏览器认证状态保存到文件？ (y/N)`，输入 `y` 并按提示操作。
-6.  **激活文件**: **将 `auth_profiles/saved/` 下新生成的 `.json` 文件移动到 `auth_profiles/active/` 目录。** 确保 `active` 目录下只有一个 `.json` 文件。
-7.  可以按 `Ctrl+C` 停止 `--debug` 模式的运行。
+    **You must press the Enter key in the terminal to confirm the operation to proceed**. This confirmation step is mandatory; the system waits for user confirmation before checking login status.
+5.  **Save File**:
+    - If you chose auto-save in Step 1, the system automatically saves the file to `auth_profiles/saved/`.
+    - If you chose not to auto-save in Step 1, the terminal will prompt `Do you want to save the current browser auth state to a file? (y/N)`, input `y` and follow instructions.
+6.  **Activate File**: **Move the newly generated `.json` file from `auth_profiles/saved/` to the `auth_profiles/active/` directory.** Ensure there is only one `.json` file in the `active` directory.
+7.  You can press `Ctrl+C` to stop the `--debug` mode execution.
 
-## 方法二：通过 GUI 启动有头模式 (已废弃)
+## Method 2: Start Headed Mode via GUI (Deprecated)
 
 > [!WARNING]
-> GUI 启动器 (`gui_launcher.py`) 已移至 `deprecated/` 目录。请使用上面的命令行方式。
+> The GUI launcher (`gui_launcher.py`) has been moved to the `deprecated/` directory. Please use the command line method above.
 
-以下步骤仅供参考，不再推荐使用：
+The following steps are for reference only and are no longer recommended:
 
-1.  运行 `python deprecated/gui_launcher.py`。
-2.  在 "认证文件管理" 区域，点击 **"管理认证文件"** 按钮。
-3.  在弹出的窗口中，点击 **"创建新认证文件"** 按钮。
-4.  输入想要保存的文件名（例如 `account1`），点击确定。
-5.  在弹出的浏览器窗口中完成 Google 登录。
-6.  登录成功后，认证文件会自动保存到 `auth_profiles/saved/` 目录。
-7.  回到 GUI 主界面，再次点击 **"管理认证文件"** 按钮。
-8.  在列表中选择刚才创建的文件，点击 **"激活选中的文件"**。这会自动将其移动到 `active` 目录。
+1.  Run `python deprecated/gui_launcher.py`.
+2.  In the "Auth Profile Management" area, click the **"Manage Profiles"** button.
+3.  In the popup window, click the **"Create New Profile"** button.
+4.  Enter the desired filename (e.g., `account1`) and click OK.
+5.  Complete Google Login in the popped-up browser window.
+6.  After successful login, the auth file is automatically saved to the `auth_profiles/saved/` directory.
+7.  Back in the GUI main interface, click **"Manage Profiles"** again.
+8.  Select the file created just now from the list and click **"Activate Selected"**. This automatically moves it to the `active` directory.
 
-## 激活认证文件
+## Activating Auth File
 
-1. 进入 `auth_profiles/saved/` 目录，找到刚才保存的 `.json` 认证文件。
-2. 将这个 `.json` 文件 **移动或复制** 到 `auth_profiles/active/` 目录下。
-3. **重要:** 确保 `auth_profiles/active/` 目录下 **有且仅有一个 `.json` 文件**。无头模式启动时会自动加载此目录下的第一个 `.json` 文件。
+1. Go to the `auth_profiles/saved/` directory and find the `.json` auth file you just saved.
+2. **Move or Copy** this `.json` file to the `auth_profiles/active/` directory.
+3. **Important:** Ensure there is **exactly one `.json` file** in the `auth_profiles/active/` directory. Headless mode automatically loads the first `.json` file in this directory.
 
-## 认证文件过期处理
+## Handling Auth File Expiration
 
-**认证文件会过期!** Google 的登录状态不是永久有效的。当无头模式启动失败并报告认证错误或重定向到登录页时，意味着 `active` 目录下的认证文件已失效。你需要：
+**Auth files expire!** Google login status is not permanent. When headless mode fails to start and reports an authentication error or redirects to the login page, it means the auth file in the `active` directory is invalid. You need to:
 
-1. 删除 `active` 目录下的旧文件。
-2. 重新执行上面的 **【通过命令行运行 Debug 模式】** 步骤，生成新的认证文件。
-3. 将新生成的 `.json` 文件再次移动到 `active` 目录下。
+1. Delete the old file in the `active` directory.
+2. Re-execute the **[Method 1: Run Debug Mode via Command Line]** steps above to generate a new auth file.
+3. Move the newly generated `.json` file to the `active` directory again.
 
-## 重要提示
+## Important Note
 
-- **首次访问新主机的性能问题**: 当通过流式代理首次访问一个新的 HTTPS 主机时，服务需要为该主机动态生成并签署一个新的子证书。这个过程可能会比较耗时，导致对该新主机的首次连接请求响应较慢，甚至在某些情况下可能被主程序（如 [`server.py`](../server.py) 中的 Playwright 交互逻辑）误判为浏览器加载超时。一旦证书生成并缓存后，后续访问同一主机将会显著加快。
+- **Performance on First Access to New Host**: When accessing a new HTTPS host via the streaming proxy for the first time, the service needs to dynamically generate and sign a new child certificate for that host. This process can be time-consuming, causing the response to the first connection request for that new host to be slow, potentially even being misjudged as a browser load timeout by the main program (like the Playwright interaction logic in [`server.py`](../server.py)). Once the certificate is generated and cached, subsequent accesses to the same host will be significantly faster.
 
-## 下一步
+## Next Steps
 
-认证设置完成后，请参考：
+After auth setup is complete, please refer to:
 
-- [日常运行指南](daily-usage.md)
-- [API 使用指南](api-usage.md)
-- [Web UI 使用指南](webui-guide.md)
+- [Daily Usage Guide](daily-usage.md)
+- [API Usage Guide](api-usage.md)
+- [Web UI Guide](webui-guide.md)

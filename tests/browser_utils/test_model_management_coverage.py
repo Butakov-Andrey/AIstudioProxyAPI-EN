@@ -41,7 +41,7 @@ async def test_verify_ui_missing_storage(mock_page):
     result = await _verify_ui_state_settings(mock_page, "req1")
 
     assert result["exists"] is False
-    assert result["error"] == "localStorage不存在"
+    assert result["error"] == "localStorage not found"
     assert result["needsUpdate"] is True
 
 
@@ -53,7 +53,7 @@ async def test_verify_ui_json_error(mock_page):
     result = await _verify_ui_state_settings(mock_page, "req1")
 
     assert result["exists"] is False
-    assert "JSON解析失败" in result["error"]
+    assert "JSON parse failed" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -64,7 +64,7 @@ async def test_verify_ui_general_exception(mock_page):
     result = await _verify_ui_state_settings(mock_page, "req1")
 
     assert result["exists"] is False
-    assert "验证失败" in result["error"]
+    assert "Verification failed" in result["error"]
 
 
 # ===== _force_ui_state_settings Coverage =====
@@ -237,7 +237,7 @@ async def test_switch_model_ui_state_fail_warning(mock_page):
 
         # Verify warning logged
         warnings = [call.args[0] for call in mock_logger.warning.call_args_list]
-        assert any("UI状态设置失败" in str(w) for w in warnings)
+        assert any("UI state setting failed" in str(w) for w in warnings)
 
 
 @pytest.mark.asyncio
@@ -872,7 +872,7 @@ async def test_switch_model_no_revert_id_with_original(mock_page):
     mock_page.evaluate.side_effect = evaluations
 
     mock_locator = MagicMock()
-    # Return "无法读取" to trigger no-valid-ID path
+    # Return "Cannot read" to trigger no-valid-ID path
     mock_locator.first.inner_text = AsyncMock(
         side_effect=[
             Exception("Check fails"),

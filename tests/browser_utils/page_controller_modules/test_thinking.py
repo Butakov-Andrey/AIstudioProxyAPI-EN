@@ -635,7 +635,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     check_disconnect_mock = MagicMock(return_value=False)
 
     # "high" -> Enable
-    print("DEBUG: Testing high")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "high"}, "model", check_disconnect_mock
     )
@@ -645,7 +644,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # "low" -> Enable
-    print("DEBUG: Testing low")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "low"}, "model", check_disconnect_mock
     )
@@ -655,7 +653,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # "-1" -> Enable
-    print("DEBUG: Testing -1 string")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "-1"}, "model", check_disconnect_mock
     )
@@ -665,7 +662,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # -1 (int) -> Enable
-    print("DEBUG: Testing -1 int")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": -1}, "model", check_disconnect_mock
     )
@@ -676,7 +672,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
 
     # "none" -> Enable (unlimited budget)
     # normalize_reasoning_effort("none") -> thinking_enabled=True
-    print("DEBUG: Testing none")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "none"}, "model", check_disconnect_mock
     )
@@ -686,7 +681,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # "invalid" -> Disable
-    print("DEBUG: Testing invalid")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "invalid"}, "model", check_disconnect_mock
     )
@@ -902,7 +896,7 @@ async def test_handle_thinking_budget_invalid_string(mock_controller):
     )
 
     # The exception handling path should be taken, leading to level_to_set = None
-    # which logs "无法解析等级" and returns without calling _set_thinking_level
+    # which logs "Cannot parse level" and returns without calling _set_thinking_level
     # Note: This test mainly ensures the exception path is covered
 
 
@@ -1289,7 +1283,7 @@ async def test_set_thinking_budget_value_top_level_errors(mock_controller, mock_
 async def test_control_thinking_mode_toggle_scroll_exception(
     mock_controller, mock_page
 ):
-    """Test scroll_into_view_if_needed exception handling (lines 438)."""
+    """Test scroll exception in _control_thinking_mode_toggle (lines 438)."""
 
     toggle = AsyncMock()
     toggle.scroll_into_view_if_needed = AsyncMock(
@@ -1750,16 +1744,16 @@ async def test_handle_thinking_budget_flash_string_numeric_parsing(mock_controll
 
     # Test string numeric values for Flash 4-level model
     test_cases = [
-        ("16000", "high"),      # String >= 16000 -> high
-        ("20000", "high"),      # String > 16000 -> high
-        ("8000", "medium"),     # String >= 8000 -> medium
-        ("10000", "medium"),    # String between 8000-16000 -> medium
-        ("1024", "low"),        # String >= 1024 -> low
-        ("2000", "low"),        # String between 1024-8000 -> low
-        ("500", "minimal"),     # String < 1024 -> minimal
-        ("100", "minimal"),     # String well below 1024 -> minimal
-        ("none", "high"),       # "none" maps to "high" for Flash (lines 149-150)
-        ("-1", "high"),         # "-1" maps to "high" (lines 149-150)
+        ("16000", "high"),  # String >= 16000 -> high
+        ("20000", "high"),  # String > 16000 -> high
+        ("8000", "medium"),  # String >= 8000 -> medium
+        ("10000", "medium"),  # String between 8000-16000 -> medium
+        ("1024", "low"),  # String >= 1024 -> low
+        ("2000", "low"),  # String between 1024-8000 -> low
+        ("500", "minimal"),  # String < 1024 -> minimal
+        ("100", "minimal"),  # String well below 1024 -> minimal
+        ("none", "high"),  # "none" maps to "high" for Flash (lines 149-150)
+        ("-1", "high"),  # "-1" maps to "high" (lines 149-150)
     ]
 
     for input_value, expected_level in test_cases:
@@ -1769,12 +1763,15 @@ async def test_handle_thinking_budget_flash_string_numeric_parsing(mock_controll
             "gemini-3-flash-preview",
             MagicMock(return_value=False),
         )
-        mock_controller._set_thinking_level.assert_called_with(
-            expected_level, unittest.mock.ANY
-        ), f"Failed for input '{input_value}': expected '{expected_level}'"
+        (
+            mock_controller._set_thinking_level.assert_called_with(
+                expected_level, unittest.mock.ANY
+            ),
+            f"Failed for input '{input_value}': expected '{expected_level}'",
+        )
 
 
-@pytest.mark.asyncio 
+@pytest.mark.asyncio
 async def test_handle_thinking_budget_pro_string_exception(mock_controller):
     """Test Pro level string parsing exception path (lines 174-175)."""
     mock_controller._get_thinking_category = MagicMock(
@@ -1805,10 +1802,10 @@ async def test_handle_thinking_budget_pro_string_numeric(mock_controller):
 
     # Test string numeric values for Pro 2-level model
     test_cases = [
-        ("8000", "high"),       # String >= 8000 -> high
-        ("10000", "high"),      # String > 8000 -> high
-        ("7999", "low"),        # String < 8000 -> low
-        ("100", "low"),         # String well below 8000 -> low
+        ("8000", "high"),  # String >= 8000 -> high
+        ("10000", "high"),  # String > 8000 -> high
+        ("7999", "low"),  # String < 8000 -> low
+        ("100", "low"),  # String well below 8000 -> low
     ]
 
     for input_value, expected_level in test_cases:
@@ -1818,9 +1815,12 @@ async def test_handle_thinking_budget_pro_string_numeric(mock_controller):
             "gemini-3-pro",
             MagicMock(return_value=False),
         )
-        mock_controller._set_thinking_level.assert_called_with(
-            expected_level, unittest.mock.ANY
-        ), f"Failed for input '{input_value}': expected '{expected_level}'"
+        (
+            mock_controller._set_thinking_level.assert_called_with(
+                expected_level, unittest.mock.ANY
+            ),
+            f"Failed for input '{input_value}': expected '{expected_level}'",
+        )
 
 
 @pytest.mark.asyncio

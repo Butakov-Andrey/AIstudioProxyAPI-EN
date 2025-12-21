@@ -1,633 +1,633 @@
-# 环境变量完整参考
+# Environment Variables Reference
 
-本文档提供项目中所有环境变量的完整参考，包括用途、类型、默认值和示例。
+This document provides a complete reference for all environment variables in the project, including usage, type, default values, and examples.
 
-## 📋 目录
+## 📋 Table of Contents
 
-- [端口配置](#端口配置)
-- [代理配置](#代理配置)
-- [日志配置](#日志配置)
-- [认证配置](#认证配置)
-- [浏览器配置](#浏览器配置)
-- [API 默认参数](#api-默认参数)
-- [超时配置](#超时配置)
-- [GUI 启动器配置](#gui-启动器配置)
-- [脚本注入配置](#脚本注入配置)
-- [其他配置](#其他配置)
-- [流状态配置](#流状态配置)
+- [Port Configuration](#port-configuration)
+- [Proxy Configuration](#proxy-configuration)
+- [Log Configuration](#log-configuration)
+- [Authentication Configuration](#authentication-configuration)
+- [Browser Configuration](#browser-configuration)
+- [API Default Parameters](#api-default-parameters)
+- [Timeout Configuration](#timeout-configuration)
+- [GUI Launcher Configuration](#gui-launcher-configuration)
+- [Script Injection Configuration](#script-injection-configuration)
+- [Other Configuration](#other-configuration)
+- [Stream State Configuration](#stream-state-configuration)
 
 ---
 
-## 端口配置
+## Port Configuration
 
 ### PORT
 
-- **用途**: FastAPI 服务监听端口
-- **类型**: 整数
-- **默认值**: `2048`
-- **示例**: `PORT=8000`
-- **说明**: 主 API 服务的 HTTP 端口，所有 `/v1/*` 端点通过此端口访问
+- **Usage**: FastAPI service listening port
+- **Type**: Integer
+- **Default**: `2048`
+- **Example**: `PORT=8000`
+- **Description**: HTTP port for the main API service, all `/v1/*` endpoints are accessed via this port
 
 ### DEFAULT_FASTAPI_PORT
 
-- **用途**: GUI 启动器的默认 FastAPI 端口
-- **类型**: 整数
-- **默认值**: `2048`
-- **示例**: `DEFAULT_FASTAPI_PORT=3048`
-- **说明**: 当使用 GUI 或命令行启动时的默认端口，与 `PORT` 配合使用
+- **Usage**: Default FastAPI port for GUI launcher
+- **Type**: Integer
+- **Default**: `2048`
+- **Example**: `DEFAULT_FASTAPI_PORT=3048`
+- **Description**: Default port when starting via GUI or command line, used in conjunction with `PORT`
 
 ### DEFAULT_CAMOUFOX_PORT
 
-- **用途**: Camoufox 浏览器调试端口
-- **类型**: 整数
-- **默认值**: `9222`
-- **示例**: `DEFAULT_CAMOUFOX_PORT=9223`
-- **说明**: Camoufox 内部启动时使用的 CDP (Chrome DevTools Protocol) 端口
+- **Usage**: Camoufox browser debugging port
+- **Type**: Integer
+- **Default**: `9222`
+- **Example**: `DEFAULT_CAMOUFOX_PORT=9223`
+- **Description**: CDP (Chrome DevTools Protocol) port used when Camoufox starts internally
 
 ### STREAM_PORT
 
-- **用途**: 集成流式代理服务端口
-- **类型**: 整数
-- **默认值**: `3120`
-- **特殊值**: `0` - 禁用流式代理服务
-- **示例**: `STREAM_PORT=3121`
-- **说明**: 内置流式代理服务的监听端口，用于三层响应获取机制的第一层
+- **Usage**: Integrated streaming proxy service port
+- **Type**: Integer
+- **Default**: `3120`
+- **Special Value**: `0` - Disable streaming proxy service
+- **Example**: `STREAM_PORT=3121`
+- **Description**: Listening port for the built-in streaming proxy service, used for the first layer of the three-layer response acquisition mechanism
 
 ---
 
-## 启动配置
+## Startup Configuration
 
 ### DIRECT_LAUNCH
 
-- **用途**: 快速启动
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `DIRECT_LAUNCH=false`
-- **说明**: 跳过等待选项超时，直接使用默认选项快速启动
+- **Usage**: Quick launch
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `DIRECT_LAUNCH=false`
+- **Description**: Skip waiting for option timeout and launch directly with default options
 
 ### SKIP_FRONTEND_BUILD
 
-- **用途**: 跳过前端构建检查
-- **类型**: 布尔值
-- **默认值**: `false`
-- **可选值**: `true`, `false`, `1`, `0`, `yes`, `no`
-- **示例**: `SKIP_FRONTEND_BUILD=true`
-- **说明**: 跳过启动时的前端资源构建检查。适用于没有 Node.js/npm 的环境，或使用预构建资源的部署场景。也可通过命令行参数 `--skip-frontend-build` 设置。
+- **Usage**: Skip frontend build check
+- **Type**: Boolean
+- **Default**: `false`
+- **Allowed Values**: `true`, `false`, `1`, `0`, `yes`, `no`
+- **Example**: `SKIP_FRONTEND_BUILD=true`
+- **Description**: Skip the frontend resource build check at startup. Suitable for environments without Node.js/npm, or deployment scenarios using pre-built resources. Can also be set via command line argument `--skip-frontend-build`.
 
 ---
 
-## 代理配置
+## Proxy Configuration
 
 ### HTTP_PROXY
 
-- **用途**: HTTP 代理服务器地址
-- **类型**: 字符串 (URL)
-- **默认值**: 空
-- **示例**: `HTTP_PROXY=http://127.0.0.1:7890`
-- **说明**: 用于 HTTP 请求的上游代理
+- **Usage**: HTTP proxy server address
+- **Type**: String (URL)
+- **Default**: Empty
+- **Example**: `HTTP_PROXY=http://127.0.0.1:7890`
+- **Description**: Upstream proxy for HTTP requests
 
 ### HTTPS_PROXY
 
-- **用途**: HTTPS 代理服务器地址
-- **类型**: 字符串 (URL)
-- **默认值**: 空
-- **示例**: `HTTPS_PROXY=http://127.0.0.1:7890`
-- **说明**: 用于 HTTPS 请求的上游代理
+- **Usage**: HTTPS proxy server address
+- **Type**: String (URL)
+- **Default**: Empty
+- **Example**: `HTTPS_PROXY=http://127.0.0.1:7890`
+- **Description**: Upstream proxy for HTTPS requests
 
 ### UNIFIED_PROXY_CONFIG
 
-- **用途**: 统一代理配置（优先级高于 HTTP_PROXY/HTTPS_PROXY）
-- **类型**: 字符串 (URL)
-- **默认值**: `空`
-- **示例**: `UNIFIED_PROXY_CONFIG=socks5://127.0.0.1:1080`
-- **说明**: 推荐使用此配置，会同时应用到 HTTP 和 HTTPS 请求
+- **Usage**: Unified proxy configuration (Higher priority than HTTP_PROXY/HTTPS_PROXY)
+- **Type**: String (URL)
+- **Default**: `Empty`
+- **Example**: `UNIFIED_PROXY_CONFIG=socks5://127.0.0.1:1080`
+- **Description**: Recommended configuration, applies to both HTTP and HTTPS requests
 
 ### NO_PROXY
 
-- **用途**: 代理绕过列表
-- **类型**: 字符串（分号或逗号分隔）
-- **默认值**: 空
-- **示例**: `NO_PROXY=localhost;127.0.0.1;*.local`
-- **说明**: 指定不通过代理的主机名或 IP 地址
+- **Usage**: Proxy bypass list
+- **Type**: String (semicolon or comma separated)
+- **Default**: Empty
+- **Example**: `NO_PROXY=localhost;127.0.0.1;*.local`
+- **Description**: Specify hostnames or IP addresses that should not use the proxy
 
 ---
 
-## 日志配置
+## Log Configuration
 
 ### SERVER_LOG_LEVEL
 
-- **用途**: 服务器日志级别
-- **类型**: 字符串
-- **默认值**: `INFO`
-- **可选值**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
-- **示例**: `SERVER_LOG_LEVEL=DEBUG`
-- **说明**: 控制 FastAPI 服务器的日志详细程度
+- **Usage**: Server log level
+- **Type**: String
+- **Default**: `INFO`
+- **Allowed Values**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+- **Example**: `SERVER_LOG_LEVEL=DEBUG`
+- **Description**: Controls the log verbosity of the FastAPI server
 
 ### SERVER_REDIRECT_PRINT
 
-- **用途**: 是否重定向 print 输出到日志
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `SERVER_REDIRECT_PRINT=true`
-- **说明**: 启用后，所有 `print()` 语句会被重定向到日志系统
+- **Usage**: Whether to redirect print output to logs
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `SERVER_REDIRECT_PRINT=true`
+- **Description**: When enabled, all `print()` statements will be redirected to the logging system
 
 ### DEBUG_LOGS_ENABLED
 
-- **用途**: 启用调试日志
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `DEBUG_LOGS_ENABLED=true`
-- **说明**: 启用后会输出更详细的调试信息
+- **Usage**: Enable debug logs
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `DEBUG_LOGS_ENABLED=true`
+- **Description**: Enables more detailed debug information output when set to true
 
 ### TRACE_LOGS_ENABLED
 
-- **用途**: 启用跟踪日志
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `TRACE_LOGS_ENABLED=true`
-- **说明**: 启用最详细的跟踪级别日志，用于深度调试
+- **Usage**: Enable trace logs
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `TRACE_LOGS_ENABLED=true`
+- **Description**: Enables the most detailed trace level logs, used for deep debugging
 
 ### JSON_LOGS
 
-- **用途**: 启用 JSON 结构化日志
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `JSON_LOGS=true`
-- **说明**: 启用后以 JSON 格式输出日志，适用于 ELK/Datadog 等日志聚合工具
+- **Usage**: Enable JSON structured logs
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `JSON_LOGS=true`
+- **Description**: When enabled, outputs logs in JSON format, suitable for log aggregation tools like ELK/Datadog
 
 ### LOG_FILE_MAX_BYTES
 
-- **用途**: 单个日志文件最大字节数
-- **类型**: 整数
-- **默认值**: `10485760` (10MB)
-- **示例**: `LOG_FILE_MAX_BYTES=20971520`
-- **说明**: 日志文件达到此大小后会自动轮换
+- **Usage**: Maximum bytes for a single log file
+- **Type**: Integer
+- **Default**: `10485760` (10MB)
+- **Example**: `LOG_FILE_MAX_BYTES=20971520`
+- **Description**: Log file will rotate automatically after reaching this size
 
 ### LOG_FILE_BACKUP_COUNT
 
-- **用途**: 保留的日志备份文件数量
-- **类型**: 整数
-- **默认值**: `5`
-- **示例**: `LOG_FILE_BACKUP_COUNT=10`
-- **说明**: 轮换时保留的备份日志文件数量
+- **Usage**: Number of log backup files to keep
+- **Type**: Integer
+- **Default**: `5`
+- **Example**: `LOG_FILE_BACKUP_COUNT=10`
+- **Description**: Number of backup log files to retain during rotation
 
 ---
 
-## 认证配置
+## Authentication Configuration
 
 ### AUTO_SAVE_AUTH
 
-- **用途**: 自动保存认证信息到文件
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `AUTO_SAVE_AUTH=true`
-- **说明**: 启用后会自动保存 Google 认证 Cookie 到 `auth_profiles/saved/` 目录
-
-> [!WARNING]
-> 必须在 **debug 模式** 下设置为 `true` 才能保存新的认证配置文件！Headless 模式使用已保存的配置文件，此设置对其无效。
+- **Usage**: Automatically save authentication info to file
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `AUTO_SAVE_AUTH=true`
+- **Description**: When enabled, automatically saves Google auth Cookies to `auth_profiles/saved/` directory
+- **Warning**:
+  > [!WARNING]
+  > Must be set to `true` in **debug mode** to save new auth profiles! Headless mode uses saved profiles, so this setting has no effect on it.
 
 ### AUTH_SAVE_TIMEOUT
 
-- **用途**: 认证保存超时时间（秒）
-- **类型**: 整数
-- **默认值**: `30`
-- **示例**: `AUTH_SAVE_TIMEOUT=60`
-- **说明**: 等待认证文件保存完成的最大时间
+- **Usage**: Authentication save timeout (seconds)
+- **Type**: Integer
+- **Default**: `30`
+- **Example**: `AUTH_SAVE_TIMEOUT=60`
+- **Description**: Maximum time to wait for the auth file save to complete
 
 ### ONLY_COLLECT_CURRENT_USER_ATTACHMENTS
 
-- **用途**: 仅收集当前用户附件
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `ONLY_COLLECT_CURRENT_USER_ATTACHMENTS=true`
-- **说明**: 启用后，仅处理当前用户消息中的附件，忽略历史消息中的附件
+- **Usage**: Only collect current user attachments
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `ONLY_COLLECT_CURRENT_USER_ATTACHMENTS=true`
+- **Description**: When enabled, only processes attachments in the current user's message, ignoring attachments in history messages
 
 ---
 
-## 浏览器配置
+## Browser Configuration
 
 ### CAMOUFOX_WS_ENDPOINT
 
-- **用途**: Camoufox WebSocket 端点 URL
-- **类型**: 字符串 (WebSocket URL)
-- **默认值**: 空（由启动脚本自动设置）
-- **示例**: `CAMOUFOX_WS_ENDPOINT=ws://127.0.0.1:9222`
-- **说明**: Playwright 连接 Camoufox 浏览器的 WebSocket 地址
+- **Usage**: Camoufox WebSocket endpoint URL
+- **Type**: String (WebSocket URL)
+- **Default**: Empty (Automatically set by startup script)
+- **Example**: `CAMOUFOX_WS_ENDPOINT=ws://127.0.0.1:9222`
+- **Description**: WebSocket address for Playwright to connect to Camoufox browser
 
 ### LAUNCH_MODE
 
-- **用途**: 启动模式
-- **类型**: 字符串
-- **默认值**: `normal`
-- **可选值**:
-  - `normal` - 普通模式（有 UI）
-  - `headless` - 无头模式（无 UI）
-  - `virtual_display` - 虚拟显示模式
-  - `direct_debug_no_browser` - 直接调试模式（不启动浏览器）
-- **示例**: `LAUNCH_MODE=headless`
-- **说明**: 控制浏览器的启动方式
+- **Usage**: Launch mode
+- **Type**: String
+- **Default**: `normal`
+- **Allowed Values**:
+  - `normal` - Normal mode (with UI)
+  - `headless` - Headless mode (no UI)
+  - `virtual_display` - Virtual display mode
+  - `direct_debug_no_browser` - Direct debug mode (no browser started)
+- **Example**: `LAUNCH_MODE=headless`
+- **Description**: Controls how the browser is launched
 
 ### ENDPOINT_CAPTURE_TIMEOUT
 
-- **用途**: WebSocket 端点捕获超时（秒）
-- **类型**: 整数
-- **默认值**: `45`
-- **示例**: `ENDPOINT_CAPTURE_TIMEOUT=60`
-- **说明**: 等待 Camoufox 浏览器启动并返回 WebSocket 端点的最大时间
+- **Usage**: WebSocket endpoint capture timeout (seconds)
+- **Type**: Integer
+- **Default**: `45`
+- **Example**: `ENDPOINT_CAPTURE_TIMEOUT=60`
+- **Description**: Maximum time to wait for Camoufox browser to start and return WebSocket endpoint
 
 ---
 
-## API 默认参数
+## API Default Parameters
 
 ### DEFAULT_TEMPERATURE
 
-- **用途**: 默认温度参数
-- **类型**: 浮点数
-- **默认值**: `1.0`
-- **范围**: `0.0` - `2.0`
-- **示例**: `DEFAULT_TEMPERATURE=0.7`
-- **说明**: 控制模型输出的随机性，值越高越随机
+- **Usage**: Default temperature parameter
+- **Type**: Float
+- **Default**: `1.0`
+- **Range**: `0.0` - `2.0`
+- **Example**: `DEFAULT_TEMPERATURE=0.7`
+- **Description**: Controls the randomness of model output, higher values mean more randomness
 
 ### DEFAULT_MAX_OUTPUT_TOKENS
 
-- **用途**: 默认最大输出 token 数
-- **类型**: 整数
-- **默认值**: `65536`
-- **示例**: `DEFAULT_MAX_OUTPUT_TOKENS=8192`
-- **说明**: 限制模型生成文本的最大长度
+- **Usage**: Default maximum output tokens
+- **Type**: Integer
+- **Default**: `65536`
+- **Example**: `DEFAULT_MAX_OUTPUT_TOKENS=8192`
+- **Description**: Limits the maximum length of text generated by the model
 
 ### DEFAULT_TOP_P
 
-- **用途**: 默认 Top-P 参数（核采样）
-- **类型**: 浮点数
-- **默认值**: `0.95`
-- **范围**: `0.0` - `1.0`
-- **示例**: `DEFAULT_TOP_P=0.9`
-- **说明**: 控制采样的多样性，值越小结果越集中
+- **Usage**: Default Top-P parameter (Nucleus Sampling)
+- **Type**: Float
+- **Default**: `0.95`
+- **Range**: `0.0` - `1.0`
+- **Example**: `DEFAULT_TOP_P=0.9`
+- **Description**: Controls the diversity of sampling, lower values mean more focused results
 
 ### DEFAULT_STOP_SEQUENCES
 
-- **用途**: 默认停止序列
-- **类型**: JSON 数组
-- **默认值**: `["用户:"]`
-- **示例**: `DEFAULT_STOP_SEQUENCES=["\\n\\nUser:", "\\n\\nAssistant:"]`
-- **说明**: 遇到这些序列时停止生成，注意需要正确转义特殊字符
+- **Usage**: Default stop sequences
+- **Type**: JSON Array
+- **Default**: `["User:"]`
+- **Example**: `DEFAULT_STOP_SEQUENCES=["\\n\\nUser:", "\\n\\nAssistant:"]`
+- **Description**: Stops generation when these sequences are encountered, note that special characters need to be properly escaped
 
 ### ENABLE_URL_CONTEXT
 
-- **用途**: 是否启用 URL Context 功能
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `ENABLE_URL_CONTEXT=true`
-- **说明**: 启用后可以在请求中包含 URL 上下文（参考：https://ai.google.dev/gemini-api/docs/url-context）
+- **Usage**: Whether to enable URL Context feature
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `ENABLE_URL_CONTEXT=true`
+- **Description**: When enabled, allows including URL context in requests (Reference: https://ai.google.dev/gemini-api/docs/url-context)
 
 ### ENABLE_THINKING_BUDGET
 
-- **用途**: 是否默认启用思考预算限制
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `ENABLE_THINKING_BUDGET=true`
-- **说明**: 启用后会使用指定的思考预算，不启用时模型自行决定
+- **Usage**: Whether to default enable thinking budget limit
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `ENABLE_THINKING_BUDGET=true`
+- **Description**: When enabled, uses specified thinking budget; when disabled, the model decides itself
 
 ### DEFAULT_THINKING_BUDGET
 
-- **用途**: 默认思考预算量（token）
-- **类型**: 整数
-- **默认值**: `8192`
-- **示例**: `DEFAULT_THINKING_BUDGET=16384`
-- **说明**: 当 API 请求未提供 `reasoning_effort` 参数时使用此值
+- **Usage**: Default thinking budget (tokens)
+- **Type**: Integer
+- **Default**: `8192`
+- **Example**: `DEFAULT_THINKING_BUDGET=16384`
+- **Description**: Used when `reasoning_effort` parameter is not provided in API request
 
 ### DEFAULT_THINKING_LEVEL_PRO
 
-- **用途**: Gemini Pro 模型的默认思考等级
-- **类型**: 字符串
-- **默认值**: `high`
-- **可选值**: `high`, `low`
-- **示例**: `DEFAULT_THINKING_LEVEL_PRO=low`
-- **说明**: 适用于 gemini-3-pro-preview 等 Pro 模型。当 API 请求中未提供 `reasoning_effort` 参数时使用此值
+- **Usage**: Default thinking level for Gemini Pro models
+- **Type**: String
+- **Default**: `high`
+- **Allowed Values**: `high`, `low`
+- **Example**: `DEFAULT_THINKING_LEVEL_PRO=low`
+- **Description**: Applicable to Pro models like gemini-3-pro-preview. Used when `reasoning_effort` parameter is not provided in API request
 
 ### DEFAULT_THINKING_LEVEL_FLASH
 
-- **用途**: Gemini Flash 模型的默认思考等级
-- **类型**: 字符串
-- **默认值**: `high`
-- **可选值**: `high`, `medium`, `low`, `minimal`
-- **示例**: `DEFAULT_THINKING_LEVEL_FLASH=medium`
-- **说明**: 适用于 gemini-3-flash-preview 等 Flash 模型。当 API 请求中未提供 `reasoning_effort` 参数时使用此值
+- **Usage**: Default thinking level for Gemini Flash models
+- **Type**: String
+- **Default**: `high`
+- **Allowed Values**: `high`, `medium`, `low`, `minimal`
+- **Example**: `DEFAULT_THINKING_LEVEL_FLASH=medium`
+- **Description**: Applicable to Flash models like gemini-3-flash-preview. Used when `reasoning_effort` parameter is not provided in API request
 
 ### ENABLE_GOOGLE_SEARCH
 
-- **用途**: 是否默认启用 Google Search 功能
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `ENABLE_GOOGLE_SEARCH=true`
-- **说明**: 当 API 请求未提供 `tools` 参数时，此配置决定是否启用 Google 搜索工具
+- **Usage**: Whether to default enable Google Search feature
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `ENABLE_GOOGLE_SEARCH=true`
+- **Description**: Decides whether to enable Google Search tool when `tools` parameter is not provided in API request
 
 ### MCP_HTTP_ENDPOINT
 
-- **用途**: MCP (Model Context Protocol) 服务端点
-- **类型**: 字符串 (URL)
-- **默认值**: 空
-- **示例**: `MCP_HTTP_ENDPOINT=http://localhost:7000`
-- **说明**: 指定 MCP 服务的 HTTP 端点，用于处理非内置工具调用。当请求中包含未知的工具调用时，系统会尝试将请求转发到此端点。
+- **Usage**: MCP (Model Context Protocol) service endpoint
+- **Type**: String (URL)
+- **Default**: Empty
+- **Example**: `MCP_HTTP_ENDPOINT=http://localhost:7000`
+- **Description**: Specifies the HTTP endpoint of the MCP service for handling non-built-in tool calls. When a request contains an unknown tool call, the system attempts to forward the request to this endpoint.
 
 ### MCP_HTTP_TIMEOUT
 
-- **用途**: MCP 服务请求超时时间（秒）
-- **类型**: 浮点数
-- **默认值**: `15`
-- **示例**: `MCP_HTTP_TIMEOUT=30`
-- **说明**: 调用 MCP 服务端点时的最大等待时间
+- **Usage**: MCP service request timeout (seconds)
+- **Type**: Float
+- **Default**: `15`
+- **Example**: `MCP_HTTP_TIMEOUT=30`
+- **Description**: Maximum wait time when calling MCP service endpoint
 
 ---
 
-## 超时配置
+## Timeout Configuration
 
-所有超时配置单位均为毫秒（ms），除非特别说明。
+All timeout configurations are in milliseconds (ms) unless otherwise specified.
 
 ### RESPONSE_COMPLETION_TIMEOUT
 
-- **用途**: 响应完成总超时时间
-- **类型**: 整数（毫秒）
-- **默认值**: `300000` (5 分钟)
-- **示例**: `RESPONSE_COMPLETION_TIMEOUT=600000`
-- **说明**: 等待 AI Studio 完成响应的最大时间
+- **Usage**: Total response completion timeout
+- **Type**: Integer (ms)
+- **Default**: `300000` (5 minutes)
+- **Example**: `RESPONSE_COMPLETION_TIMEOUT=600000`
+- **Description**: Maximum time to wait for AI Studio to complete response
 
 ### INITIAL_WAIT_MS_BEFORE_POLLING
 
-- **用途**: 轮询前的初始等待时间
-- **类型**: 整数（毫秒）
-- **默认值**: `500`
-- **示例**: `INITIAL_WAIT_MS_BEFORE_POLLING=1000`
-- **说明**: 开始轮询响应状态前的等待时间
+- **Usage**: Initial wait time before polling
+- **Type**: Integer (ms)
+- **Default**: `500`
+- **Example**: `INITIAL_WAIT_MS_BEFORE_POLLING=1000`
+- **Description**: Wait time before starting to poll response status
 
 ### POLLING_INTERVAL
 
-- **用途**: 非流式模式轮询间隔
-- **类型**: 整数（毫秒）
-- **默认值**: `300`
-- **示例**: `POLLING_INTERVAL=500`
-- **说明**: 非流式请求检查响应状态的间隔
+- **Usage**: Non-streaming mode polling interval
+- **Type**: Integer (ms)
+- **Default**: `300`
+- **Example**: `POLLING_INTERVAL=500`
+- **Description**: Interval for checking response status in non-streaming requests
 
 ### POLLING_INTERVAL_STREAM
 
-- **用途**: 流式模式轮询间隔
-- **类型**: 整数（毫秒）
-- **默认值**: `180`
-- **示例**: `POLLING_INTERVAL_STREAM=200`
-- **说明**: 流式请求检查响应状态的间隔
+- **Usage**: Streaming mode polling interval
+- **Type**: Integer (ms)
+- **Default**: `180`
+- **Example**: `POLLING_INTERVAL_STREAM=200`
+- **Description**: Interval for checking response status in streaming requests
 
 ### SILENCE_TIMEOUT_MS
 
-- **用途**: 静默超时时间
-- **类型**: 整数（毫秒）
-- **默认值**: `60000` (1 分钟)
-- **示例**: `SILENCE_TIMEOUT_MS=120000`
-- **说明**: 如果在此时间内无新内容输出，则认为请求超时
+- **Usage**: Silence timeout
+- **Type**: Integer (ms)
+- **Default**: `60000` (1 minute)
+- **Example**: `SILENCE_TIMEOUT_MS=120000`
+- **Description**: Request times out if no new content output within this time
 
 ### POST_SPINNER_CHECK_DELAY_MS
 
-- **用途**: 加载动画检查延迟
-- **类型**: 整数（毫秒）
-- **默认值**: `500`
-- **说明**: 检查页面加载动画状态前的延迟
+- **Usage**: Spinner check delay
+- **Type**: Integer (ms)
+- **Default**: `500`
+- **Description**: Delay before checking page loading spinner status
 
 ### FINAL_STATE_CHECK_TIMEOUT_MS
 
-- **用途**: 最终状态检查超时
-- **类型**: 整数（毫秒）
-- **默认值**: `1500`
-- **说明**: 等待页面达到最终状态的超时时间
+- **Usage**: Final state check timeout
+- **Type**: Integer (ms)
+- **Default**: `1500`
+- **Description**: Timeout for waiting page to reach final state
 
 ### POST_COMPLETION_BUFFER
 
-- **用途**: 完成后缓冲时间
-- **类型**: 整数（毫秒）
-- **默认值**: `700`
-- **说明**: 响应完成后的额外等待时间，确保所有内容已加载
+- **Usage**: Post completion buffer time
+- **Type**: Integer (ms)
+- **Default**: `700`
+- **Description**: Extra wait time after response completion to ensure all content is loaded
 
 ### CLEAR_CHAT_VERIFY_TIMEOUT_MS
 
-- **用途**: 清空聊天验证超时
-- **类型**: 整数（毫秒）
-- **默认值**: `5000`
-- **示例**: `CLEAR_CHAT_VERIFY_TIMEOUT_MS=6000`
-- **说明**: 验证聊天是否已清空的超时时间
+- **Usage**: Clear chat verification timeout
+- **Type**: Integer (ms)
+- **Default**: `5000`
+- **Example**: `CLEAR_CHAT_VERIFY_TIMEOUT_MS=6000`
+- **Description**: Timeout for verifying if chat has been cleared
 
 ### CLEAR_CHAT_VERIFY_INTERVAL_MS
 
-- **用途**: 清空聊天验证间隔
-- **类型**: 整数（毫秒）
-- **默认值**: `2000`
-- **示例**: `CLEAR_CHAT_VERIFY_INTERVAL_MS=1000`
-- **说明**: 检查聊天是否已清空的间隔
+- **Usage**: Clear chat verification interval
+- **Type**: Integer (ms)
+- **Default**: `2000`
+- **Example**: `CLEAR_CHAT_VERIFY_INTERVAL_MS=1000`
+- **Description**: Interval for checking if chat has been cleared
 
 ### CLICK_TIMEOUT_MS
 
-- **用途**: 点击操作超时
-- **类型**: 整数（毫秒）
-- **默认值**: `3000`
-- **说明**: 等待页面元素可点击的超时时间
+- **Usage**: Click operation timeout
+- **Type**: Integer (ms)
+- **Default**: `3000`
+- **Description**: Timeout for waiting for page element to be clickable
 
 ### CLIPBOARD_READ_TIMEOUT_MS
 
-- **用途**: 剪贴板读取超时
-- **类型**: 整数（毫秒）
-- **默认值**: `3000`
-- **说明**: 读取浏览器剪贴板内容的超时时间
+- **Usage**: Clipboard read timeout
+- **Type**: Integer (ms)
+- **Default**: `3000`
+- **Description**: Timeout for reading browser clipboard content
 
 ### WAIT_FOR_ELEMENT_TIMEOUT_MS
 
-- **用途**: 元素等待超时
-- **类型**: 整数（毫秒）
-- **默认值**: `10000`
-- **说明**: 等待页面元素出现的通用超时时间
+- **Usage**: Element wait timeout
+- **Type**: Integer (ms)
+- **Default**: `10000`
+- **Description**: General timeout for waiting for page elements to appear
 
 ### PSEUDO_STREAM_DELAY
 
-- **用途**: 伪流式延迟
-- **类型**: 浮点数（秒）
-- **默认值**: `0.01`
-- **示例**: `PSEUDO_STREAM_DELAY=0.02`
-- **说明**: 伪流式输出时每个数据块之间的延迟
+- **Usage**: Pseudo-stream delay
+- **Type**: Float (seconds)
+- **Default**: `0.01`
+- **Example**: `PSEUDO_STREAM_DELAY=0.02`
+- **Description**: Delay between each data chunk in pseudo-streaming output
 
 ---
 
-## GUI 启动器配置
+## GUI Launcher Configuration
 
 > [!WARNING]
-> GUI 启动器 (`gui_launcher.py`) 已移至 `deprecated/` 目录。以下配置仅供参考。
+> The GUI launcher (`gui_launcher.py`) has been moved to the `deprecated/` directory. The following configurations are for reference only.
 
 ### GUI_DEFAULT_PROXY_ADDRESS
 
-- **用途**: GUI 启动器的默认代理地址
-- **类型**: 字符串 (URL)
-- **默认值**: `http://127.0.0.1:7890`
-- **示例**: `GUI_DEFAULT_PROXY_ADDRESS=http://127.0.0.1:1080`
-- **说明**: 在 GUI 启动器中预填充的代理地址
+- **Usage**: Default proxy address for GUI launcher
+- **Type**: String (URL)
+- **Default**: `http://127.0.0.1:7890`
+- **Example**: `GUI_DEFAULT_PROXY_ADDRESS=http://127.0.0.1:1080`
+- **Description**: Pre-filled proxy address in GUI launcher
 
 ### GUI_DEFAULT_STREAM_PORT
 
-- **用途**: GUI 启动器的默认流式端口
-- **类型**: 整数
-- **默认值**: `3120`
-- **示例**: `GUI_DEFAULT_STREAM_PORT=3121`
-- **说明**: 在 GUI 启动器中预填充的流式代理端口
+- **Usage**: Default streaming port for GUI launcher
+- **Type**: Integer
+- **Default**: `3120`
+- **Example**: `GUI_DEFAULT_STREAM_PORT=3121`
+- **Description**: Pre-filled streaming proxy port in GUI launcher
 
 ### GUI_DEFAULT_HELPER_ENDPOINT
 
-- **用途**: GUI 启动器的默认 Helper 端点
-- **类型**: 字符串 (URL)
-- **默认值**: 空
-- **示例**: `GUI_DEFAULT_HELPER_ENDPOINT=http://helper.example.com`
-- **说明**: 外部 Helper 服务的 URL（可选）
+- **Usage**: Default Helper endpoint for GUI launcher
+- **Type**: String (URL)
+- **Default**: Empty
+- **Example**: `GUI_DEFAULT_HELPER_ENDPOINT=http://helper.example.com`
+- **Description**: URL of external Helper service (optional)
 
 ---
 
-## 脚本注入配置
+## Script Injection Configuration
 
 ### ENABLE_SCRIPT_INJECTION
 
-- **用途**: 是否启用油猴脚本注入功能 (v3.0)
-- **类型**: 布尔值
-- **默认值**: `false`
-- **示例**: `ENABLE_SCRIPT_INJECTION=true`
-- **说明**: 启用后，系统将自动从油猴脚本解析模型列表并注入到 API 响应中。v3.0 版本使用 Playwright 原生网络拦截，提供更高的可靠性。
+- **Usage**: Whether to enable Tampermonkey script injection feature (v3.0)
+- **Type**: Boolean
+- **Default**: `false`
+- **Example**: `ENABLE_SCRIPT_INJECTION=true`
+- **Description**: When enabled, the system automatically parses the model list from the Tampermonkey script and injects it into API responses. Version 3.0 uses Playwright native network interception for higher reliability.
 
 ### USERSCRIPT_PATH
 
-- **用途**: 油猴脚本文件路径
-- **类型**: 字符串（相对路径）
-- **默认值**: `browser_utils/more_models.js`
-- **示例**: `USERSCRIPT_PATH=custom_scripts/my_script.js`
-- **说明**: 相对于项目根目录的脚本文件路径
+- **Usage**: Tampermonkey script file path
+- **Type**: String (Relative path)
+- **Default**: `browser_utils/more_models.js`
+- **Example**: `USERSCRIPT_PATH=custom_scripts/my_script.js`
+- **Description**: Path to the script file relative to the project root
 
 ---
 
-## 其他配置
+## Other Configuration
 
 ### MODEL_NAME
 
-- **用途**: 代理服务的模型名称标识
-- **类型**: 字符串
-- **默认值**: `AI-Studio_Proxy_API`
-- **示例**: `MODEL_NAME=Custom_Proxy`
-- **说明**: 在 `/v1/models` 端点返回的代理自身模型名称
+- **Usage**: Model name identifier for proxy service
+- **Type**: String
+- **Default**: `AI-Studio_Proxy_API`
+- **Example**: `MODEL_NAME=Custom_Proxy`
+- **Description**: Proxy's own model name returned in `/v1/models` endpoint
 
 ### CHAT_COMPLETION_ID_PREFIX
 
-- **用途**: 聊天完成 ID 前缀
-- **类型**: 字符串
-- **默认值**: `chatcmpl-`
-- **示例**: `CHAT_COMPLETION_ID_PREFIX=custom-`
-- **说明**: 生成聊天完成响应 ID 时的前缀
+- **Usage**: Chat completion ID prefix
+- **Type**: String
+- **Default**: `chatcmpl-`
+- **Example**: `CHAT_COMPLETION_ID_PREFIX=custom-`
+- **Description**: Prefix used when generating chat completion response IDs
 
 ### DEFAULT_FALLBACK_MODEL_ID
 
-- **用途**: 默认回退模型 ID
-- **类型**: 字符串
-- **默认值**: `no model list`
-- **示例**: `DEFAULT_FALLBACK_MODEL_ID=gemini-pro`
-- **说明**: 当无法获取模型列表时使用的回退模型名称
+- **Usage**: Default fallback model ID
+- **Type**: String
+- **Default**: `no model list`
+- **Example**: `DEFAULT_FALLBACK_MODEL_ID=gemini-pro`
+- **Description**: Fallback model name used when model list cannot be obtained
 
 ### EXCLUDED_MODELS_FILENAME
 
-- **用途**: 排除模型列表文件名
-- **类型**: 字符串
-- **默认值**: `excluded_models.txt`
-- **示例**: `EXCLUDED_MODELS_FILENAME=my_excluded.txt`
-- **说明**: 包含要从模型列表中排除的模型 ID 的文件名
+- **Usage**: Excluded models filename
+- **Type**: String
+- **Default**: `excluded_models.txt`
+- **Example**: `EXCLUDED_MODELS_FILENAME=my_excluded.txt`
+- **Description**: File name containing model IDs to be excluded from the model list
 
 ### AI_STUDIO_URL_PATTERN
 
-- **用途**: AI Studio URL 匹配模式
-- **类型**: 字符串
-- **默认值**: `aistudio.google.com/`
-- **说明**: 用于识别 AI Studio 页面的 URL 模式
+- **Usage**: AI Studio URL match pattern
+- **Type**: String
+- **Default**: `aistudio.google.com/`
+- **Description**: URL pattern used to identify AI Studio pages
 
 ### MODELS_ENDPOINT_URL_CONTAINS
 
-- **用途**: 模型列表端点 URL 包含字符串
-- **类型**: 字符串
-- **默认值**: `MakerSuiteService/ListModels`
-- **说明**: 用于拦截模型列表请求的 URL 特征字符串
+- **Usage**: Model list endpoint URL contains string
+- **Type**: String
+- **Default**: `MakerSuiteService/ListModels`
+- **Description**: URL feature string used to intercept model list requests
 
 ### USER_INPUT_START_MARKER_SERVER
 
-- **用途**: 用户输入开始标记符
-- **类型**: 字符串
-- **默认值**: `__USER_INPUT_START__`
-- **说明**: 用于标记用户输入开始位置的内部标记
+- **Usage**: User input start marker
+- **Type**: String
+- **Default**: `__USER_INPUT_START__`
+- **Description**: Internal marker used to mark the start position of user input
 
 ### USER_INPUT_END_MARKER_SERVER
 
-- **用途**: 用户输入结束标记符
-- **类型**: 字符串
-- **默认值**: `__USER_INPUT_END__`
-- **说明**: 用于标记用户输入结束位置的内部标记
+- **Usage**: User input end marker
+- **Type**: String
+- **Default**: `__USER_INPUT_END__`
+- **Description**: Internal marker used to mark the end position of user input
 
 ---
 
-## 流状态配置
+## Stream State Configuration
 
 ### STREAM_MAX_INITIAL_ERRORS
 
-- **用途**: 流超时日志的最大初始错误数
-- **类型**: 整数
-- **默认值**: `3`
-- **示例**: `STREAM_MAX_INITIAL_ERRORS=5`
-- **说明**: 在抑制重复错误日志前允许的最大错误次数
+- **Usage**: Maximum initial errors for stream timeout logs
+- **Type**: Integer
+- **Default**: `3`
+- **Example**: `STREAM_MAX_INITIAL_ERRORS=5`
+- **Description**: Maximum number of errors allowed before suppressing duplicate error logs
 
 ### STREAM_WARNING_INTERVAL_AFTER_SUPPRESS
 
-- **用途**: 抑制后的警告间隔（秒）
-- **类型**: 浮点数
-- **默认值**: `60.0`
-- **示例**: `STREAM_WARNING_INTERVAL_AFTER_SUPPRESS=120.0`
-- **说明**: 错误被抑制后，再次显示警告的时间间隔
+- **Usage**: Warning interval after suppression (seconds)
+- **Type**: Float
+- **Default**: `60.0`
+- **Example**: `STREAM_WARNING_INTERVAL_AFTER_SUPPRESS=120.0`
+- **Description**: Interval for showing warning again after errors are suppressed
 
 ### STREAM_SUPPRESS_DURATION_AFTER_INITIAL_BURST
 
-- **用途**: 初始爆发后的抑制持续时间（秒）
-- **类型**: 浮点数
-- **默认值**: `400.0`
-- **示例**: `STREAM_SUPPRESS_DURATION_AFTER_INITIAL_BURST=600.0`
-- **说明**: 初始错误爆发后，抑制重复日志的时长
+- **Usage**: Suppression duration after initial burst (seconds)
+- **Type**: Float
+- **Default**: `400.0`
+- **Example**: `STREAM_SUPPRESS_DURATION_AFTER_INITIAL_BURST=600.0`
+- **Description**: Duration to suppress duplicate logs after an initial burst of errors
 
 ---
 
-## 配置最佳实践
+## Configuration Best Practices
 
-### 1. 使用 .env 文件
+### 1. Use .env File
 
-将所有配置集中在项目根目录的 `.env` 文件中：
+Centralize all configurations in the `.env` file at the project root:
 
 ```bash
-# 复制模板
+# Copy template
 cp .env.example .env
 
-# 编辑配置
+# Edit configuration
 nano .env
 ```
 
-### 2. 配置优先级
+### 2. Configuration Priority
 
-配置项按以下优先级顺序生效（从高到低）：
+Configuration items take effect in the following priority order (high to low):
 
-1. **命令行参数** - 临时覆盖配置
-2. **环境变量** - `.env` 文件或系统环境变量
-3. **默认值** - 代码中定义的默认值
+1. **Command Line Arguments** - Temporarily override configuration
+2. **Environment Variables** - `.env` file or system environment variables
+3. **Default Values** - Default values defined in code
 
-### 3. 安全注意事项
+### 3. Security Considerations
 
-- ✅ `.env` 文件已在 `.gitignore` 中，不会被提交
-- ✅ 不要在 `.env.example` 中包含真实的敏感信息
-- ✅ 定期更新和审查配置
-- ✅ 使用足够复杂的密钥和凭据
+- ✅ `.env` file is in `.gitignore`, won't be committed
+- ✅ Do not include real sensitive information in `.env.example`
+- ✅ Update and review configuration periodically
+- ✅ Use sufficiently complex keys and credentials
 
-### 4. 调试配置
+### 4. Debug Configuration
 
-启用详细日志进行调试：
+Enable detailed logs for debugging:
 
 ```env
 DEBUG_LOGS_ENABLED=true
@@ -636,9 +636,9 @@ SERVER_LOG_LEVEL=DEBUG
 SERVER_REDIRECT_PRINT=true
 ```
 
-### 5. 生产环境配置
+### 5. Production Environment Configuration
 
-生产环境推荐配置：
+Recommended configuration for production:
 
 ```env
 SERVER_LOG_LEVEL=WARNING
@@ -650,26 +650,26 @@ SILENCE_TIMEOUT_MS=120000
 
 ---
 
-## 相关文档
+## Related Documentation
 
-- [环境变量配置指南](environment-configuration.md) - 配置管理和使用方法
-- [安装指南](installation-guide.md) - 安装和初始设置
-- [故障排除指南](troubleshooting.md) - 常见配置问题解决方案
-- [高级配置指南](advanced-configuration.md) - 高级配置选项
+- [Environment Configuration Guide](environment-configuration.md) - Configuration management and usage methods
+- [Installation Guide](installation-guide.md) - Installation and initial setup
+- [Troubleshooting Guide](troubleshooting.md) - Common configuration issue solutions
+- [Advanced Configuration Guide](advanced-configuration.md) - Advanced configuration options
 
 ---
 
-## 验证配置
+## Verify Configuration
 
-启动服务后，检查日志确认配置是否正确加载：
+After starting the service, check logs to confirm if configuration is loaded correctly:
 
 ```bash
-# 查看启动日志
+# View startup logs
 tail -f logs/app.log
 
-# 检查配置端点
+# Check configuration endpoint
 curl http://127.0.0.1:2048/api/info
 
-# 健康检查
+# Health check
 curl http://127.0.0.1:2048/health
 ```

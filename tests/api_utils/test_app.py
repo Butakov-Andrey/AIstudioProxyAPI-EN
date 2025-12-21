@@ -9,6 +9,7 @@ from api_utils.app import (
     APIKeyAuthMiddleware,
     _initialize_browser_and_page,
     _initialize_globals,
+    _initialize_globals as _init_globals,
     _initialize_proxy_settings,
     _setup_logging,
     _shutdown_resources,
@@ -38,7 +39,7 @@ def client(app):
 
 def test_create_app(app):
     """Test that the app is created correctly."""
-    assert app.title == "AI Studio Proxy Server (集成模式)"
+    assert app.title == "AI Studio Proxy Server (Integrated Mode)"
     assert app.version == "0.6.0-integrated"
 
 
@@ -172,12 +173,12 @@ async def test_lifespan_startup_shutdown():
             mock_start_proxy.assert_called_once()
             mock_init_browser.assert_called_once()
             # Check actual log messages from the implementation
-            mock_logger.info.assert_any_call("[系统] AI Studio 代理服务器启动中...")
+            mock_logger.info.assert_any_call("Starting AI Studio Proxy Server...")
 
         # Verify shutdown actions
         mock_shutdown.assert_called_once()
         mock_restore_streams.assert_called()
-        mock_logger.info.assert_any_call("[系统] 服务器已关闭")
+        mock_logger.info.assert_any_call("Shutting down server...")
 
 
 @pytest.mark.asyncio
@@ -703,8 +704,8 @@ Strategy: Test edge cases for proxy settings and middleware path matching.
 
 def test_initialize_proxy_settings_no_proxy_configured():
     """
-    测试场景: 完全没有配置任何代理
-    预期: 记录 "[代理] 未配置" 日志 (line 87)
+    Test scenario: No proxy configured
+    Expected: Log "[Proxy] Not configured" (line 87)
     """
     state.PLAYWRIGHT_PROXY_SETTINGS = None
     mock_logger = MagicMock()
@@ -714,7 +715,7 @@ def test_initialize_proxy_settings_no_proxy_configured():
         patch("api_utils.app.get_environment_variable") as mock_get_env,
         patch("api_utils.app.NO_PROXY_ENV", None),
     ):
-        # 返回 None 表示没有配置任何代理
+        # Return None indicating no proxy is configured
         mock_get_env.side_effect = lambda key, default=None: {
             "STREAM_PORT": "0",
             "UNIFIED_PROXY_CONFIG": None,
@@ -724,39 +725,42 @@ def test_initialize_proxy_settings_no_proxy_configured():
 
         _initialize_proxy_settings()
 
-    # 验证: PLAYWRIGHT_PROXY_SETTINGS 应该为 None
+    # Verify: PLAYWRIGHT_PROXY_SETTINGS should be None
     assert state.PLAYWRIGHT_PROXY_SETTINGS is None
 
-    # 验证: 记录了 "[代理] 未配置" 日志 (line 87)
-    mock_logger.debug.assert_any_call("[代理] 未配置")
+    # Verify: "[Proxy] Not configured" log recorded (line 87)
+    # The actual code logs "No proxy configured for Playwright." in line 129
+    # Wait, let me check the line 129 in app.py
+    # state.logger.info("No proxy configured for Playwright.")
+    mock_logger.info.assert_any_call("No proxy configured for Playwright.")
 
 
 @pytest.mark.asyncio
 async def test_api_key_auth_middleware_excluded_path_subpath():
     """
-    测试场景: 请求路径是排除路径的子路径,且以 /v1/ 开头
-    预期: 绕过认证,调用 call_next (line 265)
+    Test scenario: Request path is a subpath of an excluded path and starts with /v1/
+    Expected: Bypass authentication, call call_next (line 265)
 
-    注意: 为了触发 line 265,路径必须:
-    1. 以 /v1/ 开头 (通过 line 257-258 检查)
-    2. 匹配 excluded_paths 中的路径或其子路径 (触发 lines 261-265)
+    Note: To trigger line 265, the path must:
+    1. Start with /v1/ (via line 257-258 check)
+    2. Match a path in excluded_paths or its subpath (triggers lines 261-265)
     """
     app = MagicMock()
     middleware = APIKeyAuthMiddleware(app)
-    # 添加一个以 /v1/ 开头的排除路径
+    # Add an excluded path starting with /v1/
     middleware.excluded_paths.append("/v1/models")
 
     request = MagicMock()
-    request.url.path = "/v1/models/abc"  # /v1/models 的子路径
+    request.url.path = "/v1/models/abc"  # Subpath of /v1/models
     call_next = AsyncMock()
     call_next.return_value = MagicMock()  # Mock response
 
-    # 即使配置了 API 密钥,排除路径的子路径也应该通过
+    # Subpath of excluded path should pass even if API key is configured
     with patch("api_utils.auth_utils.API_KEYS", {"test-key": "user"}):
         response = await middleware.dispatch(request, call_next)
 
-        # 验证: call_next 被调用 (line 265)
+        # Verify: call_next called (line 265)
         call_next.assert_called_once_with(request)
 
-        # 验证: 返回了 call_next 的响应
+        # Verify: Return response from call_next
         assert response is not None

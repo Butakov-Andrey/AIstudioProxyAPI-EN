@@ -63,7 +63,7 @@ def test_determine_proxy_configuration_arg():
     assert result["camoufox_proxy"] == "http://proxy:8080"
     assert result["stream_proxy"] == "http://proxy:8080"
     assert result["source"] is not None
-    assert "命令行参数" in result["source"]
+    assert "CLI argument" in result["source"]
 
 
 def test_determine_proxy_configuration_env():
@@ -72,7 +72,7 @@ def test_determine_proxy_configuration_env():
         result = determine_proxy_configuration()
         assert result["camoufox_proxy"] == "http://env:8080"
         assert result["source"] is not None
-        assert "环境变量 UNIFIED_PROXY_CONFIG" in result["source"]
+        assert "Environment variable UNIFIED_PROXY_CONFIG" in result["source"]
 
 
 # --- Test launcher.utils ---

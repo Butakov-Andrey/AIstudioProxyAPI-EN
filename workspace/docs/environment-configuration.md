@@ -1,382 +1,383 @@
-# 环境变量配置指南
+# Environment Configuration Guide
 
-本文档详细介绍如何使用 `.env` 文件来配置 AI Studio Proxy API 项目，实现统一的配置管理。
+This document details how to use the `.env` file to configure the AI Studio Proxy API project, achieving unified configuration management.
 
-## 概述
+## Overview
 
-项目采用基于 `.env` 文件的现代化配置管理系统，提供以下优势：
+The project adopts a modern configuration management system based on `.env` files, providing the following advantages:
 
-### 主要优势
+### Key Advantages
 
-- ✅ **版本更新无忧**: 一个 `git pull` 就完成更新，无需重新配置
-- ✅ **配置集中管理**: 所有配置项统一在 `.env` 文件中，清晰明了
-- ✅ **启动命令简化**: 无需复杂的命令行参数，一键启动
-- ✅ **安全性**: `.env` 文件已被 `.gitignore` 忽略，不会泄露敏感配置
-- ✅ **灵活性**: 支持不同环境的配置管理（开发、测试、生产）
-- ✅ **Docker 兼容**: Docker 和本地环境使用相同的配置方式
-- ✅ **模块化设计**: 配置项按功能分组，便于理解和维护
+- ✅ **Worry-free Updates**: A single `git pull` completes the update without needing reconfiguration.
+- ✅ **Centralized Management**: All configuration items are unified in the `.env` file, clear and concise.
+- ✅ **Simplified Startup**: No complex command-line arguments needed, one-click start.
+- ✅ **Security**: The `.env` file is ignored by `.gitignore`, preventing sensitive configuration leaks.
+- ✅ **Flexibility**: Supports configuration management for different environments (Development, Testing, Production).
+- ✅ **Docker Compatibility**: Docker and local environments use the same configuration method.
+- ✅ **Modular Design**: Configuration items are grouped by function for easy understanding and maintenance.
 
-## 快速开始
+## Quick Start
 
-### 1. 复制配置模板
+### 1. Copy Configuration Template
 
 ```bash
 cp .env.example .env
 ```
 
-### 2. 编辑配置文件
+### 2. Edit Configuration File
 
-根据您的需要修改 `.env` 文件中的配置项：
+Modify the configuration items in the `.env` file according to your needs:
 
 ```bash
-# 编辑配置文件
+# Edit configuration file
 nano .env
-# 或使用其他编辑器
+# Or use another editor
 code .env
 ```
 
-### 3. 启动服务
+### 3. Start Service
 
-配置完成后，启动变得非常简单：
+After configuration, starting is very simple:
 
 ```bash
-# 命令行启动（推荐日常使用）
+# Command line start (Recommended for daily use)
 python launch_camoufox.py --headless
 
-# 调试模式（首次设置或故障排除）
+# Debug mode (For first-time setup or troubleshooting)
 python launch_camoufox.py --debug
 ```
 
-**就这么简单！** 无需复杂的命令行参数，所有配置都在 `.env` 文件中预设好了。
+**That's it!** No complex command-line arguments needed, all configurations are preset in the `.env` file.
 
-## 主要配置项
+## Main Configuration Items
 
-### 服务端口配置
+### Service Port Configuration
 
 ```env
-# FastAPI 服务端口
+# FastAPI Service Port
 PORT=8000
 DEFAULT_FASTAPI_PORT=2048
 DEFAULT_CAMOUFOX_PORT=9222
 
-# Camoufox WebSocket 端点捕获超时（秒）
+# Camoufox WebSocket Endpoint Capture Timeout (seconds)
 ENDPOINT_CAPTURE_TIMEOUT=45
 
-# 流式代理服务配置
+# Streaming Proxy Service Configuration
 STREAM_PORT=3120
 ```
 
-### 启动配置
+### Startup Configuration
 
 ```env
-# 快速启动
+# Direct Launch
 DIRECT_LAUNCH=false
 
-# 跳过前端构建检查 (适用于无 Node.js 环境或使用预构建资源)
+# Skip Frontend Build Check (Suitable for environments without Node.js or using pre-built assets)
 SKIP_FRONTEND_BUILD=false
 ```
 
-### 代理配置
+### Proxy Configuration
 
 ```env
-# HTTP/HTTPS 代理设置
+# HTTP/HTTPS Proxy Settings
 HTTP_PROXY=http://127.0.0.1:7890
 HTTPS_PROXY=http://127.0.0.1:7890
 
-# 统一代理配置 (优先级更高)
+# Unified Proxy Configuration (Higher Priority)
 UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
 
-# 代理绕过列表
+# Proxy Bypass List
 NO_PROXY=localhost;127.0.0.1;*.local
 ```
 
-### 日志配置
+### Log Configuration
 
 ```env
-# 服务器日志级别
+# Server Log Level
 SERVER_LOG_LEVEL=INFO
 
-# 启用调试日志
+# Enable Debug Logs
 DEBUG_LOGS_ENABLED=false
 TRACE_LOGS_ENABLED=false
 
-# 是否重定向 print 输出到日志
+# Redirect print output to logs
 SERVER_REDIRECT_PRINT=false
 ```
 
-### 认证配置
+### Authentication Configuration
 
 ```env
-# 自动保存认证信息
-# [IMPORTANT] 必须在 debug 模式下设置为 true 才能保存新的认证配置文件！
+# Auto Save Auth Info
+# [IMPORTANT] Must be set to true in debug mode to save new auth profiles!
 AUTO_SAVE_AUTH=false
 
-# 认证保存超时时间 (秒)
+# Auth Save Timeout (seconds)
 AUTH_SAVE_TIMEOUT=30
 
-# 仅收集当前用户消息中的附件（true/false）
+# Only collect attachments from current user messages (true/false)
 ONLY_COLLECT_CURRENT_USER_ATTACHMENTS=false
 ```
 
-> [!WARNING] > `AUTO_SAVE_AUTH=true` 是在 debug 模式下保存认证配置文件的必要条件。首次设置时请务必启用此选项。Headless 模式使用已保存的配置文件，此设置对其无效。
+> [!WARNING]
+> `AUTO_SAVE_AUTH=true` is a necessary condition for saving auth profiles in debug mode. Please ensure this option is enabled during initial setup. Headless mode uses saved profiles, so this setting has no effect on it.
 
-### 浏览器配置
+### Browser Configuration
 
 ```env
-# Camoufox WebSocket 端点
+# Camoufox WebSocket Endpoint
 # CAMOUFOX_WS_ENDPOINT=ws://127.0.0.1:9222
 
-# 启动模式 (normal, headless, virtual_display, direct_debug_no_browser)
+# Launch Mode (normal, headless, virtual_display, direct_debug_no_browser)
 LAUNCH_MODE=normal
 ```
 
-### API 默认参数
+### API Default Parameters
 
 ```env
-# 默认温度值 (0.0-2.0)
+# Default Temperature (0.0-2.0)
 DEFAULT_TEMPERATURE=1.0
 
-# 默认最大输出令牌数
+# Default Max Output Tokens
 DEFAULT_MAX_OUTPUT_TOKENS=65536
 
-# 默认 Top-P 值 (0.0-1.0)
+# Default Top-P (0.0-1.0)
 DEFAULT_TOP_P=0.95
 
-# 默认停止序列 (JSON 数组格式)
-DEFAULT_STOP_SEQUENCES=["用户:"]
+# Default Stop Sequences (JSON Array Format)
+DEFAULT_STOP_SEQUENCES=["User:"]
 
-# 是否在处理请求时自动打开并使用 "URL Context" 功能
-# 参考: https://ai.google.dev/gemini-api/docs/url-context
+# Whether to automatically open and use "URL Context" feature when processing requests
+# Reference: https://ai.google.dev/gemini-api/docs/url-context
 ENABLE_URL_CONTEXT=false
 
-# 是否默认启用 "指定思考预算" 功能 (true/false)
-# 不启用时模型一般将自行决定思考预算
-# 当 API 请求中未提供 reasoning_effort 参数时,将使用此值。
+# Whether to default enable "Specific Thinking Budget" feature (true/false)
+# When disabled, the model generally decides the thinking budget itself
+# This value is used when reasoning_effort parameter is not provided in the API request.
 ENABLE_THINKING_BUDGET=false
 
-# "指定思考预算量" 的默认值 (token)
-# 当 API 请求中未提供 reasoning_effort 参数时,将使用此值。
+# Default value for "Specific Thinking Budget" (tokens)
+# This value is used when reasoning_effort parameter is not provided in the API request.
 DEFAULT_THINKING_BUDGET=8192
 
-# 是否默认启用 "Google Search" 功能 (true/false)
-# 当 API 请求中未提供 tools 参数时，将使用此设置作为 Google Search 的默认开关状态。
+# Whether to default enable "Google Search" feature (true/false)
+# This setting is used as the default switch state for Google Search when the tools parameter is not provided in the API request.
 ENABLE_GOOGLE_SEARCH=false
 ```
 
-### 超时配置
+### Timeout Configuration
 
 ```env
-# 响应完成总超时时间 (毫秒)
+# Response Completion Total Timeout (ms)
 RESPONSE_COMPLETION_TIMEOUT=300000
 
-# 轮询间隔 (毫秒)
+# Polling Interval (ms)
 POLLING_INTERVAL=300
 POLLING_INTERVAL_STREAM=180
 
-# 静默超时 (毫秒)
+# Silence Timeout (ms)
 SILENCE_TIMEOUT_MS=60000
 
-# 初始等待时间 (毫秒)
+# Initial Wait Time (ms)
 INITIAL_WAIT_MS_BEFORE_POLLING=500
 
-# 页面操作超时 (毫秒)
+# Page Operation Timeout (ms)
 POST_SPINNER_CHECK_DELAY_MS=500
 FINAL_STATE_CHECK_TIMEOUT_MS=1500
 POST_COMPLETION_BUFFER=700
 
-# 清理聊天相关超时 (毫秒)
+# Clear Chat Related Timeout (ms)
 CLEAR_CHAT_VERIFY_TIMEOUT_MS=5000
 CLEAR_CHAT_VERIFY_INTERVAL_MS=2000
 
-# 点击和剪贴板操作超时 (毫秒)
+# Click and Clipboard Operation Timeout (ms)
 CLICK_TIMEOUT_MS=3000
 CLIPBOARD_READ_TIMEOUT_MS=3000
 
-# 元素等待超时 (毫秒)
+# Element Wait Timeout (ms)
 WAIT_FOR_ELEMENT_TIMEOUT_MS=10000
 
-# 流相关配置
+# Stream Related Configuration
 PSEUDO_STREAM_DELAY=0.01
 ```
 
-### GUI 启动器配置 (已废弃)
+### GUI Launcher Configuration (Deprecated)
 
 > [!WARNING]
-> GUI 启动器已移至 `deprecated/` 目录，以下配置仅供参考。
+> The GUI launcher has been moved to the `deprecated/` directory. The following configurations are for reference only.
 
 ```env
-# GUI 默认代理地址
+# GUI Default Proxy Address
 GUI_DEFAULT_PROXY_ADDRESS=http://127.0.0.1:7890
 
-# GUI 默认流式代理端口
+# GUI Default Streaming Proxy Port
 GUI_DEFAULT_STREAM_PORT=3120
 
-# GUI 默认 Helper 端点
+# GUI Default Helper Endpoint
 GUI_DEFAULT_HELPER_ENDPOINT=
 ```
 
-### 脚本注入配置
+### Script Injection Configuration
 
 ```env
-# 是否启用油猴脚本注入功能
+# Whether to enable Tampermonkey script injection feature
 ENABLE_SCRIPT_INJECTION=true
 
-# 油猴脚本文件路径（相对于项目根目录）
-# 模型数据直接从此脚本文件中解析，无需额外配置文件
+# Tampermonkey script file path (relative to project root)
+# Model data is parsed directly from this script file, no extra config file needed
 USERSCRIPT_PATH=browser_utils/more_models.js
 ```
 
-**功能特点**：
+**Features**:
 
-- **Playwright 原生拦截**: 使用 Playwright 路由拦截，确保可靠性
-- **双重保障机制**: 网络拦截 + 脚本注入
-- **直接脚本解析**: 从油猴脚本中自动解析模型列表，无需配置文件
-- **前后端同步**: 前端和后端使用相同的模型数据源
-- **零配置维护**: 脚本更新时自动获取新的模型列表
+- **Playwright Native Interception**: Uses Playwright route interception for reliability.
+- **Double Assurance Mechanism**: Network interception + Script injection.
+- **Direct Script Parsing**: Automatically parses model lists from the Tampermonkey script, no config file needed.
+- **Frontend-Backend Sync**: Frontend and backend use the same model data source.
+- **Zero Config Maintenance**: Automatically fetches new model lists when the script updates.
 
-详细使用方法请参见 [脚本注入指南](script_injection_guide.md)。
+For detailed usage, please see [Script Injection Guide](script_injection_guide.md).
 
-## 常见配置场景
+## Common Configuration Scenarios
 
-### 场景 1：使用代理
+### Scenario 1: Using Proxy
 
 ```env
-# 启用代理
+# Enable Proxy
 HTTP_PROXY=http://127.0.0.1:7890
 HTTPS_PROXY=http://127.0.0.1:7890
 
-# GUI 中也使用相同代理
+# Use same proxy in GUI
 GUI_DEFAULT_PROXY_ADDRESS=http://127.0.0.1:7890
 ```
 
-### 场景 2：调试模式
+### Scenario 2: Debug Mode
 
 ```env
-# 启用详细日志
+# Enable Verbose Logs
 DEBUG_LOGS_ENABLED=true
 TRACE_LOGS_ENABLED=true
 SERVER_LOG_LEVEL=DEBUG
 SERVER_REDIRECT_PRINT=true
 ```
 
-### 场景 3：生产环境
+### Scenario 3: Production Environment
 
 ```env
-# 生产环境配置
+# Production Environment Configuration
 SERVER_LOG_LEVEL=WARNING
 DEBUG_LOGS_ENABLED=false
 TRACE_LOGS_ENABLED=false
 
-# 更长的超时时间
+# Longer Timeouts
 RESPONSE_COMPLETION_TIMEOUT=600000
 SILENCE_TIMEOUT_MS=120000
 ```
 
-### 场景 4：自定义端口
+### Scenario 4: Custom Ports
 
 ```env
-# 避免端口冲突
+# Avoid Port Conflicts
 DEFAULT_FASTAPI_PORT=3048
 DEFAULT_CAMOUFOX_PORT=9223
 STREAM_PORT=3121
 ```
 
-### 场景 5：启用脚本注入
+### Scenario 5: Enable Script Injection
 
 ```env
-# 启用脚本注入功能
+# Enable Script Injection Feature
 ENABLE_SCRIPT_INJECTION=true
 
-# 使用自定义脚本（模型数据直接从脚本解析）
+# Use Custom Script (Model data parsed directly from script)
 USERSCRIPT_PATH=browser_utils/my_custom_script.js
 
-# 调试模式查看注入效果
+# Debug Mode to check injection effect
 DEBUG_LOGS_ENABLED=true
 
-# 流式代理配置（与脚本注入配合使用）
+# Streaming Proxy Configuration (Used with script injection)
 STREAM_PORT=3120
 ```
 
-## 配置优先级
+## Configuration Priority
 
-项目采用分层配置系统，按以下优先级顺序确定最终配置：
+The project uses a layered configuration system, determining the final configuration in the following priority order:
 
-1. **命令行参数** (最高优先级)
+1. **Command Line Arguments** (Highest Priority)
 
    ```bash
-   # 命令行参数会覆盖环境变量和 .env 设置
+   # Command line arguments overwrite environment variables and .env settings
    python launch_camoufox.py --headless --server-port 3048
    ```
 
-2. **系统环境变量**
+2. **System Environment Variables**
 
    ```bash
-   # 系统环境变量会覆盖 .env 文件中的设置
+   # System environment variables overwrite .env file settings
    export DEFAULT_FASTAPI_PORT=2048
    ```
 
-3. **`.env` 文件配置** (推荐)
+3. **`.env` File Configuration** (Recommended)
 
    ```env
-   # .env 文件中的配置
+   # Configuration in .env file
    DEFAULT_FASTAPI_PORT=2048
    ```
 
-4. **默认值** (最低优先级)
-   代码中定义的默认值。
+4. **Default Values** (Lowest Priority)
+   Default values defined in the code.
 
-### 使用建议
+### Usage Recommendations
 
-- **日常使用**: 在 `.env` 文件中配置所有常用设置
-- **临时调整**: 使用命令行参数进行临时覆盖，无需修改 `.env` 文件
-- **CI/CD 环境**: 可以通过系统环境变量进行配置
+- **Daily Use**: Configure all common settings in the `.env` file.
+- **Temporary Adjustment**: Use command-line arguments for temporary overrides without modifying the `.env` file.
+- **CI/CD Environment**: Can be configured via system environment variables.
 
-## 注意事项
+## Considerations
 
-### 1. 文件安全
+### 1. File Security
 
-- `.env` 文件已被 `.gitignore` 忽略，不会被提交到版本控制
-- 请勿在 `.env.example` 中包含真实的敏感信息
-- 如需分享配置，请复制并清理敏感信息后再分享
+- The `.env` file is ignored by `.gitignore` and will not be committed to version control.
+- Do not include real sensitive information in `.env.example`.
+- If sharing configuration, please copy and clean sensitive information before sharing.
 
-### 2. 格式要求
+### 2. Format Requirements
 
-- 环境变量名区分大小写
-- 布尔值使用 `true`/`false`
-- 数组使用 JSON 格式：`["item1", "item2"]`
-- 字符串值如包含特殊字符，请使用引号
+- Environment variable names are case-sensitive.
+- Boolean values use `true`/`false`.
+- Arrays use JSON format: `["item1", "item2"]`.
+- Use quotes for string values containing special characters.
 
-### 3. 重启生效
+### 3. Restart to Take Effect
 
-修改 `.env` 文件后需要重启服务才能生效。
+The service needs to be restarted for changes in the `.env` file to take effect.
 
-### 4. 验证配置
+### 4. Verify Configuration
 
-启动服务时，日志会显示加载的配置信息，可以通过日志验证配置是否正确。
+When starting the service, logs will show loaded configuration information, which can be used to verify if the configuration is correct.
 
-## 故障排除
+## Troubleshooting
 
-### 配置未生效
+### Configuration Not Taking Effect
 
-1. 检查 `.env` 文件是否在项目根目录
-2. 检查环境变量名是否正确（区分大小写）
-3. 检查值的格式是否正确
-4. 重启服务
+1. Check if the `.env` file is in the project root directory.
+2. Check if the environment variable name is correct (case-sensitive).
+3. Check if the value format is correct.
+4. Restart the service.
 
-### 代理配置问题
+### Proxy Configuration Issues
 
-1. 确认代理服务器地址和端口正确
-2. 检查代理服务器是否正常运行
-3. 验证网络连接
+1. Confirm proxy server address and port are correct.
+2. Check if the proxy server is running normally.
+3. Verify network connection.
 
-### 端口冲突
+### Port Conflicts
 
-1. 检查端口是否被其他程序占用
-2. 使用 GUI 启动器的端口检查功能
-3. 修改为其他可用端口
+1. Check if the port is occupied by another program.
+2. Use the GUI launcher's port check function.
+3. Change to another available port.
 
-## 更多信息
+## More Information
 
-- [安装指南](installation-guide.md)
-- [高级配置](advanced-configuration.md)
-- [故障排除](troubleshooting.md)
+- [Installation Guide](installation-guide.md)
+- [Advanced Configuration](advanced-configuration.md)
+- [Troubleshooting](troubleshooting.md)

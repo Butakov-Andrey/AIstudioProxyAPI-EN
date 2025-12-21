@@ -29,46 +29,48 @@ class TestFormatUptime:
     def test_seconds_only(self):
         """Test formatting with only seconds."""
         result = _format_uptime(45)
-        assert result == "45秒"
+        assert result == "45s"
 
     def test_minutes_and_seconds(self):
         """Test formatting with minutes and seconds."""
         result = _format_uptime(125)  # 2 min 5 sec
-        assert "2分钟" in result
-        assert "5秒" in result
+        assert "2m" in result
+        assert "5s" in result
 
     def test_hours_minutes_seconds(self):
         """Test formatting with hours, minutes, and seconds."""
         result = _format_uptime(3725)  # 1 hr 2 min 5 sec
-        assert "1小时" in result
-        assert "2分钟" in result
-        assert "5秒" in result
+        assert "1h" in result
+        assert "2m" in result
+        assert "5s" in result
 
     def test_days_hours_minutes_seconds(self):
         """Test formatting with days, hours, minutes, and seconds."""
         result = _format_uptime(90125)  # 1 day 1 hr 2 min 5 sec
-        assert "1天" in result
-        assert "1小时" in result
-        assert "2分钟" in result
-        assert "5秒" in result
+        assert "1d" in result
+        assert "1h" in result
+        assert "2m" in result
+        assert "5s" in result
 
     def test_zero_seconds(self):
         """Test formatting with zero seconds."""
         result = _format_uptime(0)
-        assert result == "0秒"
+        assert result == "0s"
 
     def test_exact_hour(self):
         """Test formatting with exact hour (no minutes)."""
         result = _format_uptime(3600)  # 1 hour exactly
-        assert "1小时" in result
-        assert "0秒" in result
-        assert "分钟" not in result
+        assert "1h" in result
+        assert "0s" in result
+        assert (
+            "m" not in result or result.count("m") == 0
+        )  # "m" might be in "min" but we use "m"
 
     def test_exact_day(self):
         """Test formatting with exact day."""
         result = _format_uptime(86400)  # 1 day exactly
-        assert "1天" in result
-        assert "0秒" in result
+        assert "1d" in result
+        assert "0s" in result
 
 
 # ==================== _init_start_time TESTS ====================
@@ -107,7 +109,7 @@ def test_server_status_model():
     status = ServerStatus(
         status="running",
         uptime_seconds=100.5,
-        uptime_formatted="1分钟 40秒",
+        uptime_formatted="1m 40s",
         launch_mode="headless",
         server_port=2048,
         stream_port=3120,
@@ -179,7 +181,7 @@ class TestServerEndpoints:
         assert response.status_code == 400
         data = response.json()
         assert data["success"] is False
-        assert "确认" in data["message"]
+        assert "confirm" in data["message"].lower()
 
     def test_restart_server_invalid_mode(self, client):
         """Test POST /api/server/restart with invalid mode fails."""
@@ -190,7 +192,7 @@ class TestServerEndpoints:
         assert response.status_code == 400
         data = response.json()
         assert data["success"] is False
-        assert "无效" in data["message"]
+        assert "invalid" in data["message"].lower()
 
     def test_restart_server_headless_success(self, client):
         """Test POST /api/server/restart with headless mode succeeds."""
@@ -206,6 +208,7 @@ class TestServerEndpoints:
 
     def test_restart_server_debug_success(self, client):
         """Test POST /api/server/restart with debug mode succeeds."""
+        # Use a fresh env or patch os.environ to avoid leaking between tests if necessary
         response = client.post(
             "/api/server/restart", json={"mode": "debug", "confirm": True}
         )

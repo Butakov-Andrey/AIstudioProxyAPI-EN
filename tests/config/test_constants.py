@@ -17,8 +17,8 @@ import pytest
 
 def test_default_stop_sequences_invalid_json():
     """
-    测试场景: DEFAULT_STOP_SEQUENCES 环境变量包含无效 JSON
-    预期: JSONDecodeError 被捕获,回退到空列表 (lines 44-45)
+    Test scenario: DEFAULT_STOP_SEQUENCES environment variable contains invalid JSON
+    Expected: JSONDecodeError caught, falls back to empty list (lines 44-45)
     """
     original_module = sys.modules.get("config.constants")
 
@@ -39,8 +39,8 @@ def test_default_stop_sequences_invalid_json():
 
 def test_default_stop_sequences_valid_json():
     """
-    测试场景: DEFAULT_STOP_SEQUENCES 环境变量包含有效 JSON
-    预期: 成功解析为列表 (line 43)
+    Test scenario: DEFAULT_STOP_SEQUENCES environment variable contains valid JSON
+    Expected: Successfully parsed into a list (line 43)
     """
     original_module = sys.modules.get("config.constants")
 
@@ -61,8 +61,8 @@ def test_default_stop_sequences_valid_json():
 
 def test_default_stop_sequences_empty_default():
     """
-    测试场景: DEFAULT_STOP_SEQUENCES 未配置
-    预期: 使用空列表默认值 (line 43)
+    Test scenario: DEFAULT_STOP_SEQUENCES not configured
+    Expected: Use empty list default value (line 43)
     """
     original_module = sys.modules.get("config.constants")
 
@@ -108,8 +108,8 @@ def test_default_stop_sequences_empty_default():
 )
 def test_enable_url_context_parsing(env_value: str, expected: bool):
     """
-    测试场景: ENABLE_URL_CONTEXT 布尔值解析
-    覆盖: true/True/TRUE/1/yes -> True, 其他 -> False
+    Test scenario: ENABLE_URL_CONTEXT boolean value parsing
+    Coverage: true/True/TRUE/1/yes -> True, others -> False
     """
     original_module = sys.modules.get("config.constants")
 
@@ -143,7 +143,7 @@ def test_enable_url_context_parsing(env_value: str, expected: bool):
 )
 def test_enable_thinking_budget_parsing(env_value: str, expected: bool):
     """
-    测试场景: ENABLE_THINKING_BUDGET 布尔值解析
+    Test scenario: ENABLE_THINKING_BUDGET boolean value parsing
     """
     original_module = sys.modules.get("config.constants")
 
@@ -176,7 +176,7 @@ def test_enable_thinking_budget_parsing(env_value: str, expected: bool):
 )
 def test_enable_google_search_parsing(env_value: str, expected: bool):
     """
-    测试场景: ENABLE_GOOGLE_SEARCH 布尔值解析
+    Test scenario: ENABLE_GOOGLE_SEARCH boolean value parsing
     """
     original_module = sys.modules.get("config.constants")
 
@@ -208,15 +208,15 @@ def test_enable_google_search_parsing(env_value: str, expected: bool):
         ("HIGH", "high"),
         ("low", "low"),
         ("LOW", "low"),
-        ("medium", "high"),  # Invalid value defaults to "high"
-        ("invalid", "high"),  # Invalid value defaults to "high"
+        ("medium", "high"),  # Invalid value falls back to "high"
+        ("invalid", "high"),  # Invalid value falls back to "high"
         ("", "high"),  # Empty defaults to "high"
     ],
 )
 def test_thinking_level_pro_validation(env_value: str, expected: str):
     """
-    测试场景: DEFAULT_THINKING_LEVEL_PRO 验证 (只支持 high/low)
-    无效值回退到 "high"
+    Test scenario: DEFAULT_THINKING_LEVEL_PRO validation (only supports high/low)
+    Invalid values fall back to "high"
     """
     original_module = sys.modules.get("config.constants")
 
@@ -248,14 +248,14 @@ def test_thinking_level_pro_validation(env_value: str, expected: str):
         ("low", "low"),
         ("minimal", "minimal"),
         ("MINIMAL", "minimal"),
-        ("invalid", "high"),  # Invalid value defaults to "high"
+        ("invalid", "high"),  # Invalid value falls back to "high"
         ("", "high"),  # Empty defaults to "high"
     ],
 )
 def test_thinking_level_flash_validation(env_value: str, expected: str):
     """
-    测试场景: DEFAULT_THINKING_LEVEL_FLASH 验证 (支持 high/medium/low/minimal)
-    无效值回退到 "high"
+    Test scenario: DEFAULT_THINKING_LEVEL_FLASH validation (supports high/medium/low/minimal)
+    Invalid values fall back to "high"
     """
     original_module = sys.modules.get("config.constants")
 
@@ -282,8 +282,8 @@ def test_thinking_level_flash_validation(env_value: str, expected: str):
 
 def test_numeric_defaults_parsing():
     """
-    测试场景: 数值类型默认值解析
-    验证 float/int 转换正确
+    Test scenario: Numeric type default values parsing
+    Verify float/int conversion is correct
     """
     original_module = sys.modules.get("config.constants")
 
@@ -318,8 +318,8 @@ def test_numeric_defaults_parsing():
 
 def test_stream_timeout_log_state_config():
     """
-    测试场景: STREAM_TIMEOUT_LOG_STATE 配置解析
-    验证嵌套字典中的数值正确解析
+    Test scenario: STREAM_TIMEOUT_LOG_STATE configuration parsing
+    Verify numbers in nested dictionary correctly parsed
     """
     original_module = sys.modules.get("config.constants")
 
@@ -363,7 +363,7 @@ def test_stream_timeout_log_state_config():
 
 def test_string_constants_custom_values():
     """
-    测试场景: 字符串常量自定义值
+    Test scenario: String constant custom values
     """
     original_module = sys.modules.get("config.constants")
 

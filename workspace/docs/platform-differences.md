@@ -1,65 +1,65 @@
-# 平台差异说明
+# Platform Differences Guide
 
-本文档详细说明 AI Studio Proxy API 在不同操作系统（Windows、macOS、Linux）上的差异和注意事项。
+This document details the differences and considerations for AI Studio Proxy API on different operating systems (Windows, macOS, Linux).
 
 ---
 
-## 📋 目录
+## 📋 Table of Contents
 
-- [通用要求](#通用要求)
+- [General Requirements](#general-requirements)
 - [Windows](#windows)
 - [macOS](#macos)
 - [Linux](#linux)
-- [Docker 环境](#docker-环境)
-- [性能对比](#性能对比)
+- [Docker Environment](#docker-environment)
+- [Performance Comparison](#performance-comparison)
 
 ---
 
-## 通用要求
+## General Requirements
 
-所有平台都需要满足以下基本要求：
+All platforms need to meet the following basic requirements:
 
-- **Python**: >=3.9, <4.0 (推荐 3.10 或 3.11)
-- **内存**: 建议 2GB+ 可用内存
-- **磁盘**: 至少 1GB 可用空间
-- **网络**: 稳定的互联网连接
+- **Python**: >=3.9, <4.0 (Recommended 3.10 or 3.11)
+- **Memory**: Recommended 2GB+ available RAM
+- **Disk**: At least 1GB available space
+- **Network**: Stable internet connection
 
 ---
 
 ## Windows
 
-### 系统要求
+### System Requirements
 
-- **操作系统**: Windows 10 或更高版本
-- **架构**: x86_64
-- **PowerShell**: 5.1 或更高版本（Windows 10 自带）
+- **OS**: Windows 10 or later
+- **Architecture**: x86_64
+- **PowerShell**: 5.1 or later (Built-in with Windows 10)
 
-### 安装 Python
+### Install Python
 
-**方法 1: 官方安装包** (推荐)
+**Method 1: Official Installer** (Recommended)
 
-1. 访问 [python.org](https://www.python.org/downloads/)
-2. 下载 Python 3.10+ 的 Windows 安装包
-3. 运行安装程序，**勾选 "Add Python to PATH"**
-4. 验证安装:
+1. Visit [python.org](https://www.python.org/downloads/)
+2. Download Python 3.10+ installer for Windows
+3. Run installer, **Check "Add Python to PATH"**
+4. Verify installation:
    ```powershell
    python --version
    ```
 
-**方法 2: Windows Store**
+**Method 2: Windows Store**
 
 ```powershell
-# 从 Microsoft Store 安装 Python 3.11
-# 搜索 "Python 3.11" 并安装
+# Install Python 3.11 from Microsoft Store
+# Search "Python 3.11" and install
 ```
 
-**方法 3: Chocolatey**
+**Method 3: Chocolatey**
 
 ```powershell
 choco install python311
 ```
 
-### 安装 Poetry
+### Install Poetry
 
 **PowerShell**:
 
@@ -67,15 +67,15 @@ choco install python311
 (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
 ```
 
-**添加 Poetry 到 PATH**:
+**Add Poetry to PATH**:
 
 ```powershell
 $env:Path += ";$env:APPDATA\Python\Scripts"
 ```
 
-### 平台特定注意事项
+### Platform Specific Notes
 
-#### 1. 虚拟环境激活
+#### 1. Virtual Environment Activation
 
 **PowerShell**:
 
@@ -83,7 +83,7 @@ $env:Path += ";$env:APPDATA\Python\Scripts"
 # Poetry Shell
 poetry shell
 
-# 或使用 poetry run
+# Or use poetry run
 poetry run python launch_camoufox.py --headless
 ```
 
@@ -93,99 +93,99 @@ poetry run python launch_camoufox.py --headless
 poetry shell
 ```
 
-#### 2. 路径分隔符
+#### 2. Path Separator
 
-Windows 使用反斜杠 `\`，但 Python 代码中使用 `/` 或 `os.path.join()` 自动处理。
+Windows uses backslash `\`, but Python code uses `/` or `os.path.join()` handles it automatically.
 
-**配置文件路径**:
+**Config File Path**:
 
 ```env
-# .env 文件中使用正斜杠或双反斜杠
+# Use forward slash or double backslash in .env file
 USERSCRIPT_PATH=browser_utils/more_models.js
-# 或
+# Or
 USERSCRIPT_PATH=browser_utils\\more_models.js
 ```
 
-#### 3. uvloop 不可用
+#### 3. uvloop Unavailable
 
-uvloop 只支持 Linux 和 macOS，但项目已自动处理：
+uvloop supports only Linux and macOS, but the project handles it automatically:
 
 ```python
-# pyproject.toml 中已配置
+# Configured in pyproject.toml
 uvloop = {version = "*", markers = "sys_platform != 'win32'"}
 ```
 
-Windows 上会自动使用标准的 asyncio 事件循环，功能完全正常。
+Windows will automatically use standard asyncio event loop, functionality is fully normal.
 
-#### 4. 端口占用检查
+#### 4. Port Occupancy Check
 
 ```powershell
-# 检查端口占用
+# Check port occupancy
 netstat -ano | findstr 2048
 
-# 结束进程
-taskkill /PID <进程ID> /F
+# End process
+taskkill /PID <ProcessID> /F
 ```
 
-#### 5. 防火墙配置
+#### 5. Firewall Configuration
 
-首次运行可能需要允许 Python 通过防火墙：
+First run might require allowing Python through firewall:
 
-1. Windows 防火墙会弹出提示
-2. 选择 "允许访问"
-3. 或手动添加规则：
-   - 打开 "Windows Defender 防火墙"
-   - 点击 "允许应用通过防火墙"
-   - 添加 Python 和 Poetry
+1. Windows Firewall prompt will pop up
+2. Select "Allow access"
+3. Or manually add rule:
+   - Open "Windows Defender Firewall"
+   - Click "Allow an app or feature through Windows Defender Firewall"
+   - Add Python and Poetry
 
-#### 6. 长路径支持
+#### 6. Long Path Support
 
-如果遇到路径长度限制：
+If you encounter path length limits:
 
-1. 打开注册表编辑器 (regedit)
-2. 导航到: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem`
-3. 设置 `LongPathsEnabled` 为 `1`
-4. 重启计算机
+1. Open Registry Editor (regedit)
+2. Navigate to: `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem`
+3. Set `LongPathsEnabled` to `1`
+4. Restart computer
 
-#### 7. 时区支持 (tzdata)
+#### 7. Timezone Support (tzdata)
 
-Windows 不像 Linux/macOS 那样内置 IANA 时区数据库。本项目依赖 `tzdata` 包来提供时区支持。
+Windows does not have built-in IANA timezone database like Linux/macOS. This project depends on `tzdata` package to provide timezone support.
 
-- **自动安装**: Poetry 会根据 `pyproject.toml` 自动安装 `tzdata`。
-- **故障排除**: 如果遇到 `ZoneInfoNotFoundError` 错误，请检查 `tzdata` 是否已安装：
+- **Auto Install**: Poetry will automatically install `tzdata` based on `pyproject.toml`.
+- **Troubleshooting**: If `ZoneInfoNotFoundError` occurs, check if `tzdata` is installed:
   ```powershell
   poetry run pip show tzdata
   ```
 
-### 推荐终端
+### Recommended Terminals
 
-- **Windows Terminal** (推荐): 现代化、支持多标签页
-- **PowerShell 7+**: 跨平台，功能强大
-- **Git Bash**: 类 Unix 环境
+- **Windows Terminal** (Recommended): Modern, supports multiple tabs
+- **PowerShell 7+**: Cross-platform, powerful
+- **Git Bash**: Unix-like environment
 
-### 常见问题
+### Common Issues
 
-**问题**: `poetry` 命令未找到
+**Issue**: `poetry` command not found
 
-**解决方案**:
+**Solution**:
 
 ```powershell
-# 检查 Poetry 安装路径
+# Check Poetry install path
 $env:APPDATA\Python\Scripts\poetry --version
 
-# 添加到 PATH
+# Add to PATH
 [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:APPDATA\Python\Scripts", "User")
 ```
 
-**问题**: SSL 证书错误
+**Issue**: SSL Certificate Error
 
-**解决方案**:
+**Solution**:
 
 ```powershell
-# 临时禁用 SSL 验证（不推荐用于生产环境）
+# Temporarily disable SSL verification (Not recommended for production)
 $env:PYTHONHTTPSVERIFY = "0"
 
-# 或安装证书
+# Or install certificates
 pip install --upgrade certifi
 ```
 
@@ -193,159 +193,159 @@ pip install --upgrade certifi
 
 ## macOS
 
-### 系统要求
+### System Requirements
 
-- **操作系统**: macOS 10.15 (Catalina) 或更高版本
-- **架构**: x86_64 或 ARM64 (Apple Silicon)
-- **Xcode Command Line Tools**: 自动安装或手动安装
+- **OS**: macOS 10.15 (Catalina) or later
+- **Architecture**: x86_64 or ARM64 (Apple Silicon)
+- **Xcode Command Line Tools**: Auto or manual install
 
-### 安装 Python
+### Install Python
 
-**方法 1: Homebrew** (推荐)
+**Method 1: Homebrew** (Recommended)
 
 ```bash
-# 安装 Homebrew (如果尚未安装)
+# Install Homebrew (If not installed)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# 安装 Python 3.11
+# Install Python 3.11
 brew install python@3.11
 
-# 验证安装
+# Verify installation
 python3 --version
 ```
 
-**方法 2: pyenv** (推荐开发者)
+**Method 2: pyenv** (Recommended for Developers)
 
 ```bash
-# 安装 pyenv
+# Install pyenv
 brew install pyenv
 
-# 安装 Python 3.11
+# Install Python 3.11
 pyenv install 3.11
 
-# 设置全局版本
+# Set global version
 pyenv global 3.11
 
-# 验证
+# Verify
 python --version
 ```
 
-**方法 3: 官方安装包**
+**Method 3: Official Installer**
 
-1. 访问 [python.org](https://www.python.org/downloads/)
-2. 下载 macOS 通用安装包
-3. 运行 `.pkg` 文件安装
+1. Visit [python.org](https://www.python.org/downloads/)
+2. Download macOS universal installer
+3. Run `.pkg` file to install
 
-### 安装 Poetry
+### Install Poetry
 
 ```bash
 curl -sSL https://install.python-poetry.org | python3 -
 
-# 或使用 Homebrew
+# Or use Homebrew
 brew install poetry
 ```
 
-### 平台特定注意事项
+### Platform Specific Notes
 
 #### 1. Apple Silicon (M1/M2/M3)
 
-大多数依赖已支持 ARM64 架构，但可能需要 Rosetta 2：
+Most dependencies support ARM64 architecture, but Rosetta 2 might be needed:
 
 ```bash
-# 安装 Rosetta 2 (如果需要)
+# Install Rosetta 2 (If needed)
 softwareupdate --install-rosetta
 ```
 
-**确认架构**:
+**Confirm Architecture**:
 
 ```bash
-# 查看 Python 架构
+# Check Python architecture
 python3 -c "import platform; print(platform.machine())"
-# arm64 = Apple Silicon 原生
-# x86_64 = Intel 或 Rosetta 2
+# arm64 = Apple Silicon native
+# x86_64 = Intel or Rosetta 2
 ```
 
-**使用 x86_64 版本** (如果遇到兼容性问题):
+**Use x86_64 version** (If compatibility issues occur):
 
 ```bash
-# 在 Rosetta 2 下运行
+# Run under Rosetta 2
 arch -x86_64 python3 script.py
 ```
 
-#### 2. 权限问题
+#### 2. Permission Issues
 
-macOS 需要授予终端权限：
+macOS needs to grant terminal permissions:
 
 ```bash
-# 如果遇到 "Operation not permitted" 错误
-# 打开 "系统偏好设置" -> "安全性与隐私" -> "隐私" -> "完全磁盘访问权限"
-# 添加 "终端" 或 "iTerm"
+# If "Operation not permitted" error occurs
+# Open "System Preferences" -> "Security & Privacy" -> "Privacy" -> "Full Disk Access"
+# Add "Terminal" or "iTerm"
 ```
 
-#### 3. 证书问题
+#### 3. Certificate Issues
 
 ```bash
-# 安装 macOS 证书
+# Install macOS certificates
 /Applications/Python\ 3.11/Install\ Certificates.command
 
-# 或手动安装
+# Or manual install
 pip install --upgrade certifi
 ```
 
-#### 4. 虚拟显示 (可选)
+#### 4. Virtual Display (Optional)
 
-macOS 默认有图形界面，但如果需要虚拟显示：
+macOS has GUI by default, but if virtual display is needed:
 
 ```bash
-# 安装 Xvfb (通过 XQuartz)
+# Install Xvfb (via XQuartz)
 brew install --cask xquartz
 
-# 重启后使用
+# Use after restart
 Xvfb :99 -screen 0 1920x1080x24 &
 export DISPLAY=:99
 ```
 
-#### 5. 端口占用检查
+#### 5. Port Occupancy Check
 
 ```bash
-# 查看端口占用
+# Check port occupancy
 lsof -i :2048
 
-# 结束进程
+# End process
 kill -9 <PID>
 ```
 
-### 推荐终端
+### Recommended Terminals
 
-- **iTerm2** (推荐): 功能强大、可定制
-- **Terminal.app**: 系统自带，简单够用
-- **Warp**: 现代化、AI 辅助
+- **iTerm2** (Recommended): Powerful, customizable
+- **Terminal.app**: Built-in, simple enough
+- **Warp**: Modern, AI assisted
 
-### 常见问题
+### Common Issues
 
-**问题**: `command not found: poetry`
+**Issue**: `command not found: poetry`
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 添加 Poetry 到 PATH
+# Add Poetry to PATH
 export PATH="$HOME/.local/bin:$PATH"
 
-# 永久添加 (zsh)
+# Add permanently (zsh)
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 
-# 永久添加 (bash)
+# Add permanently (bash)
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile
 source ~/.bash_profile
 ```
 
-**问题**: SSL 证书错误
+**Issue**: SSL Certificate Error
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 安装证书
+# Install certificates
 /Applications/Python\ 3.11/Install\ Certificates.command
 ```
 
@@ -353,13 +353,13 @@ source ~/.bash_profile
 
 ## Linux
 
-### 系统要求
+### System Requirements
 
-- **发行版**: Ubuntu 20.04+, Debian 11+, Fedora 35+, Arch Linux 等
-- **架构**: x86_64 或 ARM64
-- **依赖**: 根据发行版而定
+- **Distro**: Ubuntu 20.04+, Debian 11+, Fedora 35+, Arch Linux etc.
+- **Architecture**: x86_64 or ARM64
+- **Dependencies**: Depends on distro
 
-### 安装 Python
+### Install Python
 
 **Ubuntu/Debian**:
 
@@ -380,12 +380,12 @@ sudo dnf install python3.11 python3.11-devel
 sudo pacman -S python
 ```
 
-### 安装 Poetry
+### Install Poetry
 
 ```bash
 curl -sSL https://install.python-poetry.org | python3 -
 
-# 或使用包管理器
+# Or use package manager
 # Ubuntu/Debian
 sudo apt install python3-poetry
 
@@ -396,12 +396,12 @@ sudo dnf install poetry
 sudo pacman -S python-poetry
 ```
 
-### 安装系统依赖
+### Install System Dependencies
 
 #### Ubuntu/Debian
 
 ```bash
-# 安装 Playwright 依赖
+# Install Playwright dependencies
 sudo apt-get update
 sudo apt-get install -y \
     libgbm-dev \
@@ -421,7 +421,7 @@ sudo apt-get install -y \
     libcairo2 \
     libasound2
 
-# 或使用 Playwright 自动安装
+# Or use Playwright auto install
 playwright install-deps
 ```
 
@@ -453,14 +453,14 @@ sudo pacman -S \
     mesa
 ```
 
-### 平台特定注意事项
+### Platform Specific Notes
 
-#### 1. 虚拟显示模式
+#### 1. Virtual Display Mode
 
-无图形界面的服务器需要虚拟显示：
+Headless servers need virtual display:
 
 ```bash
-# 安装 Xvfb
+# Install Xvfb
 # Ubuntu/Debian
 sudo apt-get install xvfb
 
@@ -470,28 +470,28 @@ sudo dnf install xorg-x11-server-Xvfb
 # Arch Linux
 sudo pacman -S xorg-server-xvfb
 
-# 启动服务时使用虚拟显示模式
+# Start service with virtual display mode
 python launch_camoufox.py --virtual-display
 ```
 
-#### 2. 无头模式 (推荐)
+#### 2. Headless Mode (Recommended)
 
 ```bash
-# 无需 X Server，完全后台运行
+# No X Server needed, completely background run
 python launch_camoufox.py --headless
 ```
 
-#### 3. 权限问题
+#### 3. Permission Issues
 
 ```bash
-# 确保当前用户有权限访问必要的目录
+# Ensure current user has permission to access necessary directories
 chmod -R 755 ~/AIstudioProxyAPI
 
-# 如果需要绑定特权端口 (<1024)
+# If binding privileged ports (<1024) is needed
 sudo setcap 'cap_net_bind_service=+ep' $(which python3)
 ```
 
-#### 4. 防火墙配置
+#### 4. Firewall Configuration
 
 **Ubuntu/Debian (ufw)**:
 
@@ -517,9 +517,9 @@ sudo iptables -A INPUT -p tcp --dport 3120 -j ACCEPT
 sudo iptables-save
 ```
 
-#### 5. systemd 服务 (常驻运行)
+#### 5. systemd Service (Resident Run)
 
-创建 `/etc/systemd/system/aistudio-proxy.service`:
+Create `/etc/systemd/system/aistudio-proxy.service`:
 
 ```ini
 [Unit]
@@ -539,7 +539,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-**启用服务**:
+**Enable Service**:
 
 ```bash
 sudo systemctl daemon-reload
@@ -550,106 +550,106 @@ sudo systemctl status aistudio-proxy
 
 #### 6. SELinux (Fedora/RHEL)
 
-如果启用了 SELinux：
+If SELinux is enabled:
 
 ```bash
-# 临时设置为 permissive 模式
+# Temporarily set to permissive mode
 sudo setenforce 0
 
-# 或创建自定义策略
-# (需要 SELinux 管理知识)
+# Or create custom policy
+# (Requires SELinux management knowledge)
 ```
 
-### 推荐终端
+### Recommended Terminals
 
-- **GNOME Terminal**: GNOME 桌面默认
-- **Konsole**: KDE Plasma 默认
-- **tmux**: 终端复用器，适合远程服务器
-- **Terminator**: 支持分屏
+- **GNOME Terminal**: GNOME default
+- **Konsole**: KDE Plasma default
+- **tmux**: Terminal multiplexer, suitable for remote server
+- **Terminator**: Supports split screen
 
-### 常见问题
+### Common Issues
 
-**问题**: `libgbm.so.1: cannot open shared object file`
+**Issue**: `libgbm.so.1: cannot open shared object file`
 
-**解决方案**:
+**Solution**:
 
 ```bash
 sudo apt-get install libgbm1
-# 或
+# Or
 sudo dnf install libgbm
 ```
 
-**问题**: Playwright 浏览器安装失败
+**Issue**: Playwright browser installation failed
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 使用 Playwright 自动安装依赖
+# Use Playwright auto install dependencies
 playwright install-deps
 
-# 手动安装浏览器
+# Manually install browser
 playwright install firefox
 ```
 
 ---
 
-## Docker 环境
+## Docker Environment
 
-### 支持的平台
+### Supported Platforms
 
-- **x86_64**: 完全支持
-- **ARM64**: 完全支持（包括 Apple Silicon）
+- **x86_64**: Fully supported
+- **ARM64**: Fully supported (Including Apple Silicon)
 
-### 快速启动
+### Quick Start
 
 ```bash
 cd docker
 cp .env.docker .env
-nano .env  # 编辑配置
+nano .env  # Edit config
 docker compose up -d
 ```
 
-### 平台差异
+### Platform Differences
 
-#### Linux (原生)
+#### Linux (Native)
 
-- ✅ 最佳性能
-- ✅ 完全支持所有功能
-- ✅ 资源占用最低
+- ✅ Best performance
+- ✅ Fully supports all features
+- ✅ Minimal resource usage
 
 #### macOS (Docker Desktop)
 
-- ✅ 支持所有功能
-- ⚠️ 性能略低于原生 Linux
-- ⚠️ 资源占用较高（虚拟机开销）
-- 💡 **提示**: 分配足够的内存和 CPU
+- ✅ Supports all features
+- ⚠️ Performance slightly lower than native Linux
+- ⚠️ Higher resource usage (VM overhead)
+- 💡 **Tip**: Allocate sufficient RAM and CPU
 
-**Docker Desktop 配置**:
+**Docker Desktop Config**:
 
-- 内存: 至少 4GB
-- CPU: 至少 2 核
+- Memory: At least 4GB
+- CPU: At least 2 Cores
 
 #### Windows (Docker Desktop)
 
-- ✅ 支持所有功能
-- ⚠️ 需要 WSL 2 后端
-- ⚠️ 性能略低于 Linux
-- 💡 **提示**: 确保启用 WSL 2
+- ✅ Supports all features
+- ⚠️ Requires WSL 2 backend
+- ⚠️ Performance slightly lower than Linux
+- 💡 **Tip**: Ensure WSL 2 is enabled
 
-**WSL 2 配置**:
+**WSL 2 Config**:
 
 ```bash
-# 检查 WSL 版本
+# Check WSL version
 wsl --list --verbose
 
-# 如果使用 WSL 1，升级到 WSL 2
+# If using WSL 1, upgrade to WSL 2
 wsl --set-version Ubuntu 2
 wsl --set-default-version 2
 ```
 
-### 认证文件挂载
+### Auth File Mounting
 
-所有平台都需要在主机上获取认证文件后挂载：
+All platforms need to get auth file on host then mount:
 
 ```yaml
 # docker-compose.yml
@@ -657,55 +657,55 @@ volumes:
   - ./auth_profiles:/app/auth_profiles
 ```
 
-**步骤**:
+**Steps**:
 
-1. 在主机上运行调试模式获取认证。
-2. 确保 `auth_profiles` 目录（包含 `active/` 子目录）已正确挂载到容器。
-3. 重启容器。
+1. Run debug mode on host to get auth.
+2. Ensure `auth_profiles` directory (containing `active/` subdirectory) is correctly mounted to container.
+3. Restart container.
 
 ---
 
-## 性能概览
+## Performance Comparison
 
-不同平台的性能表现会有所差异，主要取决于底层架构和虚拟化开销：
+Performance varies across platforms, mainly depending on underlying architecture and virtualization overhead:
 
-1.  **Linux (原生)**: 通常提供最佳性能和最低延迟，受益于 `uvloop` 支持和高效的进程管理。
-2.  **macOS**: 性能良好，Apple Silicon 芯片表现优异。
-3.  **Windows**: 由于缺乏 `uvloop` 支持以及文件系统差异，性能略低于 Linux/macOS，但完全满足日常使用。
+1.  **Linux (Native)**: Usually provides best performance and lowest latency, benefiting from `uvloop` support and efficient process management.
+2.  **macOS**: Good performance, Apple Silicon chips perform excellently.
+3.  **Windows**: Due to lack of `uvloop` support and file system differences, performance is slightly lower than Linux/macOS, but completely sufficient for daily use.
 4.  **Docker**:
-    - **Linux**: 性能接近原生。
-    - **macOS/Windows**: 由于 Docker Desktop 使用虚拟机，会有额外的 CPU 和内存开销，启动时间和响应延迟可能略高。
+    - **Linux**: Performance close to native.
+    - **macOS/Windows**: Due to Docker Desktop using VM, there is extra CPU and memory overhead, startup time and response latency might be slightly higher.
 
 ---
 
-## 推荐配置
+## Recommended Configuration
 
-### 开发环境
+### Development Environment
 
-- **首选**: macOS 或 Linux (原生)
-- **备选**: Windows 10/11 (原生)
-- **不推荐**: Docker (除非需要隔离)
+- **Primary**: macOS or Linux (Native)
+- **Alternative**: Windows 10/11 (Native)
+- **Not Recommended**: Docker (Unless isolation needed)
 
-### 生产环境
+### Production Environment
 
-- **首选**: Linux (原生或 Docker)
-- **备选**: Docker (跨平台部署)
-- **不推荐**: Windows Server (性能和兼容性问题)
+- **Primary**: Linux (Native or Docker)
+- **Alternative**: Docker (Cross-platform deployment)
+- **Not Recommended**: Windows Server (Performance and compatibility issues)
 
-### 测试环境
+### Testing Environment
 
-- **首选**: Docker (一致性)
-- **备选**: 虚拟机
-
----
-
-## 相关文档
-
-- [快速开始指南](quick-start-guide.md) - 快速部署
-- [安装指南](installation-guide.md) - 详细安装步骤
-- [Docker 部署指南](../docker/README-Docker.md) - Docker 部署
-- [故障排除指南](troubleshooting.md) - 平台特定问题
+- **Primary**: Docker (Consistency)
+- **Alternative**: Virtual Machine
 
 ---
 
-如有平台特定问题，请查看故障排除指南或提交 Issue。
+## Related Documentation
+
+- [Quick Start Guide](quick-start-guide.md) - Quick deployment
+- [Installation Guide](installation-guide.md) - Detailed installation steps
+- [Docker Deployment Guide](../docker/README-Docker.md) - Docker deployment
+- [Troubleshooting Guide](troubleshooting.md) - Platform specific issues
+
+---
+
+If platform specific issues persist, please check Troubleshooting Guide or submit an Issue.

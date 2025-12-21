@@ -1,110 +1,110 @@
-# 故障排除指南
+# Troubleshooting Guide
 
-本文档提供 AI Studio Proxy API 项目常见问题的解决方案和调试方法，涵盖安装、配置、运行、API 使用等各个方面。
+This document provides solutions and debugging methods for common problems with the AI Studio Proxy API project, covering installation, configuration, operation, API usage, and more.
 
-## 快速诊断
+## Quick Diagnosis
 
-在深入具体问题之前，可以先进行快速诊断：
+Before diving into specific issues, perform a quick diagnosis:
 
-### 1. 检查服务状态
+### 1. Check Service Status
 
 ```bash
-# 检查服务是否正常运行
+# Check if service is running normally
 curl http://127.0.0.1:2048/health
 
-# 检查API信息
+# Check API info
 curl http://127.0.0.1:2048/api/info
 ```
 
-### 2. 检查配置文件
+### 2. Check Configuration File
 
 ```bash
-# 检查 .env 文件是否存在
+# Check if .env file exists
 ls -la .env
 
-# 检查关键配置项
+# Check key configuration items
 grep -E "(PORT|SCRIPT_INJECTION|LOG_LEVEL)" .env
 ```
 
-### 3. 查看日志
+### 3. Check Logs
 
 ```bash
-# 查看最新日志
+# View latest logs
 tail -f logs/app.log
 
-# 查看错误日志
+# View error logs
 grep -i error logs/app.log
 ```
 
-## 安装相关问题
+## Installation Issues
 
-### Python 版本兼容性问题
+### Python Version Compatibility
 
-**Python 版本过低**:
+**Python Version Too Low**:
 
-- **最低要求**: Python 3.9+
-- **推荐版本**: Python 3.10+ 或 3.11+
-- **检查版本**: `python --version`
+- **Minimum Requirement**: Python 3.9+
+- **Recommended Version**: Python 3.10+ or 3.11+
+- **Check Version**: `python --version`
 
-**常见版本问题**:
+**Common Version Errors**:
 
 ```bash
-# Python 3.8 或更低版本可能出现的错误
+# Errors that might appear in Python 3.8 or lower
 TypeError: 'type' object is not subscriptable
-SyntaxError: invalid syntax (类型提示相关)
+SyntaxError: invalid syntax (Type hint related)
 
-# 解决方案：升级 Python 版本
-# macOS (使用 Homebrew)
+# Solution: Upgrade Python Version
+# macOS (Using Homebrew)
 brew install python@3.11
 
 # Ubuntu/Debian
 sudo apt update && sudo apt install python3.11
 
-# Windows: 从 python.org 下载安装
+# Windows: Download and install from python.org
 ```
 
-**Poetry 环境 Python 版本**:
+**Poetry Environment Python Version**:
 
 ```bash
-# 检查 Poetry 环境中的 Python 版本
+# Check Python version in Poetry environment
 poetry run python --version
 
-# 如果版本不正确，可以指定 Python 版本重新安装环境
+# If incorrect, specify Python version to reinstall environment
 poetry env use python3.11
 poetry install
 ```
 
-### `poetry install` 失败 (Camoufox 相关)
+### `poetry install` Failed (Camoufox Related)
 
-- **问题**: 安装依赖时报错，提示 `camoufox` 或 `geoip` 相关错误。
-- **原因**: 可能是网络问题或缺少编译环境。
-- **解决方案**: 尝试修改 `pyproject.toml`，暂时移除 `extras = ["geoip"]`，然后运行 `poetry lock && poetry install`。
+- **Issue**: Error during dependency installation, indicating `camoufox` or `geoip` related errors.
+- **Cause**: Likely network issues or missing compilation environment.
+- **Solution**: Try modifying `pyproject.toml`, temporarily remove `extras = ["geoip"]`, then run `poetry lock && poetry install`.
 
-### `camoufox fetch` 失败
+### `camoufox fetch` Failed
 
-- 常见原因是网络问题或 SSL 证书验证失败。
-- 可以尝试运行 [`poetry run python fetch_camoufox_data.py`](../fetch_camoufox_data.py) 脚本，它会尝试禁用 SSL 验证来下载 (有安全风险，仅在确认网络环境可信时使用)。
+- Common causes are network issues or SSL certificate verification failure.
+- Try running the project's [`poetry run python fetch_camoufox_data.py`](../fetch_camoufox_data.py) script, which attempts to download with SSL verification disabled (security risk, use only in trusted network environments).
 
-### `playwright install-deps` 失败
+### `playwright install-deps` Failed
 
-- 通常是 Linux 系统缺少必要的库。仔细阅读错误信息，根据提示安装缺失的系统包 (如 `libgbm-dev`, `libnss3` 等)。
-- 确保使用 `poetry run playwright install-deps` 运行，以便在正确的环境中安装。
+- Usually Linux system missing necessary libraries. Read error message carefully, install missing system packages as prompted (e.g., `libgbm-dev`, `libnss3`, etc.).
+- Ensure running with `poetry run playwright install-deps` to install in the correct environment.
 
-## 启动相关问题
+## Startup Issues
 
-### `launch_camoufox.py` 启动报错
+### `launch_camoufox.py` Startup Error
 
-- **浏览器未找到**: 检查 Camoufox 是否已通过 `poetry run camoufox fetch` 正确下载。
-- **依赖缺失**: Linux 系统下可能需要运行 `poetry run playwright install-deps`。
-- **查看错误**: 查看终端输出，是否有来自 Camoufox 库的具体错误信息。
-- **进程冲突**: 确保没有其他 Camoufox 或 Playwright 进程冲突。
+- **Browser Not Found**: Check if Camoufox is correctly downloaded via `poetry run camoufox fetch`.
+- **Dependency Missing**: Linux systems might need `poetry run playwright install-deps`.
+- **View Error**: Check terminal output for specific error messages from Camoufox library.
+- **Process Conflict**: Ensure no other Camoufox or Playwright process conflicts.
 
-### 端口被占用
+### Port Occupied
 
-如果 [`server.py`](../server.py) 启动时提示端口 (`2048`) 被占用：
+If [`server.py`](../server.py) startup prompts port (`2048`) occupied:
 
-- 使用 `python launch_camoufox.py --headless` 启动时，可以通过终端直接查看端口占用信息。
-- 手动查找并结束占用进程：
+- When starting with `python launch_camoufox.py --headless`, you can check port occupancy info directly in terminal.
+- Manually find and kill occupying process:
 
   ```bash
   # Windows
@@ -114,42 +114,42 @@ poetry install
   lsof -i :2048
   ```
 
-- 或修改 [`launch_camoufox.py`](../launch_camoufox.py) 的 `--server-port` 参数。
+- Or modify `--server-port` parameter in [`launch_camoufox.py`](../launch_camoufox.py).
 
-### Docker 认证问题 (Headless)
+### Docker Auth Issue (Headless)
 
-**问题**: Docker 容器启动后无法通过认证，或一直卡在登录页面。
+**Issue**: Docker container fails auth after startup, or stuck at login page.
 
-**原因**: Docker 容器通常运行在无头模式 (Headless)，无法进行 Google 账号的交互式登录。
+**Cause**: Docker containers typically run in Headless mode, unable to perform interactive Google login.
 
-**解决方案**:
+**Solution**:
 
-1. **在宿主机生成认证**: 在运行 Docker 的主机上（或任何可以运行浏览器的机器上），使用调试模式运行程序：
+1. **Generate Auth on Host**: On the host running Docker (or any machine that can run a browser), run the program in debug mode:
    ```bash
    poetry run python launch_camoufox.py --debug
    ```
-2. **完成登录**: 在弹出的浏览器中完成 Google 登录。
-3. **挂载文件**: 将生成的 `auth_profiles/active/` 目录挂载到 Docker 容器中。
+2. **Complete Login**: Complete Google login in the popped-up browser.
+3. **Mount File**: Mount the generated `auth_profiles/active/` directory into the Docker container.
 
-### Camoufox 启动时 proxy 错误
+### Camoufox Startup Proxy Error
 
-**问题现象**: 未配置代理环境变量时，Camoufox 启动失败：
+**Symptom**: Without proxy env var configured, Camoufox startup fails:
 
 ```
 Error: proxy: expected object, got null
 ```
 
-**原因**: Camoufox 0.4.11 的 utils.py 会无条件传递 proxy 参数给 Playwright，即使值为 None。
+**Cause**: Camoufox 0.4.11's utils.py unconditionally passes proxy parameter to Playwright, even if value is None.
 
-**修复方法**: 修改 Camoufox 源码文件 (位于 Poetry 虚拟环境中)：
+**Fix**: Modify Camoufox source file (located in Poetry virtual environment):
 
 ```bash
-# 查找文件位置
+# Find file location
 find $(poetry env info --path) -name "utils.py" | grep camoufox
-# 通常位于: .venv/lib/python3.x/site-packages/camoufox/utils.py
+# Usually at: .venv/lib/python3.x/site-packages/camoufox/utils.py
 ```
 
-在 `launch_options` 函数中，将：
+In `launch_options` function, change:
 
 ```python
 return {
@@ -159,300 +159,300 @@ return {
 }
 ```
 
-改为：
+To:
 
 ```python
 result = {
-    ...  # 删除 "proxy": proxy,其他配置保持不变
+    ...  # Delete "proxy": proxy, other configs remain unchanged
 }
 if proxy is not None:
     result["proxy"] = proxy
 return result
 ```
 
-## 认证相关问题
+## Authentication Issues
 
-### 认证失败 (特别是无头模式)
+### Auth Failure (Especially Headless Mode)
 
-**最常见**: `auth_profiles/active/` 下的 `.json` 文件已过期或无效。
+**Most Common**: `.json` file in `auth_profiles/active/` is expired or invalid.
 
-**解决方案**:
+**Solution**:
 
-1. 删除 `active` 下的文件
-2. 重新运行 [`poetry run python launch_camoufox.py --debug`](../launch_camoufox.py) 生成新的认证文件
-3. 将新文件移动到 `active` 目录
-4. 确认 `active` 目录下只有一个 `.json` 文件
+1. Delete files under `active`.
+2. Re-run [`poetry run python launch_camoufox.py --debug`](../launch_camoufox.py) to generate new auth file.
+3. Move new file to `active` directory.
+4. Confirm only one `.json` file in `active` directory.
 
-### 检查认证状态
+### Check Auth Status
 
-- 查看 [`server.py`](../server.py) 日志（可通过 Web UI 的日志侧边栏查看，或 `logs/app.log`）
-- 看是否明确提到登录重定向
+- Check [`server.py`](../server.py) logs (via Web UI log sidebar or `logs/app.log`).
+- Look for explicit mention of login redirection.
 
-## 流式代理服务问题
+## Streaming Proxy Service Issues
 
-### 端口冲突
+### Port Conflict
 
-确保流式代理服务使用的端口 (`3120` 或自定义的 `--stream-port`) 未被其他应用占用。
+Ensure streaming proxy service port (`3120` or custom `--stream-port`) is not occupied by other applications.
 
-### 代理配置问题
+### Proxy Configuration Issues
 
-**推荐使用 .env 配置方式**:
+**Recommended using .env configuration**:
 
 ```env
-# 统一代理配置
+# Unified proxy configuration
 UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
-# 或禁用代理
+# Or disable proxy
 UNIFIED_PROXY_CONFIG=
 ```
 
-**常见问题**:
+**Common Issues**:
 
-- **代理不生效**: 确保在 `.env` 文件中设置 `UNIFIED_PROXY_CONFIG` 或使用 `--internal-camoufox-proxy` 参数
-- **代理冲突**: 使用 `UNIFIED_PROXY_CONFIG=` 或 `--internal-camoufox-proxy ''` 明确禁用代理
-- **代理连接失败**: 检查代理服务器是否可用，代理地址格式是否正确
+- **Proxy Not Working**: Ensure `UNIFIED_PROXY_CONFIG` is set in `.env` or use `--internal-camoufox-proxy` parameter.
+- **Proxy Conflict**: Use `UNIFIED_PROXY_CONFIG=` or `--internal-camoufox-proxy ''` to explicitly disable proxy.
+- **Proxy Connection Failed**: Check if proxy server is available, verify proxy address format.
 
-### 三层响应获取机制问题
+### Three-Layer Response Mechanism Issues
 
-**流式响应中断**:
+**Streaming Response Interrupted**:
 
-- 检查集成流式代理状态 (端口 3120)
-- 尝试禁用流式代理测试：在 `.env` 中设置 `STREAM_PORT=0`
-- 查看 `/health` 端点了解各层状态
+- Check integrated streaming proxy status (port 3120).
+- Try disabling streaming proxy for testing: Set `STREAM_PORT=0` in `.env`.
+- Check `/health` endpoint for status of each layer.
 
-**响应获取失败**:
+**Response Acquisition Failed**:
 
-1. **第一层失败**: 检查流式代理服务是否正常运行
-2. **第二层失败**: 验证 Helper 服务配置和认证文件
-3. **第三层失败**: 检查 Playwright 浏览器连接状态
+1. **Layer 1 Failure**: Check if streaming proxy service is running normally.
+2. **Layer 2 Failure**: Verify Helper service configuration and auth file.
+3. **Layer 3 Failure**: Check Playwright browser connection status.
 
-详细说明请参见 [流式处理模式详解](streaming-modes.md)。
+For details, see [Streaming Modes Explained](streaming-modes.md).
 
-### 自签名证书管理
+### Self-Signed Certificate Management
 
-集成的流式代理服务会在 `certs` 文件夹内生成自签名的根证书。
+Integrated streaming proxy service generates self-signed root certificates in `certs` folder.
 
-**证书删除与重新生成**:
+**Certificate Deletion and Regeneration**:
 
-- 可以删除 `certs` 目录下的根证书 (`ca.crt`, `ca.key`)，代码会在下次启动时重新生成
-- **重要**: 删除根证书时，**强烈建议同时删除 `certs` 目录下的所有其他文件**，避免信任链错误
+- Can delete root certificates (`ca.crt`, `ca.key`) in `certs` directory, code will regenerate at next startup.
+- **Important**: When deleting root certificates, **strongly recommended to delete all other files in `certs` directory** to avoid trust chain errors.
 
-## API 请求问题
+## API Request Issues
 
-### 5xx / 499 错误
+### 5xx / 499 Errors
 
-- **503 Service Unavailable**: [`server.py`](../server.py) 未完全就绪
-- **504 Gateway Timeout**: AI Studio 响应慢或处理超时
-- **502 Bad Gateway**: AI Studio 页面返回错误。检查 `errors_py/` 快照
-- **500 Internal Server Error**: [`server.py`](../server.py) 内部错误。检查日志和 `errors_py/` 快照
-- **499 Client Closed Request**: 客户端提前断开连接
+- **503 Service Unavailable**: [`server.py`](../server.py) not fully ready.
+- **504 Gateway Timeout**: AI Studio response slow or processing timeout.
+- **502 Bad Gateway**: AI Studio page returns error. Check `errors_py/` snapshots.
+- **500 Internal Server Error**: [`server.py`](../server.py) internal error. Check logs and `errors_py/` snapshots.
+- **499 Client Closed Request**: Client disconnected prematurely.
 
-### 客户端无法连接
+### Client Unable to Connect
 
-- 确认 API 基础 URL 配置正确 (`http://<服务器IP或localhost>:端口/v1`，默认端口 2048)
-- 检查 [`server.py`](../server.py) 日志是否有错误
+- Confirm API base URL is correct (`http://<ServerIPorLocalhost>:Port/v1`, default port 2048).
+- Check [`server.py`](../server.py) logs for errors.
 
-### AI 回复不完整/格式错误
+### AI Reply Incomplete/Malformed
 
-- AI Studio Web UI 输出不稳定。检查 `errors_py/` 快照
+- AI Studio Web UI output unstable. Check `errors_py/` snapshots.
 
-## 页面交互问题
+## Page Interaction Issues
 
-### 自动清空上下文失败
+### Auto Clear Context Failed
 
-- 检查主服务器日志中的警告
-- 很可能是 AI Studio 页面更新导致 [`config/selectors.py`](../config/selectors.py) 中的 CSS 选择器失效
-- 检查 `errors_py/` 快照，对比实际页面元素更新选择器常量
+- Check warnings in main server logs.
+- Likely AI Studio page update caused CSS selectors in [`config/selectors.py`](../config/selectors.py) to fail.
+- Check `errors_py/` snapshots, compare actual page elements to update selector constants.
 
-### AI Studio 页面更新导致功能失效
+### AI Studio Page Update Breaking Features
 
-如果 AI Studio 更新了网页结构或 CSS 类名：
+If AI Studio updated page structure or CSS class names:
 
-1. 检查主服务器日志中的警告或错误
-2. 检查 `errors_py/` 目录下的错误快照
-3. 对比实际页面元素，更新 [`config/selectors.py`](../config/selectors.py) 中对应的 CSS 选择器常量
+1. Check main server logs for warnings or errors.
+2. Check error snapshots in `errors_py/` directory.
+3. Compare actual page elements, update corresponding CSS selector constants in [`config/selectors.py`](../config/selectors.py).
 
-### 模型参数设置未生效
+### Model Parameters Not Taking Effect
 
-这可能是由于 AI Studio 页面的 `localStorage` 中的 `isAdvancedOpen` 未正确设置为 `true`：
+This might be because `isAdvancedOpen` in AI Studio page's `localStorage` is not correctly set to `true`:
 
-- 代理服务在启动时会尝试自动修正这些设置并重新加载页面
-- 如果问题依旧，可以尝试清除浏览器缓存和 `localStorage` 后重启代理服务
+- Proxy service attempts to auto-correct these settings and reload page on startup.
+- If issue persists, try clearing browser cache and `localStorage` then restart proxy service.
 
-## Web UI 问题
+## Web UI Issues
 
-### 无法显示日志或服务器信息
+### Logs or Server Info Not Showing
 
-- 检查浏览器开发者工具 (F12) 的控制台和网络选项卡是否有错误
-- 确认 WebSocket 连接 (`/ws/logs`) 是否成功建立
-- 确认 `/health` 和 `/api/info` 端点是否能正常访问
+- Check browser developer tools (F12) console and network tabs for errors.
+- Confirm WebSocket connection (`/ws/logs`) established successfully.
+- Confirm `/health` and `/api/info` endpoints accessible.
 
-## API 密钥相关问题
+## API Key Issues
 
-### key.txt 文件问题
+### key.txt File Issues
 
-**文件不存在或为空**:
+**File Not Exists or Empty**:
 
-- 系统会自动创建空的 `auth_profiles/key.txt` 文件
-- 空文件意味着不需要 API 密钥验证
-- 如需启用验证，手动添加密钥到文件中
+- System automatically creates empty `auth_profiles/key.txt` file.
+- Empty file means no API key verification required.
+- To enable verification, manually add keys to file.
 
-**文件权限问题**:
+**File Permission Issues**:
 
 ```bash
-# 检查文件权限
+# Check file permissions
 ls -la key.txt
 
-# 修复权限问题
+# Fix permissions
 chmod 644 key.txt
 ```
 
-**文件格式问题**:
+**File Format Issues**:
 
-- 确保每行一个密钥，无额外空格
-- 支持空行和以 `#` 开头的注释行
-- 使用 UTF-8 编码保存文件
+- Ensure one key per line, no extra spaces.
+- Support empty lines and comment lines starting with `#`.
+- Use UTF-8 encoding.
 
-### API 认证失败
+### API Auth Failure
 
-**401 Unauthorized 错误**:
+**401 Unauthorized Error**:
 
-- 检查请求头是否包含正确的认证信息
-- 验证密钥是否在 `key.txt` 文件中
-- 确认使用正确的认证头格式：
+- Check if request header contains correct auth info.
+- Verify if key exists in `key.txt` file.
+- Confirm using correct auth header format:
   ```bash
   Authorization: Bearer your-api-key
-  # 或
+  # Or
   X-API-Key: your-api-key
   ```
 
-**密钥验证逻辑**:
+**Key Verification Logic**:
 
-- 如果 `key.txt` 为空，所有请求都不需要认证
-- 如果 `key.txt` 有内容，所有 `/v1/*` 请求都需要认证
-- 除外路径：`/v1/models`, `/health`, `/docs` 等
+- If `key.txt` empty, no requests require auth.
+- If `key.txt` has content, all `/v1/*` requests require auth.
+- Excluded paths: `/v1/models`, `/health`, `/docs` etc.
 
-### Web UI 密钥管理问题
+### Web UI Key Management Issues
 
-**无法验证密钥**:
+**Cannot Verify Key**:
 
-- 检查输入的密钥格式，确保至少 8 个字符
-- 确认服务器上的 `key.txt` 文件包含该密钥
-- 检查网络连接，确认 `/api/keys/test` 端点可访问
+- Check input key format, ensure at least 8 characters.
+- Confirm server `key.txt` contains the key.
+- Check network connection, confirm `/api/keys/test` endpoint accessible.
 
-**验证成功但无法查看密钥列表**:
+**Verify Success but No Key List**:
 
-- 检查浏览器控制台是否有 JavaScript 错误
-- 确认 `/api/keys` 端点返回正确的 JSON 格式数据
-- 尝试刷新页面重新验证
+- Check browser console for JS errors.
+- Confirm `/api/keys` endpoint returns correct JSON format data.
+- Try refreshing page to re-verify.
 
-**验证状态丢失**:
+**Verification State Lost**:
 
-- 验证状态仅在当前浏览器会话中有效
-- 关闭浏览器或标签页会丢失验证状态
-- 需要重新验证才能查看密钥列表
+- Verification state only valid in current browser session.
+- Closing browser or tab loses verification state.
+- Need to re-verify to view key list.
 
-**密钥显示异常**:
+**Key Display Abnormal**:
 
-- 确认服务器返回的密钥数据格式正确
-- 检查密钥打码显示功能是否正常工作
-- 验证 `maskApiKey` 函数是否正确执行
+- Confirm server returns correct key data format.
+- Check if key masking function works normally.
+- Verify `maskApiKey` function execution.
 
-### 客户端配置问题
+### Client Configuration Issues
 
-**Open WebUI 配置**:
+**Open WebUI Config**:
 
-- API 基础 URL：`http://127.0.0.1:2048/v1`
-- API 密钥：输入有效的密钥或留空（如果服务器不需要认证）
-- 确认端口号与服务器实际监听端口一致
+- API Base URL: `http://127.0.0.1:2048/v1`
+- API Key: Enter valid key or leave blank (if server doesn't require auth).
+- Confirm port matches server listening port.
 
-**其他客户端配置**:
+**Other Client Config**:
 
-- 检查客户端是否支持 `Authorization: Bearer` 认证头
-- 确认客户端正确处理 401 认证错误
-- 验证客户端的超时设置是否合理
+- Check if client supports `Authorization: Bearer` auth header.
+- Confirm client handles 401 auth error correctly.
+- Verify client timeout settings are reasonable.
 
-### 密钥管理最佳实践
+### Key Management Best Practices
 
-**安全建议**:
+**Security Recommendations**:
 
-- 定期更换 API 密钥
-- 不要在日志或公开场所暴露完整密钥
-- 使用足够复杂的密钥（建议 16 个字符以上）
-- 限制密钥的使用范围和权限
+- Rotate API keys regularly.
+- Do not expose full keys in logs or public places.
+- Use sufficiently complex keys (Recommended 16+ characters).
+- Limit key usage scope and permissions.
 
-**备份建议**:
+**Backup Recommendations**:
 
-- 定期备份 `key.txt` 文件
-- 记录密钥的创建时间和用途
-- 建立密钥轮换机制
+- Regularly backup `key.txt` file.
+- Record key creation time and usage.
+- Establish key rotation mechanism.
 
-### 对话功能问题
+### Chat Function Issues
 
-- **发送消息后收到 401 错误**: API 密钥认证失败，需要重新验证密钥
-- **无法发送空消息**: 这是正常的安全机制
-- **对话请求失败**: 检查网络连接，确认服务器正常运行
+- **401 Error after Sending**: API key auth failed, re-verify key.
+- **Cannot Send Empty Message**: Normal security mechanism.
+- **Request Failed**: Check network, confirm server running.
 
-## 脚本注入问题
+## Script Injection Issues
 
-### 脚本注入功能未启用
+### Script Injection Not Enabled
 
-**检查配置**:
+**Check Configuration**:
 
 ```bash
-# 检查 .env 文件中的配置
+# Check config in .env file
 grep SCRIPT_INJECTION .env
 grep USERSCRIPT_PATH .env
 ```
 
-**常见问题**:
+**Common Issues**:
 
-- `ENABLE_SCRIPT_INJECTION=false` - 功能被禁用
-- 脚本文件路径不正确
-- 脚本文件不存在或无法读取
+- `ENABLE_SCRIPT_INJECTION=false` - Feature disabled.
+- Script file path incorrect.
+- Script file does not exist or unreadable.
 
-**解决方案**:
+**Solution**:
 
 ```bash
-# 启用脚本注入
+# Enable script injection
 echo "ENABLE_SCRIPT_INJECTION=true" >> .env
 
-# 检查脚本文件是否存在
+# Check script file existence
 ls -la browser_utils/more_models.js
 
-# 检查文件权限
+# Check file permissions
 chmod 644 browser_utils/more_models.js
 ```
 
-### 模型未显示在列表中
+### Model Not Showing in List
 
-**前端检查**:
+**Frontend Check**:
 
-1. 打开浏览器开发者工具 (F12)
-2. 查看控制台是否有 JavaScript 错误
-3. 检查网络选项卡中的模型列表请求
+1. Open browser developer tools (F12).
+2. Check console for JS errors.
+3. Check network tab for model list requests.
 
-**后端检查**:
+**Backend Check**:
 
 ```bash
-# 查看脚本注入相关日志
+# View script injection related logs
 poetry run python launch_camoufox.py --debug | grep -i "script\|inject\|model"
 
-# 检查 API 响应
+# Check API response
 curl http://localhost:2048/v1/models | jq '.data[] | select(.injected == true)'
 ```
 
-**常见原因**:
+**Common Causes**:
 
-- 脚本格式错误，无法解析 `MODELS_TO_INJECT` 数组
-- 网络拦截失败，脚本注入未生效
-- 模型名称格式不正确
+- Script format error, unable to parse `MODELS_TO_INJECT` array.
+- Network interception failed, script injection not effective.
+- Model name format incorrect.
 
-### 脚本解析失败
+### Script Parsing Failed
 
-**检查脚本格式**:
+**Check Script Format**:
 
 ```javascript
-// 确保脚本包含正确的模型数组格式
+// Ensure script contains correct model array format
 const MODELS_TO_INJECT = [
   {
     name: "models/your-model-name",
@@ -462,179 +462,179 @@ const MODELS_TO_INJECT = [
 ];
 ```
 
-**调试步骤**:
+**Debugging Steps**:
 
-1. 验证脚本文件的 JavaScript 语法
-2. 检查模型数组的格式是否正确
-3. 确认模型名称以 `models/` 开头
+1. Verify script file JavaScript syntax.
+2. Check model array format correctness.
+3. Confirm model name starts with `models/`.
 
-### 网络拦截失败
+### Network Interception Failed
 
-**检查 Playwright 状态**:
+**Check Playwright Status**:
 
-- 确认浏览器上下文正常创建
-- 检查网络路由是否正确设置
-- 验证请求 URL 匹配规则
+- Confirm browser context created normally.
+- Check network routing set correctly.
+- Verify request URL matching rules.
 
-**调试方法**:
+**Debugging Method**:
 
 ```bash
-# 启用详细日志查看网络拦截状态
+# Enable verbose logs to view network interception status
 export DEBUG_LOGS_ENABLED=true
 poetry run python launch_camoufox.py --debug
 ```
 
-**常见错误**:
+**Common Errors**:
 
-- 浏览器上下文创建失败
-- 网络路由设置异常
-- 请求 URL 不匹配拦截规则
+- Browser context creation failed.
+- Network routing setup exception.
+- Request URL does not match interception rules.
 
-### 模型解析问题
+### Model Parsing Issues
 
-**脚本格式错误**:
+**Script Format Error**:
 
 ```bash
-# 检查脚本文件语法
+# Check script file syntax
 node -c browser_utils/more_models.js
 ```
 
-**文件权限问题**:
+**File Permission Issue**:
 
 ```bash
-# 检查文件权限
+# Check file permissions
 ls -la browser_utils/more_models.js
 
-# 修复权限
+# Fix permissions
 chmod 644 browser_utils/more_models.js
 ```
 
-**脚本文件不存在**:
+**Script File Not Found**:
 
-- 系统会静默跳过不存在的脚本文件
-- 检查 `USERSCRIPT_PATH` 环境变量设置
-- 确保脚本文件包含有效的 `MODELS_TO_INJECT` 数组
+- System silently skips non-existent script file.
+- Check `USERSCRIPT_PATH` environment variable.
+- Ensure script file contains valid `MODELS_TO_INJECT` array.
 
-### 性能问题
+### Performance Issues
 
-**脚本注入延迟**:
+**Script Injection Latency**:
 
-- 网络拦截可能增加轻微延迟
-- 大量模型注入可能影响页面加载
-- 建议限制注入模型数量（< 20 个）
+- Network interception might add slight latency.
+- Large number of injected models might affect page loading.
+- Recommended to limit injected models (< 20).
 
-**内存使用**:
+**Memory Usage**:
 
-- 脚本内容会被缓存在内存中
-- 大型脚本文件可能增加内存使用
-- 定期重启服务释放内存
+- Script content is cached in memory.
+- Large script files might increase memory usage.
+- Regularly restart service to release memory.
 
-### 调试技巧
+### Debugging Tips
 
-**启用详细日志**:
+**Enable Detailed Logs**:
 
 ```bash
-# 在 .env 文件中添加
+# Add to .env file
 DEBUG_LOGS_ENABLED=true
 TRACE_LOGS_ENABLED=true
 SERVER_LOG_LEVEL=DEBUG
 ```
 
-**检查注入状态**:
+**Check Injection Status**:
 
 ```bash
-# 查看脚本注入相关的日志输出
+# View logs related to script injection
 tail -f logs/app.log | grep -i "script\|inject"
 ```
 
-**验证模型注入**:
+**Verify Model Injection**:
 
 ```bash
-# 检查 API 返回的模型列表
+# Check API returned model list
 curl -s http://localhost:2048/v1/models | jq '.data[] | select(.injected == true) | {id, display_name}'
 ```
 
-### 禁用脚本注入
+### Disable Script Injection
 
-如果遇到严重问题，可以临时禁用脚本注入：
+If severe issues occur, temporarily disable script injection:
 
 ```bash
-# 方法1：修改 .env 文件
+# Method 1: Modify .env file
 echo "ENABLE_SCRIPT_INJECTION=false" >> .env
 
-# 方法2：使用环境变量
+# Method 2: Use environment variable
 export ENABLE_SCRIPT_INJECTION=false
 poetry run python launch_camoufox.py --headless
 
-# 方法3：删除脚本文件（临时）
+# Method 3: Delete script file (Temporary)
 mv browser_utils/more_models.js browser_utils/more_models.js.bak
 ```
 
-## 日志和调试
+## Logging and Debugging
 
-### 查看详细日志
+### View Detailed Logs
 
-- `logs/app.log`: FastAPI 服务器详细日志
-- `logs/launch_app.log`: 启动器日志
-- Web UI 右侧边栏: 实时显示 `INFO` 及以上级别的日志
+- `logs/app.log`: FastAPI server detailed logs.
+- `logs/launch_app.log`: Launcher logs.
+- Web UI Right Sidebar: Real-time display of `INFO` and above logs.
 
-### 环境变量控制
+### Environment Variable Control
 
-可以通过环境变量控制日志详细程度：
+Control log verbosity via environment variables:
 
 ```bash
-# 设置日志级别
+# Set log level
 export SERVER_LOG_LEVEL=DEBUG
 
-# 启用详细调试日志
+# Enable detailed debug logs
 export DEBUG_LOGS_ENABLED=true
 
-# 启用跟踪日志（通常不需要）
+# Enable trace logs (Usually not needed)
 export TRACE_LOGS_ENABLED=true
 ```
 
-### 综合错误快照 (Comprehensive Snapshots)
+### Comprehensive Snapshots
 
-出错时系统会自动在 `errors_py/YYYY-MM-DD/` 目录下创建包含详细调试信息的目录。这些快照对于诊断复杂问题（如无头模式下的交互失败）至关重要。
+System automatically creates directory containing detailed debug info in `errors_py/YYYY-MM-DD/` on error. These snapshots are crucial for diagnosing complex issues (like interaction failure in headless mode).
 
-**快照内容包括**:
+**Snapshot Contents**:
 
-1.  **screenshot.png**: 错误发生时的页面截图。
-2.  **dom_dump.html**: 完整的页面 HTML 源码。
-3.  **dom_structure.txt**: 人类可读的 DOM 树结构，便于分析元素层级。
-4.  **console_logs.txt**: 浏览器控制台日志（包含错误和警告）。
-5.  **network_requests.json**: 最近的网络请求和响应记录。
-6.  **playwright_state.json**: Playwright 内部状态（URL、视口、关键元素状态）。
-7.  **metadata.json**: 错误元数据（时间戳、错误类型、环境变量配置）。
+1.  **screenshot.png**: Page screenshot at error time.
+2.  **dom_dump.html**: Complete page HTML source.
+3.  **dom_structure.txt**: Human-readable DOM tree structure for analyzing element hierarchy.
+4.  **console_logs.txt**: Browser console logs (including errors and warnings).
+5.  **network_requests.json**: Recent network request and response records.
+6.  **playwright_state.json**: Playwright internal state (URL, viewport, key element states).
+7.  **metadata.json**: Error metadata (timestamp, error type, environment configuration).
 
-## 性能问题
+## Performance Issues
 
-### Asyncio 相关错误
+### Asyncio Related Errors
 
-您可能会在日志中看到一些与 `asyncio` 相关的错误信息，特别是在网络连接不稳定时。如果核心代理功能仍然可用，这些错误可能不直接影响主要功能。
+You might see `asyncio` related errors in logs, especially when network connection is unstable. If core proxy function is still available, these errors might not directly affect main features.
 
-### 首次访问新主机的性能问题
+### First Access Performance to New Host
 
-当通过流式代理首次访问一个新的 HTTPS 主机时，服务需要动态生成证书，这个过程可能比较耗时。一旦证书生成并缓存后，后续访问会显著加快。
+When accessing a new HTTPS host via streaming proxy for the first time, service needs to dynamically generate certificate, which might be time-consuming. Once generated and cached, subsequent access will be significantly faster.
 
-## 获取帮助
+## Get Help
 
-如果问题仍未解决：
+If issue persists:
 
-1. 查看项目的 [GitHub Issues](https://github.com/CJackHwang/AIstudioProxyAPI/issues)
-2. 提交新的 Issue 并包含：
-   - 详细的错误描述
-   - 相关的日志文件内容
-   - 系统环境信息
-   - 复现步骤
+1. Check project [GitHub Issues](https://github.com/CJackHwang/AIstudioProxyAPI/issues).
+2. Submit new Issue including:
+   - Detailed error description
+   - Relevant log file content
+   - System environment info
+   - Reproduction steps
 
-## 下一步
+## Next Steps
 
-故障排除完成后，请参考：
+After troubleshooting, please refer to:
 
-- [脚本注入指南](script_injection_guide.md) - 脚本注入功能详细说明
-- [日志控制指南](logging-control.md)
-- [高级配置指南](advanced-configuration.md)
+- [Script Injection Guide](script_injection_guide.md) - Detailed script injection guide
+- [Log Control Guide](logging-control.md)
+- [Advanced Configuration Guide](advanced-configuration.md)
 
 ---
 
