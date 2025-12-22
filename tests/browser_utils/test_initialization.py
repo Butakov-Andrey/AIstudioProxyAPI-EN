@@ -1,4 +1,5 @@
 import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -16,13 +17,51 @@ from browser_utils.initialization import (
 
 @pytest.mark.asyncio
 async def test_initialize_page_logic_success(
-    mock_browser, mock_browser_context, mock_page, mock_env, mock_expect
+    mock_browser,
+    mock_browser_context,
+    mock_page,
+    mock_env,
+    mock_expect,
+    mock_server_state,
 ):
     # Mock state
-    mock_state = MagicMock()
-    mock_state.PLAYWRIGHT_PROXY_SETTINGS = None
+    mock_server_state.PLAYWRIGHT_PROXY_SETTINGS = None
     with (
-        patch("api_utils.server_state.state", mock_state),
+        patch(
+            "browser_utils.initialization.core.setup_network_interception_and_scripts",
+            new_callable=AsyncMock,
+        ),
+        patch("browser_utils.initialization.core.setup_debug_listeners"),
+    ):
+        # Mock page finding logic
+        mock_page.url = "https://aistudio.google.com/prompts/new_chat"
+        mock_page.is_closed.return_value = False
+        mock_browser_context.pages = [mock_page]
+
+        # Mock locators for verification
+        mock_page.locator.return_value.first.inner_text = AsyncMock(
+            return_value="Gemini 1.5 Pro"
+        )
+
+        page, ready = await _initialize_page_logic(mock_browser)
+
+        assert page == mock_page
+        assert ready is True
+        mock_browser.new_context.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_initialize_page_logic_success(
+    mock_browser,
+    mock_browser_context,
+    mock_page,
+    mock_env,
+    mock_expect,
+    mock_server_state,
+):
+    # Mock state
+    mock_server_state.PLAYWRIGHT_PROXY_SETTINGS = None
+    with (
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -48,20 +87,21 @@ async def test_initialize_page_logic_success(
 
 @pytest.mark.asyncio
 async def test_initialize_page_logic_new_page(
-    mock_browser, mock_browser_context, mock_page, mock_env, mock_expect
+    mock_browser,
+    mock_browser_context,
+    mock_page,
+    mock_env,
+    mock_expect,
+    mock_server_state,
 ):
+    mock_server_state.PLAYWRIGHT_PROXY_SETTINGS = None
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
         ),
         patch("browser_utils.initialization.core.setup_debug_listeners"),
     ):
-        import server
-
-        setattr(server, "PLAYWRIGHT_PROXY_SETTINGS", None)
-
         mock_browser_context.pages = []
         mock_browser_context.new_page.return_value = mock_page
         mock_page.url = "https://aistudio.google.com/prompts/new_chat"
@@ -121,12 +161,19 @@ async def test_close_page_logic_already_closed():
 
 
 @pytest.mark.asyncio
-async def test_initialize_page_logic_headless_auth_missing(mock_browser, mock_env):
+async def test_initialize_page_logic_headless_auth_missing(
+    mock_browser, mock_env, mock_server_state
+):
+    """Test that headless mode raises when ACTIVE_AUTH_JSON_PATH is empty."""
     with (
         patch.dict(
-            "os.environ", {"LAUNCH_MODE": "headless", "ACTIVE_AUTH_JSON_PATH": ""}
+            os.environ,
+            {
+                "LAUNCH_MODE": "headless",
+                "ACTIVE_AUTH_JSON_PATH": "",
+                "AUTO_AUTH_ROTATION_ON_STARTUP": "false",
+            },
         ),
-        patch.dict("sys.modules", {"server": MagicMock()}),
     ):
         with pytest.raises(RuntimeError) as exc:
             await _initialize_page_logic(mock_browser)
@@ -135,19 +182,21 @@ async def test_initialize_page_logic_headless_auth_missing(mock_browser, mock_en
 
 @pytest.mark.asyncio
 async def test_initialize_page_logic_proxy_settings(
-    mock_browser, mock_browser_context, mock_page, mock_env, mock_expect
+    mock_browser,
+    mock_browser_context,
+    mock_page,
+    mock_env,
+    mock_expect,
+    mock_server_state,
 ):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
         ),
         patch("browser_utils.initialization.core.setup_debug_listeners"),
     ):
-        import server
-
-        setattr(server, "PLAYWRIGHT_PROXY_SETTINGS", {"server": "http://proxy:8080"})
+        mock_server_state.PLAYWRIGHT_PROXY_SETTINGS = {"server": "http://proxy:8080"}
 
         mock_browser_context.pages = [mock_page]
         mock_page.url = "https://aistudio.google.com/prompts/new_chat"
@@ -171,11 +220,10 @@ async def test_initialize_page_logic_proxy_settings(
 
 @pytest.mark.asyncio
 async def test_init_storage_state_explicit_exists(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
         patch("os.path.exists", return_value=True),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -208,15 +256,18 @@ async def test_init_storage_state_explicit_missing(mock_browser):
 
 @pytest.mark.asyncio
 async def test_init_headless_auth_exists(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
         patch.dict(
-            "os.environ",
-            {"LAUNCH_MODE": "headless", "ACTIVE_AUTH_JSON_PATH": "/env/auth.json"},
+            os.environ,
+            {
+                "LAUNCH_MODE": "headless",
+                "ACTIVE_AUTH_JSON_PATH": "/env/auth.json",
+                "AUTO_AUTH_ROTATION_ON_STARTUP": "false",
+            },
         ),
         patch("os.path.exists", return_value=True),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -239,8 +290,12 @@ async def test_init_headless_auth_exists(
 async def test_init_headless_auth_invalid(mock_browser):
     with (
         patch.dict(
-            "os.environ",
-            {"LAUNCH_MODE": "headless", "ACTIVE_AUTH_JSON_PATH": "/env/invalid.json"},
+            os.environ,
+            {
+                "LAUNCH_MODE": "headless",
+                "ACTIVE_AUTH_JSON_PATH": "/env/invalid.json",
+                "AUTO_AUTH_ROTATION_ON_STARTUP": "false",
+            },
         ),
         patch("os.path.exists", return_value=False),
     ):
@@ -250,15 +305,14 @@ async def test_init_headless_auth_invalid(mock_browser):
 
 @pytest.mark.asyncio
 async def test_init_debug_auth_exists(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
         patch.dict(
-            "os.environ",
+            os.environ,
             {"LAUNCH_MODE": "debug", "ACTIVE_AUTH_JSON_PATH": "/env/debug.json"},
         ),
         patch("os.path.exists", return_value=True),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -279,15 +333,14 @@ async def test_init_debug_auth_exists(
 
 @pytest.mark.asyncio
 async def test_init_debug_auth_missing_file(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
         patch.dict(
-            "os.environ",
+            os.environ,
             {"LAUNCH_MODE": "debug", "ACTIVE_AUTH_JSON_PATH": "/env/missing.json"},
         ),
         patch("os.path.exists", return_value=False),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -308,11 +361,10 @@ async def test_init_debug_auth_missing_file(
 
 @pytest.mark.asyncio
 async def test_init_direct_debug_no_browser(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
-        patch.dict("os.environ", {"LAUNCH_MODE": "direct_debug_no_browser"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
+        patch.dict(os.environ, {"LAUNCH_MODE": "direct_debug_no_browser"}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -333,11 +385,10 @@ async def test_init_direct_debug_no_browser(
 
 @pytest.mark.asyncio
 async def test_init_unknown_launch_mode(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
-        patch.dict("os.environ", {"LAUNCH_MODE": "unknown_mode"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
+        patch.dict(os.environ, {"LAUNCH_MODE": "unknown_mode"}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -361,11 +412,10 @@ async def test_init_unknown_launch_mode(
 
 @pytest.mark.asyncio
 async def test_init_page_discovery_errors(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     """Test error handling during iteration of existing pages."""
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -405,10 +455,9 @@ async def test_init_page_discovery_errors(
 
 @pytest.mark.asyncio
 async def test_init_new_page_nav_error_generic(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_server_state
 ):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -430,10 +479,9 @@ async def test_init_new_page_nav_error_generic(
 
 @pytest.mark.asyncio
 async def test_init_new_page_nav_error_net_interrupt(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_server_state
 ):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -457,7 +505,9 @@ async def test_init_new_page_nav_error_net_interrupt(
 
 
 @pytest.mark.asyncio
-async def test_init_login_headless_fail(mock_browser, mock_browser_context, mock_page):
+async def test_init_login_headless_fail(
+    mock_browser, mock_browser_context, mock_page, mock_server_state
+):
     # Ensure ACTIVE_AUTH_JSON_PATH is set so we pass the initial check
     with (
         patch.dict(
@@ -465,7 +515,6 @@ async def test_init_login_headless_fail(mock_browser, mock_browser_context, mock
             {"LAUNCH_MODE": "headless", "ACTIVE_AUTH_JSON_PATH": "/path/to/auth.json"},
         ),
         patch("os.path.exists", return_value=True),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -486,11 +535,10 @@ async def test_init_login_headless_fail(mock_browser, mock_browser_context, mock
 
 @pytest.mark.asyncio
 async def test_init_login_interactive_success(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug", "SUPPRESS_LOGIN_WAIT": "0"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -530,13 +578,12 @@ async def test_init_login_interactive_success(
 
 @pytest.mark.asyncio
 async def test_init_login_interactive_suppress_wait(
-    mock_browser, mock_browser_context, mock_page, mock_expect
+    mock_browser, mock_browser_context, mock_page, mock_expect, mock_server_state
 ):
     with (
         patch.dict(
             "os.environ", {"LAUNCH_MODE": "debug", "SUPPRESS_LOGIN_WAIT": "true"}
         ),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -571,11 +618,10 @@ async def test_init_login_interactive_suppress_wait(
 
 @pytest.mark.asyncio
 async def test_init_login_interactive_fail_still_login_page(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_server_state
 ):
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -598,10 +644,11 @@ async def test_init_login_interactive_fail_still_login_page(
 
 
 @pytest.mark.asyncio
-async def test_init_login_wait_exception(mock_browser, mock_browser_context, mock_page):
+async def test_init_login_wait_exception(
+    mock_browser, mock_browser_context, mock_page, mock_server_state
+):
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -630,9 +677,10 @@ async def test_init_login_wait_exception(mock_browser, mock_browser_context, moc
 
 
 @pytest.mark.asyncio
-async def test_init_unexpected_page_url(mock_browser, mock_browser_context, mock_page):
+async def test_init_unexpected_page_url(
+    mock_browser, mock_browser_context, mock_page, mock_server_state
+):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -655,9 +703,10 @@ async def test_init_unexpected_page_url(mock_browser, mock_browser_context, mock
 
 
 @pytest.mark.asyncio
-async def test_init_model_name_error(mock_browser, mock_browser_context, mock_page):
+async def test_init_model_name_error(
+    mock_browser, mock_browser_context, mock_page, mock_server_state
+):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -692,10 +741,9 @@ async def test_init_model_name_error(mock_browser, mock_browser_context, mock_pa
 
 @pytest.mark.asyncio
 async def test_init_input_visible_timeout(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_server_state
 ):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -726,9 +774,8 @@ async def test_init_input_visible_timeout(
 
 
 @pytest.mark.asyncio
-async def test_init_cancelled(mock_browser, mock_browser_context):
+async def test_init_cancelled(mock_browser, mock_browser_context, mock_server_state):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -741,9 +788,10 @@ async def test_init_cancelled(mock_browser, mock_browser_context):
 
 
 @pytest.mark.asyncio
-async def test_init_generic_exception_cleanup(mock_browser, mock_browser_context):
+async def test_init_generic_exception_cleanup(
+    mock_browser, mock_browser_context, mock_server_state
+):
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -816,46 +864,37 @@ async def test_signal_camoufox_shutdown_no_env():
 
 
 @pytest.mark.asyncio
-async def test_signal_camoufox_shutdown_no_browser():
+async def test_signal_camoufox_shutdown_no_browser(mock_server_state):
     with (
         patch.dict("os.environ", {"CAMOUFOX_WS_ENDPOINT": "ws://test"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
     ):
-        import server
-
-        setattr(server, "browser_instance", None)
+        mock_server_state.browser_instance = None
         await signal_camoufox_shutdown()
         # Should just return
 
 
 @pytest.mark.asyncio
-async def test_signal_camoufox_shutdown_success():
+async def test_signal_camoufox_shutdown_success(mock_server_state):
     with (
         patch.dict("os.environ", {"CAMOUFOX_WS_ENDPOINT": "ws://test"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch("asyncio.sleep", side_effect=AsyncMock()),
     ):
-        import server
-
         mock_browser = MagicMock()
         mock_browser.is_connected.return_value = True
-        setattr(server, "browser_instance", mock_browser)
+        mock_server_state.browser_instance = mock_browser
 
         await signal_camoufox_shutdown()
 
 
 @pytest.mark.asyncio
-async def test_signal_camoufox_shutdown_exception():
+async def test_signal_camoufox_shutdown_exception(mock_server_state):
     with (
         patch.dict("os.environ", {"CAMOUFOX_WS_ENDPOINT": "ws://test"}),
-        patch.dict("sys.modules", {"server": MagicMock()}),
         patch("asyncio.sleep", side_effect=Exception("Sleep Fail")),
     ):
-        import server
-
         mock_browser = MagicMock()
         mock_browser.is_connected.return_value = True
-        setattr(server, "browser_instance", mock_browser)
+        mock_server_state.browser_instance = mock_browser
 
         # Should catch exception and log error
         await signal_camoufox_shutdown()

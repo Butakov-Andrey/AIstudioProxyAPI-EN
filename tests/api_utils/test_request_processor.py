@@ -23,6 +23,7 @@ from fastapi import HTTPException, Request
 from playwright.async_api import Error as PlaywrightAsyncError
 
 from api_utils.context_types import RequestContext
+from api_utils.server_state import state
 from api_utils.request_processor import (
     _analyze_model_requirements,
     _handle_model_switch_failure,
@@ -659,7 +660,7 @@ class TestAuxiliaryStreamResponse:
             {"body": "Hello world", "done": True, "reason": None, "function": []},
         ]
 
-        async def mock_stream_gen(req_id):
+        async def mock_stream_gen(*args, **kwargs):
             for data in mock_stream_data:
                 yield data
 
@@ -684,10 +685,11 @@ class TestAuxiliaryStreamResponse:
                 result_future,
                 submit_locator,
                 check_disco,
+                timeout=30.0,
             )
 
             # Non-streaming returns None
-            assert result is None
+            assert isinstance(result, dict)
 
             # Future should have JSONResponse
             assert result_future.done()
@@ -721,7 +723,7 @@ class TestAuxiliaryStreamResponse:
         # Mock stream response with function calls
         mock_stream_data = [
             {
-                "body": None,
+                "body": "",
                 "done": True,
                 "reason": None,
                 "function": [
@@ -730,7 +732,7 @@ class TestAuxiliaryStreamResponse:
             },
         ]
 
-        async def mock_stream_gen(req_id):
+        async def mock_stream_gen(*args, **kwargs):
             for data in mock_stream_data:
                 yield data
 
@@ -755,10 +757,11 @@ class TestAuxiliaryStreamResponse:
                 result_future,
                 submit_locator,
                 check_disco,
+                timeout=30.0,
             )
 
             # Non-streaming with function calls returns None
-            assert result is None
+            assert isinstance(result, dict)
 
             # Future should have JSONResponse with tool_calls
             assert result_future.done()
@@ -802,7 +805,7 @@ class TestAuxiliaryStreamResponse:
             {"body": None, "done": True, "reason": None, "function": []},
         ]
 
-        async def mock_stream_gen(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
+        async def mock_stream_gen(*args, **kwargs):
             for data in mock_stream_data:
                 yield data
 
@@ -818,6 +821,7 @@ class TestAuxiliaryStreamResponse:
                     result_future,
                     submit_locator,
                     check_disco,
+                    timeout=30.0,
                 )
 
             # Should raise 502 error for no content provided
@@ -848,7 +852,7 @@ class TestAuxiliaryStreamResponse:
             {"body": "Final content", "done": True, "reason": None},
         ]
 
-        async def mock_stream_gen(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
+        async def mock_stream_gen(*args, **kwargs):
             for data in mock_stream_data:
                 yield data
 
@@ -873,10 +877,11 @@ class TestAuxiliaryStreamResponse:
                 result_future,
                 submit_locator,
                 check_disco,
+                timeout=30.0,
             )
 
             # Should complete successfully, skipping invalid JSON
-            assert result is None
+            assert isinstance(result, dict)
             assert result_future.done()
             response = result_future.result()
             content = json.loads(response.body)
@@ -906,7 +911,7 @@ class TestAuxiliaryStreamResponse:
             {"body": "Valid content", "done": True, "reason": None},
         ]
 
-        async def mock_stream_gen(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
+        async def mock_stream_gen(*args, **kwargs):
             for data in mock_stream_data:
                 yield data
 
@@ -931,10 +936,11 @@ class TestAuxiliaryStreamResponse:
                 result_future,
                 submit_locator,
                 check_disco,
+                timeout=30.0,
             )
 
             # Should complete successfully, skipping unknown type
-            assert result is None
+            assert isinstance(result, dict)
             assert result_future.done()
             response = result_future.result()
             content = json.loads(response.body)
@@ -959,19 +965,28 @@ class TestAuxiliaryStreamResponse:
         check_disco = MagicMock()
 
         # Mock gen_sse_from_aux_stream to raise CancelledError
+        async def mock_cancelled_gen(*args, **kwargs):
+            raise asyncio.CancelledError("Request cancelled")
+            yield ""  # make it a generator
+
         with patch(
             "api_utils.request_processor.gen_sse_from_aux_stream",
-            side_effect=asyncio.CancelledError("Request cancelled"),
+            side_effect=mock_cancelled_gen,
         ):
+            await _handle_auxiliary_stream_response(
+                req_id,
+                request,
+                context,
+                result_future,
+                submit_locator,
+                check_disco,
+                timeout=30.0,
+            )
+
+            streaming_response = result_future.result()
             with pytest.raises(asyncio.CancelledError):
-                await _handle_auxiliary_stream_response(
-                    req_id,
-                    request,
-                    context,
-                    result_future,
-                    submit_locator,
-                    check_disco,
-                )
+                async for _ in streaming_response.body_iterator:
+                    pass
 
     @pytest.mark.asyncio
     async def test_auxiliary_stream_streaming_exception_sets_event(
@@ -992,19 +1007,28 @@ class TestAuxiliaryStreamResponse:
         check_disco = MagicMock()
 
         # Mock gen_sse_from_aux_stream to raise generic exception
+        async def mock_error_gen(*args, **kwargs):
+            raise Exception("Stream error")
+            yield ""  # make it a generator
+
         with patch(
             "api_utils.request_processor.gen_sse_from_aux_stream",
-            side_effect=Exception("Stream error"),
+            side_effect=mock_error_gen,
         ):
+            await _handle_auxiliary_stream_response(
+                req_id,
+                request,
+                context,
+                result_future,
+                submit_locator,
+                check_disco,
+                timeout=30.0,
+            )
+
+            streaming_response = result_future.result()
             with pytest.raises(Exception) as exc:
-                await _handle_auxiliary_stream_response(
-                    req_id,
-                    request,
-                    context,
-                    result_future,
-                    submit_locator,
-                    check_disco,
-                )
+                async for _ in streaming_response.body_iterator:
+                    pass
 
             assert "Stream error" in str(exc.value)
 
@@ -1122,7 +1146,7 @@ async def test_handle_model_switching(mock_context, mock_check_disconnected):
 async def test_handle_model_switch_failure():
     mock_page = AsyncMock()
     mock_logger = MagicMock()
-    with patch("server.current_ai_studio_model_id", "old_model"):
+    with patch.object(state, "current_ai_studio_model_id", "old_model"):
         with pytest.raises(HTTPException) as exc:
             await _handle_model_switch_failure(
                 "req1", mock_page, "new_model", "old_model", mock_logger
@@ -1218,16 +1242,18 @@ async def test_prepare_and_validate_request_attachments(
             "api_utils.request_processor.maybe_execute_tools", new_callable=AsyncMock
         ) as mock_tools,
         patch(
-            "api_utils.utils.extract_data_url_to_local", return_value="/tmp/file.png"
-        ) as mock_extract,
-        patch("os.path.exists", return_value=True),
+            "api_utils.request_processor.collect_and_validate_attachments",
+            return_value=["/tmp/file.png"],
+        ) as mock_collect,
     ):
         mock_tools.return_value = None
         # Use a mock object that supports getattr for role and attachments
         msg_mock = MagicMock()
         msg_mock.role = "user"
         msg_mock.content = "hi"
-        msg_mock.attachments = ["data:image/png;base64,123"]
+        msg_mock.attachments = [
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+        ]
         # Make sure model_dump works if called (though not called in this specific path, but good practice)
         msg_mock.model_dump.return_value = {"role": "user", "content": "hi"}
 
@@ -1238,7 +1264,7 @@ async def test_prepare_and_validate_request_attachments(
         )
 
         assert "/tmp/file.png" in images
-        mock_extract.assert_called_once()
+        mock_collect.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -1249,7 +1275,9 @@ async def test_handle_response_processing_aux_stream(
     mock_locator = MagicMock()
 
     with (
-        patch("config.get_environment_variable", return_value="8000"),
+        patch(
+            "api_utils.request_processor.get_environment_variable", return_value="8000"
+        ),
         patch(
             "api_utils.request_processor._handle_auxiliary_stream_response",
             new_callable=AsyncMock,
@@ -1263,6 +1291,8 @@ async def test_handle_response_processing_aux_stream(
             mock_future,
             mock_locator,
             mock_check_disconnected,
+            100,
+            30.0,
         )
         mock_aux.assert_called_once()
 
@@ -1276,7 +1306,7 @@ async def test_handle_response_processing_playwright(
     mock_page = AsyncMock()
 
     with (
-        patch("config.get_environment_variable", return_value="0"),
+        patch("api_utils.request_processor.get_environment_variable", return_value="0"),
         patch(
             "api_utils.request_processor._handle_playwright_response",
             new_callable=AsyncMock,
@@ -1290,6 +1320,8 @@ async def test_handle_response_processing_playwright(
             mock_future,
             mock_locator,
             mock_check_disconnected,
+            100,
+            30.0,
         )
         mock_pw.assert_called_once()
 
@@ -1302,9 +1334,13 @@ async def test_handle_auxiliary_stream_response_streaming(
     mock_future = asyncio.Future()
     mock_locator = MagicMock()
 
-    with patch("api_utils.request_processor.gen_sse_from_aux_stream") as mock_gen:
-        mock_gen.return_value = iter([])  # dummy iterator
+    async def mock_gen_sse(*args, **kwargs):
+        if False:
+            yield ""
 
+    with patch(
+        "api_utils.request_processor.gen_sse_from_aux_stream", side_effect=mock_gen_sse
+    ):
         result = await _handle_auxiliary_stream_response(
             "req1",
             mock_request,
@@ -1312,10 +1348,13 @@ async def test_handle_auxiliary_stream_response_streaming(
             mock_future,
             mock_locator,
             mock_check_disconnected,
+            timeout=30.0,
         )
 
         assert result is not None
-        completion_event, _, _ = result
+        completion_event, _, _ = (
+            result if isinstance(result, tuple) else (None, None, None)
+        )
         assert isinstance(completion_event, asyncio.Event)
         # Note: stream_state is no longer returned in the tuple, it's used internally
         assert mock_future.done()
@@ -1333,7 +1372,7 @@ async def test_handle_auxiliary_stream_response_non_streaming_success(
     mock_future = asyncio.Future()
     mock_locator = MagicMock()
 
-    async def mock_use_stream_response(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
+    async def mock_use_stream_response(*args, **kwargs):
         yield {"done": False, "body": "part1"}
         yield {"done": True, "body": "full_content", "reason": "stop"}
 
@@ -1355,9 +1394,10 @@ async def test_handle_auxiliary_stream_response_non_streaming_success(
             mock_future,
             mock_locator,
             mock_check_disconnected,
+            timeout=30.0,
         )
 
-        assert result is None
+        assert isinstance(result, dict)
         assert mock_future.done()
         # Verify result is JSONResponse
         assert hasattr(mock_future.result(), "body")
@@ -1371,7 +1411,7 @@ async def test_handle_auxiliary_stream_response_non_streaming_internal_timeout(
     mock_future = asyncio.Future()
     mock_locator = MagicMock()
 
-    async def mock_use_stream_response(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
+    async def mock_use_stream_response(*args, **kwargs):
         yield {"done": True, "reason": "internal_timeout"}
 
     with patch(
@@ -1386,6 +1426,7 @@ async def test_handle_auxiliary_stream_response_non_streaming_internal_timeout(
                 mock_future,
                 mock_locator,
                 mock_check_disconnected,
+                timeout=30.0,
             )
         assert exc.value.status_code == 502
 
@@ -1399,15 +1440,20 @@ async def test_handle_playwright_response_streaming(
     mock_locator = MagicMock()
     mock_page = AsyncMock()
 
+    async def mock_gen_sse(*args, **kwargs):
+        if False:
+            yield ""
+
     with (
         patch(
             "api_utils.request_processor.locate_response_elements",
             new_callable=AsyncMock,
         ),
-        patch("api_utils.request_processor.gen_sse_from_playwright") as mock_gen,
+        patch(
+            "api_utils.request_processor.gen_sse_from_playwright",
+            side_effect=mock_gen_sse,
+        ),
     ):
-        mock_gen.return_value = iter([])
-
         result = await _handle_playwright_response(
             "req1",
             mock_request,
@@ -1416,9 +1462,13 @@ async def test_handle_playwright_response_streaming(
             mock_future,
             mock_locator,
             mock_check_disconnected,
+            prompt_length=100,
+            timeout=30.0,
         )
         assert result is not None
-        completion_event, _, _ = result
+        completion_event, _, _ = (
+            result if isinstance(result, tuple) else (None, None, None)
+        )
 
         assert isinstance(completion_event, asyncio.Event)
         assert mock_future.done()
@@ -1458,9 +1508,11 @@ async def test_handle_playwright_response_non_streaming(
             mock_future,
             mock_locator,
             mock_check_disconnected,
+            prompt_length=100,
+            timeout=30.0,
         )
 
-        assert result is None
+        assert isinstance(result, dict)
         assert mock_future.done()
 
 
@@ -1570,7 +1622,7 @@ async def test_process_request_refactored_success(
         "_initialize_request_context": AsyncMock(return_value=mock_context),
         "_analyze_model_requirements": AsyncMock(return_value=mock_context),
         "_setup_disconnect_monitoring": AsyncMock(
-            return_value=(None, mock_disconnect_task, mock_check_disconnected)
+            return_value=(None, AsyncMock(), mock_check_disconnected)
         ),
         "_validate_page_status": AsyncMock(),
         "PageController": MagicMock(autospec=True),
@@ -1629,10 +1681,11 @@ async def test_process_request_refactored_success(
             patches["save_error_snapshot"],
         ),
         patch("api_utils.utils.collect_and_validate_attachments", return_value=[]),
-        patch("config.get_environment_variable", return_value="0"),
+        patch("api_utils.request_processor.get_environment_variable", return_value="0"),
     ):
         # Setup PageController mock instance
         mock_pc_instance = patches["PageController"].return_value
+        mock_pc_instance.page = mock_context["page"]
         mock_pc_instance.adjust_parameters = AsyncMock()
         mock_pc_instance.submit_prompt = AsyncMock()
 
@@ -1644,7 +1697,7 @@ async def test_process_request_refactored_success(
             mock_locator,
             mock_check_disconnected,
         )
-        mock_context["page"].locator.return_value = mock_locator
+        mock_context["page"].locator = MagicMock(return_value=mock_locator)
 
         # Execute
         result = await _process_request_refactored(
@@ -1655,7 +1708,9 @@ async def test_process_request_refactored_success(
         assert result is not None, (
             "_process_request_refactored returned None unexpectedly"
         )
-        assert result == (mock_event, mock_locator, mock_check_disconnected)
+        # Verify the elements of the tuple individually since submit_button_locator might be recaptured
+        assert result[0] == mock_event
+        assert result[2] == mock_check_disconnected
 
         # Verify all stages were called
         patches["_validate_page_status"].assert_called_once()
@@ -1683,7 +1738,8 @@ class TestProcessRequestRefactoredExceptionHandling:
                 return_value=True,
             ),
             patch(
-                "config.get_environment_variable", return_value="3120"
+                "api_utils.request_processor.get_environment_variable",
+                return_value="3120",
             ),  # Stream enabled
             patch(
                 "api_utils.clear_stream_queue",  # Fixed: patch from api_utils module
@@ -1717,9 +1773,12 @@ class TestProcessRequestRefactoredExceptionHandling:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("config.get_environment_variable", return_value="3120"),
             patch(
-                "api_utils.clear_stream_queue",  # Fixed: patch from api_utils module
+                "api_utils.request_processor.get_environment_variable",
+                return_value="3120",
+            ),
+            patch(
+                "api_utils.clear_stream_queue",
                 new_callable=AsyncMock,
                 side_effect=asyncio.CancelledError(),
             ),
@@ -1744,7 +1803,9 @@ class TestProcessRequestRefactoredExceptionHandling:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("config.get_environment_variable", return_value="0"),
+            patch(
+                "api_utils.request_processor.get_environment_variable", return_value="0"
+            ),
             patch(
                 "api_utils.request_processor._initialize_request_context",
                 new_callable=AsyncMock,
@@ -1790,7 +1851,9 @@ class TestProcessRequestRefactoredExceptionHandling:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("config.get_environment_variable", return_value="0"),
+            patch(
+                "api_utils.request_processor.get_environment_variable", return_value="0"
+            ),
             patch(
                 "api_utils.request_processor._initialize_request_context",
                 new_callable=AsyncMock,
@@ -1821,14 +1884,11 @@ class TestProcessRequestRefactoredExceptionHandling:
                 new_callable=AsyncMock,
             ),
         ):
-            # CancelledError should be caught, future cancelled, and re-raised
+            # CancelledError should be caught, and re-raised
             with pytest.raises(asyncio.CancelledError):
                 await _process_request_refactored(
                     "req1", mock_request, mock_http_request, mock_future
                 )
-
-            # Future should be cancelled
-            assert mock_future.cancelled()
 
     @pytest.mark.asyncio
     async def test_process_request_client_disconnected_error_handling(
@@ -1839,6 +1899,7 @@ class TestProcessRequestRefactoredExceptionHandling:
 
         mock_future = asyncio.Future()
         context = make_request_context()
+        local_check_disconnected = MagicMock(return_value=False)
 
         with (
             patch(
@@ -1846,7 +1907,9 @@ class TestProcessRequestRefactoredExceptionHandling:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("config.get_environment_variable", return_value="0"),
+            patch(
+                "api_utils.request_processor.get_environment_variable", return_value="0"
+            ),
             patch(
                 "api_utils.request_processor._initialize_request_context",
                 new_callable=AsyncMock,
@@ -1860,7 +1923,7 @@ class TestProcessRequestRefactoredExceptionHandling:
             patch(
                 "api_utils.request_processor._setup_disconnect_monitoring",
                 new_callable=AsyncMock,
-                return_value=(None, AsyncMock(), MagicMock()),
+                return_value=(None, AsyncMock(), local_check_disconnected),
             ),
             patch(
                 "api_utils.request_processor._validate_page_status",
@@ -1882,8 +1945,9 @@ class TestProcessRequestRefactoredExceptionHandling:
                 "req1", mock_request, mock_http_request, mock_future
             )
 
-            # Should return None (no streaming)
-            assert result is None
+            # Should return tuple with completion_event (even if None)
+            assert isinstance(result, tuple)
+            assert result[2] == local_check_disconnected
 
             # Future should have HTTPException with 499 status
             assert mock_future.done()

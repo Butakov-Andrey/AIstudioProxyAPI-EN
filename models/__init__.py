@@ -8,26 +8,30 @@ from .chat import (
 )
 
 # Exception classes
-from .exceptions import ClientDisconnectedError, QuotaExceededError, QuotaExceededRetry
+from .exceptions import (
+    ClientDisconnectedError,
+    QuotaExceededError,
+    QuotaExceededRetry,
+    UpstreamError,
+)
 
 # Logging utility classes
 from .logging import StreamToLogger, WebSocketConnectionManager, WebSocketLogHandler
 
 __all__ = [
     # Chat models
-    'FunctionCall',
-    'ToolCall',
-    'MessageContentItem',
-    'Message',
-    'ChatCompletionRequest',
-
+    "FunctionCall",
+    "ToolCall",
+    "MessageContentItem",
+    "Message",
+    "ChatCompletionRequest",
     # Exceptions
-    'ClientDisconnectedError',
-    'QuotaExceededError',
-    'QuotaExceededRetry',
-
+    "ClientDisconnectedError",
+    "QuotaExceededError",
+    "QuotaExceededRetry",
+    "UpstreamError",
     # Logging tools
-    'StreamToLogger',
-    'WebSocketConnectionManager',
-    'WebSocketLogHandler'
+    "StreamToLogger",
+    "WebSocketConnectionManager",
+    "WebSocketLogHandler",
 ]

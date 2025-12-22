@@ -26,6 +26,27 @@ def global_mock_error_snapshots():
 
 
 @pytest.fixture(autouse=True)
+def reset_global_state():
+    """Reset GlobalState and ServerState before each test to ensure isolation."""
+    from config.global_state import GlobalState
+    from api_utils.server_state import state
+
+    GlobalState.reset_quota_status()
+    GlobalState.IS_RECOVERING = False
+    GlobalState.DEPLOYMENT_EMERGENCY_MODE = False
+    GlobalState.CURRENT_STREAM_REQ_ID = None
+    GlobalState.queued_request_count = 0
+    GlobalState.AUTH_ROTATION_LOCK.set()  # Allow requests by default
+    GlobalState.QUOTA_EXCEEDED_EVENT.clear()
+    GlobalState.rotation_complete_event.clear()
+    GlobalState.RECOVERY_EVENT.set()
+    GlobalState.IS_SHUTTING_DOWN.clear()
+
+    state.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def mock_server_module():
     """Mock the server module to prevent import errors and provide global state."""
     module_name = "server"

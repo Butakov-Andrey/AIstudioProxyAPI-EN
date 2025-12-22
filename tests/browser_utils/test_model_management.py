@@ -490,26 +490,26 @@ async def test_switch_ai_studio_model_revert_logic(mock_page):
         mock_locator.first.inner_text = AsyncMock(return_value="Original Model")
         mock_page.locator.return_value = mock_locator
 
-        # Execute - should fail validation and trigger revert
+        # Execute - should fail validation
         result = await switch_ai_studio_model(mock_page, model_id, "req1")
 
-        # Verify revert occurred
+        # Verify failure occurred
         assert result is False
 
-        # Check setItem calls for revert
+        # Check setItem calls
         set_item_calls = [
             args
             for args in mock_page.evaluate.call_args_list
             if "localStorage.setItem" in args[0][0]
         ]
 
-        # Verify revert prefs were set (target, compat, revert)
-        assert len(set_item_calls) >= 3
+        # Verify target prefs were set, but no revert
+        assert len(set_item_calls) == 2
         last_set_call = set_item_calls[-1]
-        revert_prefs = json.loads(last_set_call[0][1])
-        assert revert_prefs["promptModel"] == "models/Original Model"
-        assert revert_prefs["isAdvancedOpen"] is True
-        assert revert_prefs["areToolsOpen"] is True
+        target_prefs = json.loads(last_set_call[0][1])
+        assert target_prefs["promptModel"] == full_model_path
+        assert target_prefs["isAdvancedOpen"] is True
+        assert target_prefs["areToolsOpen"] is True
 
 
 @pytest.mark.asyncio
@@ -707,7 +707,7 @@ async def test_handle_initial_model_state_exceptions(mock_page):
         # Check that we have the catastrophic error log
         # It catches "Inner Error" in the outer except block
         error_calls = [args[0][0] for args in mock_logger.error.call_args_list]
-        assert any("serious error" in msg.lower() for msg in error_calls)
+        assert any("critical error" in msg.lower() for msg in error_calls)
 
 
 @pytest.mark.asyncio
@@ -765,7 +765,7 @@ async def test_set_model_from_page_display_timeout(mock_page):
 
         # Should log warning about timeout
         assert any(
-            "waiting for model list timed out" in str(arg).lower()
+            "timeout waiting for model list" in str(arg).lower()
             for arg in mock_logger.warning.call_args_list[0][0]
         )
         # Should still update global ID using display name as fallback
@@ -1300,17 +1300,19 @@ async def test_switch_model_recovery_logic(mock_page):
             "browser_utils.models.switcher._verify_and_apply_ui_state",
             return_value=True,
         ),
+        patch("browser_utils.models.switcher.expect_async") as mock_expect,
     ):
+        mock_expect.return_value.to_be_visible = AsyncMock()
         result = await switch_ai_studio_model(mock_page, model_id, req_id)
 
-        found_revert = False
+        found_target = False
         for call in mock_page.evaluate.call_args_list:
             args, _ = call
-            if len(args) > 1 and "models/old-model" in str(args[1]):
-                found_revert = True
+            if len(args) > 1 and "models/new-model" in str(args[1]):
+                found_target = True
                 break
 
-        assert found_revert
+        assert found_target
         assert result is False
 
 
@@ -1650,8 +1652,9 @@ async def test_switch_model_revert_cant_read_display(mock_page):
             for args, _ in mock_page.evaluate.call_args_list
             if "setItem" in str(args)
         ]
+        # Should have set the target model, but no revert
         last_set_arg = set_calls[-1][1]
-        assert "original-model" in last_set_arg
+        assert "target-model" in last_set_arg
 
 
 @pytest.mark.asyncio
@@ -1723,7 +1726,7 @@ async def test_switch_ai_studio_model_ui_state_fail(mock_page):
 
         warnings = [call.args[0] for call in mock_logger.warning.call_args_list]
         assert any(
-            "UI state setting failed, but continuing execution" in str(w)
+            "UI state setting failed, but continuing model switching flow" in str(w)
             for w in warnings
         )
 
@@ -1821,11 +1824,11 @@ async def test_switch_model_revert_success(mock_page, mock_server):
                 for args, _ in mock_page.evaluate.call_args_list
                 if "setItem" in str(args)
             ]
-            assert len(set_calls) >= 3
+            assert len(set_calls) == 2
             last_set_arg = set_calls[-1][1]
-            assert "models/old-model" in last_set_arg
+            assert "models/target-model" in last_set_arg
 
-            assert mock_verify.call_count == 4
+            assert mock_verify.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -1875,7 +1878,7 @@ async def test_switch_model_revert_failure_fallback(mock_page, mock_server):
             if "setItem" in str(args)
         ]
         last_set_arg = set_calls[-1][1]
-        assert "models/original-model" in last_set_arg
+        assert "models/target-model" in last_set_arg
 
 
 @pytest.mark.asyncio
@@ -1928,4 +1931,4 @@ async def test_switch_model_revert_blind_trust(mock_page, mock_server):
             if "setItem" in str(args)
         ]
         last_set_arg = set_calls[-1][1]
-        assert "models/Unknown Model" in last_set_arg
+        assert "models/target-model" in last_set_arg

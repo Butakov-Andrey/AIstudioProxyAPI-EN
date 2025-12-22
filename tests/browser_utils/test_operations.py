@@ -1,5 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock, patch
-
+from unittest.mock import AsyncMock, MagicMock, patch, call
+import asyncio
 import pytest
 from playwright.async_api import Error as PlaywrightAsyncError
 
@@ -15,71 +15,93 @@ from browser_utils.operations import (
 
 
 @pytest.fixture(autouse=True)
-def mock_async_sleep():
-    """Mock asyncio.sleep in interactions module to skip real delays (0.3-0.5s waits)."""
+def mock_check_quota_limit():
     with patch(
-        "browser_utils.operations_modules.interactions.asyncio.sleep",
-        new_callable=AsyncMock,
-    ):
-        yield
+        "browser_utils.operations.check_quota_limit", new_callable=AsyncMock
+    ) as m:
+        yield m
+
+
+def create_robust_locator(count_val=1, text=""):
+    loc = MagicMock()
+    loc.hover = AsyncMock()
+    loc.click = AsyncMock()
+    loc.fill = AsyncMock()
+    loc.wait_for = AsyncMock()
+    loc.inner_text = AsyncMock(return_value=text)
+    loc.text_content = AsyncMock(return_value=text)
+    loc.get_attribute = AsyncMock(return_value=None)
+    loc.input_value = AsyncMock(return_value=text)
+    loc.is_visible = AsyncMock(return_value=True)
+    loc.is_enabled = AsyncMock(return_value=True)
+    loc.is_disabled = AsyncMock(return_value=False)
+    loc.count = AsyncMock(return_value=count_val)
+    loc.all = AsyncMock(return_value=[loc] if count_val > 0 else [])
+    loc.scroll_into_view_if_needed = AsyncMock()
+
+    # Chaining properties and methods
+    loc.locator = MagicMock(return_value=loc)
+    loc.get_by_label = MagicMock(return_value=loc)
+    loc.get_by_role = MagicMock(return_value=loc)
+    loc.get_by_text = MagicMock(return_value=loc)
+    loc.first = loc
+    loc.last = loc
+    return loc
 
 
 def make_mock_page():
-    """Create a properly configured mock page with sync/async methods.
-
-    page.locator() is SYNC (returns immediately).
-    locator methods like .hover(), .click() are ASYNC.
-    locator chaining like .get_by_label(), .locator() are SYNC.
-
-    Uses return_value pattern to allow test overrides like:
-    mock_page.locator.return_value.last = custom_locator
-    """
-    page = AsyncMock()
+    page = MagicMock()
     page.goto = AsyncMock()
     page.wait_for_selector = AsyncMock()
     page.click = AsyncMock()
     page.fill = AsyncMock()
     page.evaluate = AsyncMock()
+    page.content = AsyncMock(return_value="<html></html>")
+    page.screenshot = AsyncMock()
+    page.is_closed = MagicMock(return_value=False)
+    page.url = "https://example.com"
 
-    # Create a default locator with proper async/sync method setup
-    default_locator = MagicMock()
-    # Async action methods
-    default_locator.hover = AsyncMock()
-    default_locator.click = AsyncMock()
-    default_locator.fill = AsyncMock()
-    default_locator.wait_for = AsyncMock()
-    default_locator.inner_text = AsyncMock()
-    default_locator.text_content = AsyncMock()
-    default_locator.get_attribute = AsyncMock()
-    default_locator.input_value = AsyncMock()
-    default_locator.is_visible = AsyncMock()
-    default_locator.is_disabled = AsyncMock()
-    default_locator.count = AsyncMock(return_value=1)
-    # Sync chaining methods
-    default_locator.get_by_label = MagicMock(return_value=default_locator)
-    default_locator.get_by_role = MagicMock(return_value=default_locator)
-    default_locator.locator = MagicMock(return_value=default_locator)
-    # .first and .last properties return the same locator (can be overridden in tests)
-    default_locator.first = default_locator
-    default_locator.last = default_locator
-
-    # Use return_value so tests can override with .return_value.last = ...
+    default_locator = create_robust_locator()
     page.locator = MagicMock(return_value=default_locator)
     page.get_by_role = MagicMock(return_value=default_locator)
+    page.get_by_label = MagicMock(return_value=default_locator)
+    page.get_by_text = MagicMock(return_value=default_locator)
+
+    # Context
+    page.context = MagicMock()
+    page.context.cookies = AsyncMock(return_value=[])
+
     return page
+
+
+@pytest.fixture
+def mock_page():
+    return make_mock_page()
+
+
+@pytest.fixture(autouse=True)
+def mock_server_state(mock_page):
+    mock_state = MagicMock()
+    mock_state.page_instance = mock_page
+    mock_state.browser_instance = MagicMock()
+    mock_state.browser_instance.is_connected = MagicMock(return_value=True)
+
+    # For test_handle_model_list_response_success
+    mock_state.parsed_model_list = []
+    mock_state.global_model_list_raw_json = None
+    mock_state.model_list_fetch_event = MagicMock()
+
+    with patch("api_utils.server_state.state", mock_state):
+        yield mock_state
 
 
 @pytest.mark.asyncio
 async def test_get_raw_text_content_pre_element():
     """Test getting text from pre element."""
-    element = MagicMock()
-    pre_element = MagicMock()
+    element = create_robust_locator()
+    pre_element = create_robust_locator(text="pre content")
 
     element.locator.return_value.last = pre_element
-    element.wait_for = AsyncMock()
-    pre_element.wait_for = AsyncMock()
-    pre_element.inner_text = AsyncMock(return_value="pre content")
-
     result = await get_raw_text_content(element, "old", "req_id")
     assert result == "pre content"
 
@@ -87,13 +109,11 @@ async def test_get_raw_text_content_pre_element():
 @pytest.mark.asyncio
 async def test_get_raw_text_content_fallback():
     """Test fallback to element text when pre not found."""
-    element = MagicMock()
-    pre_element = MagicMock()
+    element = create_robust_locator(text="element content")
+    pre_element = create_robust_locator()
 
     element.locator.return_value.last = pre_element
-    element.wait_for = AsyncMock()
-    pre_element.wait_for = AsyncMock(side_effect=PlaywrightAsyncError("Not found"))
-    element.inner_text = AsyncMock(return_value="element content")
+    pre_element.wait_for.side_effect = PlaywrightAsyncError("Not found")
 
     result = await get_raw_text_content(element, "old", "req_id")
     assert result == "element content"
@@ -117,62 +137,53 @@ async def test_handle_model_list_response_success():
         }
     )
 
-    mock_state = MagicMock()
-    mock_state.parsed_model_list = []
-    mock_state.global_model_list_raw_json = None
-    mock_state.model_list_fetch_event = MagicMock()
-
-    with patch("api_utils.server_state.state", mock_state):
-        await _handle_model_list_response(response)
+    await _handle_model_list_response(response)
 
 
 @pytest.mark.asyncio
-async def test_detect_and_extract_page_error_found(mock_page: MagicMock):
+async def test_detect_and_extract_page_error_found(mock_page):
     """Test detecting page error."""
-    error_locator = MagicMock()
-    message_locator = MagicMock()
+    error_locator = create_robust_locator()
+    message_locator = create_robust_locator(text="Error message")
 
     mock_page.locator.return_value.last = error_locator
     error_locator.locator.return_value = message_locator
-
-    error_locator.wait_for = AsyncMock()
-    message_locator.text_content = AsyncMock(return_value="Error message")
 
     result = await detect_and_extract_page_error(mock_page, "req_id")
     assert result == "Error message"
 
 
 @pytest.mark.asyncio
-async def test_detect_and_extract_page_error_not_found(mock_page: MagicMock):
+async def test_detect_and_extract_page_error_not_found(mock_page):
     """Test detecting page error when none exists."""
-    error_locator = MagicMock()
+    error_locator = create_robust_locator()
     mock_page.locator.return_value.last = error_locator
-    error_locator.wait_for = AsyncMock(side_effect=PlaywrightAsyncError("Timeout"))
+    error_locator.wait_for.side_effect = PlaywrightAsyncError("Timeout")
 
     result = await detect_and_extract_page_error(mock_page, "req_id")
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_success(mock_page: MagicMock):
+async def test_get_response_via_edit_button_success(mock_page):
     """Test getting response via edit button."""
     check_disconnect = MagicMock()
 
     # Setup locator chain
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    textarea = create_robust_locator(text="Response content")
 
     mock_page.locator.return_value.last = last_msg
-    last_msg.get_by_label = MagicMock(return_value=edit_btn)
-    last_msg.locator.return_value = textarea
-    textarea.locator.return_value = textarea
-    textarea.count = AsyncMock(return_value=1)  # Add count() for defensive checks
-
-    # Setup async actions
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
-    textarea.get_attribute = AsyncMock(return_value="Response content")
+    last_msg.get_by_label.side_effect = (
+        lambda label: edit_btn if label == "Edit" else create_robust_locator()
+    )
+    last_msg.locator.side_effect = (
+        lambda selector: textarea
+        if "ms-autosize-textarea" in selector
+        else create_robust_locator()
+    )
+    textarea.get_attribute.return_value = "Response content"
 
     # Mock playwright expect
     with patch("playwright.async_api.expect", new_callable=MagicMock) as mock_expect:
@@ -188,25 +199,22 @@ async def test_get_response_via_edit_button_success(mock_page: MagicMock):
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_success(mock_page: MagicMock):
+async def test_get_response_via_copy_button_success(mock_page):
     """Test getting response via copy button."""
     check_disconnect = MagicMock()
 
     # Setup locators
-    last_msg = MagicMock()
+    last_msg = create_robust_locator()
     mock_page.locator.return_value.last = last_msg
 
-    more_opts = MagicMock()
+    more_opts = create_robust_locator()
     last_msg.get_by_label.return_value = more_opts
 
-    copy_btn = MagicMock()
+    copy_btn = create_robust_locator()
     mock_page.get_by_role.return_value = copy_btn
 
     # Setup actions
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
-    copy_btn.click = AsyncMock()
-    mock_page.evaluate = AsyncMock(return_value="Copied content")
+    mock_page.evaluate.return_value = "Copied content"
 
     with patch("playwright.async_api.expect", new_callable=MagicMock) as mock_expect:
         mock_expect_obj = MagicMock()
@@ -220,17 +228,16 @@ async def test_get_response_via_copy_button_success(mock_page: MagicMock):
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_success(mock_page: MagicMock):
+async def test_wait_for_response_completion_success(mock_page):
     """Test waiting for response completion."""
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator(text="")
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock()
 
     # Setup states
-    prompt_area.input_value = AsyncMock(return_value="")
-    submit_btn.is_disabled = AsyncMock(return_value=True)
-    edit_btn.is_visible = AsyncMock(return_value=True)
+    submit_btn.is_disabled.return_value = True
+    edit_btn.is_visible.return_value = True
 
     result = await _wait_for_response_completion(
         mock_page,
@@ -248,13 +255,12 @@ async def test_wait_for_response_completion_success(mock_page: MagicMock):
 
 
 @pytest.mark.asyncio
-async def test_get_final_response_content_edit_success():
+async def test_get_final_response_content_edit_success(mock_page):
     """Test getting final content via edit button."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
     with patch(
-        "browser_utils.operations_modules.interactions.get_response_via_edit_button",
+        "browser_utils.operations.get_response_via_edit_button",
         new_callable=AsyncMock,
     ) as mock_edit:
         mock_edit.return_value = "Content"
@@ -266,18 +272,17 @@ async def test_get_final_response_content_edit_success():
 
 
 @pytest.mark.asyncio
-async def test_get_final_response_content_fallback_copy():
+async def test_get_final_response_content_fallback_copy(mock_page):
     """Test fallback to copy button when edit fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
     with (
         patch(
-            "browser_utils.operations_modules.interactions.get_response_via_edit_button",
+            "browser_utils.operations.get_response_via_edit_button",
             new_callable=AsyncMock,
         ) as mock_edit,
         patch(
-            "browser_utils.operations_modules.interactions.get_response_via_copy_button",
+            "browser_utils.operations.get_response_via_copy_button",
             new_callable=AsyncMock,
         ) as mock_copy,
     ):
@@ -290,20 +295,15 @@ async def test_get_final_response_content_fallback_copy():
         assert result == "Content"
 
 
-# ==================== New Tests for Improved Coverage ====================
-
-
 @pytest.mark.asyncio
 async def test_get_raw_text_content_pre_error_with_debug():
     """Test pre element inner_text error with debug logging enabled."""
-    element = MagicMock()
-    pre_element = MagicMock()
+    element = create_robust_locator()
+    pre_element = create_robust_locator()
 
     element.locator.return_value.last = pre_element
-    element.wait_for = AsyncMock()
-    pre_element.wait_for = AsyncMock()
-    pre_element.inner_text = AsyncMock(
-        side_effect=PlaywrightAsyncError("Failed to get inner text")
+    pre_element.inner_text.side_effect = PlaywrightAsyncError(
+        "Failed to get inner text"
     )
 
     with patch("config.DEBUG_LOGS_ENABLED", True):
@@ -314,15 +314,12 @@ async def test_get_raw_text_content_pre_error_with_debug():
 @pytest.mark.asyncio
 async def test_get_raw_text_content_element_error_with_debug():
     """Test element inner_text error with debug logging enabled."""
-    element = MagicMock()
-    pre_element = MagicMock()
+    element = create_robust_locator()
+    pre_element = create_robust_locator()
 
     element.locator.return_value.last = pre_element
-    element.wait_for = AsyncMock()
-    pre_element.wait_for = AsyncMock(side_effect=PlaywrightAsyncError("Not found"))
-    element.inner_text = AsyncMock(
-        side_effect=PlaywrightAsyncError("Failed to get text")
-    )
+    pre_element.wait_for.side_effect = PlaywrightAsyncError("Not found")
+    element.inner_text.side_effect = PlaywrightAsyncError("Failed to get text")
 
     with patch("config.DEBUG_LOGS_ENABLED", True):
         result = await get_raw_text_content(element, "old", "req_id")
@@ -332,10 +329,8 @@ async def test_get_raw_text_content_element_error_with_debug():
 @pytest.mark.asyncio
 async def test_get_raw_text_content_element_not_attached_with_debug():
     """Test response element not attached with debug logging."""
-    element = MagicMock()
-    element.wait_for = AsyncMock(
-        side_effect=PlaywrightAsyncError("Element not attached")
-    )
+    element = create_robust_locator()
+    element.wait_for.side_effect = PlaywrightAsyncError("Element not attached")
 
     with patch("config.DEBUG_LOGS_ENABLED", True):
         result = await get_raw_text_content(element, "previous", "req_id")
@@ -345,8 +340,8 @@ async def test_get_raw_text_content_element_not_attached_with_debug():
 @pytest.mark.asyncio
 async def test_get_raw_text_content_unexpected_error():
     """Test unexpected error in get_raw_text_content."""
-    element = MagicMock()
-    element.wait_for = AsyncMock(side_effect=RuntimeError("Unexpected"))
+    element = create_robust_locator()
+    element.wait_for.side_effect = RuntimeError("Unexpected")
 
     result = await get_raw_text_content(element, "prev", "req_id")
     assert result == "prev"
@@ -355,54 +350,43 @@ async def test_get_raw_text_content_unexpected_error():
 @pytest.mark.asyncio
 async def test_get_raw_text_content_text_updated_with_debug():
     """Test text update logging when DEBUG_LOGS_ENABLED is True."""
-    element = MagicMock()
-    pre_element = MagicMock()
+    element = create_robust_locator()
+    pre_element = create_robust_locator(text="new text content")
 
     element.locator.return_value.last = pre_element
-    element.wait_for = AsyncMock()
-    pre_element.wait_for = AsyncMock()
-    pre_element.inner_text = AsyncMock(return_value="new text content")
-
-    with patch("config.DEBUG_LOGS_ENABLED", True):
-        result = await get_raw_text_content(element, "old text", "req_id")
-        assert result == "new text content"
+    result = await get_raw_text_content(element, "old text", "req_id")
+    assert result == "new text content"
 
 
 @pytest.mark.asyncio
 async def test_get_raw_text_content_cancelled_error():
     """Test CancelledError is properly re-raised."""
-    import asyncio
-
-    element = MagicMock()
-    element.wait_for = AsyncMock(side_effect=asyncio.CancelledError)
+    element = create_robust_locator()
+    element.wait_for.side_effect = asyncio.CancelledError
 
     with pytest.raises(asyncio.CancelledError):
         await get_raw_text_content(element, "old", "req_id")
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_hover_failure():
+async def test_get_response_via_edit_button_hover_failure(mock_page):
     """Test edit button flow when hover fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    finish_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    finish_btn = create_robust_locator()
+    textarea = create_robust_locator(text="Response")
 
     mock_page.locator.return_value.last = last_msg
-    last_msg.get_by_label = MagicMock(
-        side_effect=lambda label: edit_btn if label == "Edit" else finish_btn
+    last_msg.get_by_label.side_effect = (
+        lambda label: edit_btn if label == "Edit" else finish_btn
     )
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
-    textarea.count = AsyncMock(return_value=1)
 
     # Hover fails but we continue
-    last_msg.hover = AsyncMock(side_effect=RuntimeError("Hover failed"))
-    edit_btn.click = AsyncMock()
-    textarea.get_attribute = AsyncMock(return_value="Response")
+    last_msg.hover.side_effect = RuntimeError("Hover failed")
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -416,45 +400,38 @@ async def test_get_response_via_edit_button_hover_failure():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_cancelled_during_hover():
+async def test_get_response_via_edit_button_cancelled_during_hover(mock_page):
     """Test CancelledError during hover."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
+    last_msg = create_robust_locator()
     mock_page.locator.return_value.last = last_msg
-    last_msg.hover = AsyncMock(side_effect=asyncio.CancelledError)
+    last_msg.hover.side_effect = asyncio.CancelledError
 
     with pytest.raises(asyncio.CancelledError):
         await get_response_via_edit_button(mock_page, "req_id", check_disconnect)
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_edit_button_failure():
+async def test_get_response_via_edit_button_edit_button_failure(mock_page):
     """Test when edit button is not visible or click fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
-    last_msg.hover = AsyncMock()
 
     with (
         patch("playwright.async_api.expect") as mock_expect,
         patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ) as mock_save,
     ):
         mock_expect_obj = MagicMock()
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=PlaywrightAsyncError("Not visible")
-        )
+        mock_expect_obj.to_be_visible.side_effect = PlaywrightAsyncError("Not visible")
         mock_expect.return_value = mock_expect_obj
 
         result = await get_response_via_edit_button(
@@ -466,23 +443,19 @@ async def test_get_response_via_edit_button_edit_button_failure():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_cancelled_during_edit_click():
+async def test_get_response_via_edit_button_cancelled_during_edit_click(mock_page):
     """Test CancelledError when clicking edit button."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
-    last_msg.hover = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
-        mock_expect_obj.to_be_visible = AsyncMock(side_effect=asyncio.CancelledError)
+        mock_expect_obj.to_be_visible.side_effect = asyncio.CancelledError
         mock_expect.return_value = mock_expect_obj
 
         with pytest.raises(asyncio.CancelledError):
@@ -490,40 +463,35 @@ async def test_get_response_via_edit_button_cancelled_during_edit_click():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_data_value_error():
+async def test_get_response_via_edit_button_data_value_error(mock_page):
     """Test when get_attribute for data-value fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    finish_btn = MagicMock()
-    autosize_textarea = MagicMock()
-    actual_textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    finish_btn = create_robust_locator()
+    autosize_textarea = create_robust_locator()
+    actual_textarea = create_robust_locator(text="Input value content")
 
     mock_page.locator.return_value.last = last_msg
-    last_msg.get_by_label = MagicMock(
-        side_effect=lambda label: edit_btn if label == "Edit" else finish_btn
+    last_msg.get_by_label.side_effect = (
+        lambda label: edit_btn if label == "Edit" else finish_btn
     )
 
-    # Set up locator to return different objects based on selector
     def locator_side_effect(selector):
         if "ms-autosize-textarea" in selector:
             return autosize_textarea
-        return actual_textarea
+        if "textarea" in selector:
+            return actual_textarea
+        return create_robust_locator()
 
-    last_msg.locator = MagicMock(side_effect=locator_side_effect)
-    autosize_textarea.count = AsyncMock(return_value=1)
-    actual_textarea.count = AsyncMock(return_value=1)
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
+    last_msg.locator.side_effect = locator_side_effect
+    autosize_textarea.locator.side_effect = locator_side_effect
 
     # data-value fails, input_value succeeds
-    autosize_textarea.get_attribute = AsyncMock(
-        side_effect=PlaywrightAsyncError("Attribute error")
+    autosize_textarea.get_attribute.side_effect = PlaywrightAsyncError(
+        "Attribute error"
     )
-    actual_textarea.input_value = AsyncMock(return_value="Input value content")
-    finish_btn.click = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -538,25 +506,18 @@ async def test_get_response_via_edit_button_data_value_error():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_cancelled_during_data_value():
+async def test_get_response_via_edit_button_cancelled_during_data_value(mock_page):
     """Test CancelledError during get_attribute."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    textarea = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
     last_msg.locator.return_value = textarea
-    textarea.locator.return_value = textarea
-    textarea.count = AsyncMock(return_value=1)  # Element exists
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
-    textarea.get_attribute = AsyncMock(side_effect=asyncio.CancelledError)
+    textarea.get_attribute.side_effect = asyncio.CancelledError
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -568,38 +529,33 @@ async def test_get_response_via_edit_button_cancelled_during_data_value():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_input_value_fallback():
+async def test_get_response_via_edit_button_input_value_fallback(mock_page):
     """Test fallback to input_value when data-value is None."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    finish_btn = MagicMock()
-    autosize_textarea = MagicMock()
-    actual_textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    finish_btn = create_robust_locator()
+    autosize_textarea = create_robust_locator()
+    actual_textarea = create_robust_locator(text="Fallback content")
 
     mock_page.locator.return_value.last = last_msg
-    last_msg.get_by_label = MagicMock(
-        side_effect=lambda label: edit_btn if label == "Edit" else finish_btn
+    last_msg.get_by_label.side_effect = (
+        lambda label: edit_btn if label == "Edit" else finish_btn
     )
 
-    # Set up locator to return different objects based on selector
     def locator_side_effect(selector):
         if "ms-autosize-textarea" in selector:
             return autosize_textarea
-        return actual_textarea
+        if "textarea" in selector:
+            return actual_textarea
+        return create_robust_locator()
 
-    last_msg.locator = MagicMock(side_effect=locator_side_effect)
-    autosize_textarea.count = AsyncMock(return_value=1)
-    actual_textarea.count = AsyncMock(return_value=1)
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
+    last_msg.locator.side_effect = locator_side_effect
+    autosize_textarea.locator.side_effect = locator_side_effect
 
     # data-value returns None, fallback to input_value
-    autosize_textarea.get_attribute = AsyncMock(return_value=None)
-    actual_textarea.input_value = AsyncMock(return_value="Fallback content")
-    finish_btn.click = AsyncMock()
+    autosize_textarea.get_attribute.return_value = None
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -614,28 +570,31 @@ async def test_get_response_via_edit_button_input_value_fallback():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_input_value_error():
+async def test_get_response_via_edit_button_input_value_error(mock_page):
     """Test when both data-value and input_value fail."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    textarea = MagicMock()
-    actual_textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    textarea = create_robust_locator()
+    actual_textarea = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
-    last_msg.locator.return_value = textarea
-    textarea.locator.return_value = actual_textarea
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
+
+    def locator_side_effect(selector):
+        if "ms-autosize-textarea" in selector:
+            return textarea
+        if "textarea" in selector:
+            return actual_textarea
+        return create_robust_locator()
+
+    last_msg.locator.side_effect = locator_side_effect
+    textarea.locator.side_effect = locator_side_effect
 
     # Both methods fail
-    textarea.get_attribute = AsyncMock(return_value=None)
-    actual_textarea.input_value = AsyncMock(
-        side_effect=PlaywrightAsyncError("Input error")
-    )
+    textarea.get_attribute.return_value = None
+    actual_textarea.input_value.side_effect = PlaywrightAsyncError("Input error")
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -650,34 +609,30 @@ async def test_get_response_via_edit_button_input_value_error():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_cancelled_during_input_value():
+async def test_get_response_via_edit_button_cancelled_during_input_value(mock_page):
     """Test CancelledError during input_value."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    autosize_textarea = MagicMock()
-    actual_textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    autosize_textarea = create_robust_locator()
+    actual_textarea = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
 
-    # Set up locator to return different objects based on selector
     def locator_side_effect(selector):
         if "ms-autosize-textarea" in selector:
             return autosize_textarea
-        return actual_textarea
+        if "textarea" in selector:
+            return actual_textarea
+        return create_robust_locator()
 
-    last_msg.locator = MagicMock(side_effect=locator_side_effect)
-    autosize_textarea.count = AsyncMock(return_value=1)  # Element exists
-    actual_textarea.count = AsyncMock(return_value=1)  # Element exists
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
-    autosize_textarea.get_attribute = AsyncMock(return_value=None)
-    actual_textarea.input_value = AsyncMock(side_effect=asyncio.CancelledError)
+    last_msg.locator.side_effect = locator_side_effect
+    autosize_textarea.locator.side_effect = locator_side_effect
+
+    autosize_textarea.get_attribute.return_value = None
+    actual_textarea.input_value.side_effect = asyncio.CancelledError
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -689,27 +644,24 @@ async def test_get_response_via_edit_button_cancelled_during_input_value():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_textarea_error():
+async def test_get_response_via_edit_button_textarea_error(mock_page):
     """Test when textarea locator fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    textarea = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
     last_msg.locator.return_value = textarea
-    textarea.count = AsyncMock(return_value=1)  # Element exists
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=PlaywrightAsyncError("Textarea not visible")
-        )
+        mock_expect_obj.to_be_visible.side_effect = [
+            None,
+            PlaywrightAsyncError("Textarea not visible"),
+        ]
         mock_expect.return_value = mock_expect_obj
 
         result = await get_response_via_edit_button(
@@ -720,30 +672,29 @@ async def test_get_response_via_edit_button_textarea_error():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_cancelled_during_textarea():
+async def test_get_response_via_edit_button_cancelled_during_textarea(mock_page):
     """Test CancelledError during textarea visibility check."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    textarea = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
     last_msg.locator.return_value = textarea
-    textarea.count = AsyncMock(return_value=1)  # Element exists
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
+
         # First call succeeds (edit button), second fails (textarea)
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=[None, asyncio.CancelledError]
-        )
+        async def async_success(*args, **kwargs):
+            return None
+
+        mock_expect_obj.to_be_visible.side_effect = [
+            async_success(),
+            asyncio.CancelledError,
+        ]
         mock_expect.return_value = mock_expect_obj
 
         with pytest.raises(asyncio.CancelledError):
@@ -751,32 +702,29 @@ async def test_get_response_via_edit_button_cancelled_during_textarea():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_finish_button_failure():
+async def test_get_response_via_edit_button_finish_button_failure(mock_page):
     """Test when finish edit button fails to click."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    finish_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    finish_btn = create_robust_locator()
+    textarea = create_robust_locator(text="Content")
 
     mock_page.locator.return_value.last = last_msg
-    last_msg.get_by_label = MagicMock(
-        side_effect=lambda label: edit_btn if label == "Edit" else finish_btn
+    last_msg.get_by_label.side_effect = (
+        lambda label: edit_btn if label == "Edit" else finish_btn
     )
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
-    textarea.count = AsyncMock(return_value=1)  # Element exists
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
-    textarea.get_attribute = AsyncMock(return_value="Content")
-    finish_btn.click = AsyncMock(side_effect=PlaywrightAsyncError("Click failed"))
+
+    textarea.get_attribute.return_value = "Content"
+    finish_btn.click.side_effect = PlaywrightAsyncError("Click failed")
 
     with (
         patch("playwright.async_api.expect") as mock_expect,
         patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ) as mock_save,
     ):
@@ -794,35 +742,36 @@ async def test_get_response_via_edit_button_finish_button_failure():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_cancelled_during_finish():
+async def test_get_response_via_edit_button_cancelled_during_finish(mock_page):
     """Test CancelledError when clicking finish button."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    finish_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    finish_btn = create_robust_locator()
+    textarea = create_robust_locator(text="Content")
 
     mock_page.locator.return_value.last = last_msg
-    last_msg.get_by_label = MagicMock(
-        side_effect=lambda label: edit_btn if label == "Edit" else finish_btn
+    last_msg.get_by_label.side_effect = (
+        lambda label: edit_btn if label == "Edit" else finish_btn
     )
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
-    textarea.count = AsyncMock(return_value=1)  # Element exists
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
-    textarea.get_attribute = AsyncMock(return_value="Content")
+
+    textarea.get_attribute.return_value = "Content"
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
+
         # Multiple calls: edit visible, textarea visible, finish visible (cancelled)
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=[None, None, asyncio.CancelledError]
-        )
+        async def async_success(*args, **kwargs):
+            return None
+
+        mock_expect_obj.to_be_visible.side_effect = [
+            async_success(),
+            async_success(),
+            asyncio.CancelledError,
+        ]
         mock_expect.return_value = mock_expect_obj
 
         with pytest.raises(asyncio.CancelledError):
@@ -830,30 +779,25 @@ async def test_get_response_via_edit_button_cancelled_during_finish():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_skip_finish_on_textarea_failure():
+async def test_get_response_via_edit_button_skip_finish_on_textarea_failure(mock_page):
     """Test that finish button is skipped when textarea reading fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    edit_btn = MagicMock()
-    textarea = MagicMock()
+    last_msg = create_robust_locator()
+    edit_btn = create_robust_locator()
+    textarea = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
     last_msg.locator.return_value = textarea
-    last_msg.hover = AsyncMock()
-    edit_btn.click = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         # Edit button visible, textarea not visible
         mock_expect_obj = MagicMock()
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=[
-                None,
-                PlaywrightAsyncError("Textarea not visible"),
-            ]
-        )
+        mock_expect_obj.to_be_visible.side_effect = [
+            None,
+            PlaywrightAsyncError("Textarea not visible"),
+        ]
         mock_expect.return_value = mock_expect_obj
 
         result = await get_response_via_edit_button(
@@ -865,11 +809,10 @@ async def test_get_response_via_edit_button_skip_finish_on_textarea_failure():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_client_disconnected():
+async def test_get_response_via_edit_button_client_disconnected(mock_page):
     """Test ClientDisconnectedError is re-raised."""
     from models import ClientDisconnectedError
 
-    mock_page = make_mock_page()
     check_disconnect = MagicMock(side_effect=ClientDisconnectedError("Disconnected"))
 
     with pytest.raises(ClientDisconnectedError):
@@ -877,33 +820,29 @@ async def test_get_response_via_edit_button_client_disconnected():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_cancelled_top_level():
+async def test_get_response_via_edit_button_cancelled_top_level(mock_page):
     """Test top-level CancelledError handling."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
+    last_msg = create_robust_locator()
     mock_page.locator.return_value.last = last_msg
-    last_msg.hover = AsyncMock(side_effect=asyncio.CancelledError)
+    last_msg.hover.side_effect = asyncio.CancelledError
 
     with pytest.raises(asyncio.CancelledError):
         await get_response_via_edit_button(mock_page, "req_id", check_disconnect)
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_edit_button_unexpected_error():
+async def test_get_response_via_edit_button_unexpected_error(mock_page):
     """Test unexpected exception handling."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
+    last_msg = create_robust_locator()
     mock_page.locator.return_value.last = last_msg
-    last_msg.hover = AsyncMock(side_effect=RuntimeError("Unexpected error"))
+    last_msg.hover.side_effect = RuntimeError("Unexpected error")
 
     with patch(
-        "browser_utils.operations_modules.interactions.save_error_snapshot",
+        "browser_utils.operations.save_error_snapshot",
         new_callable=AsyncMock,
     ) as mock_save:
         result = await get_response_via_edit_button(
@@ -915,29 +854,25 @@ async def test_get_response_via_edit_button_unexpected_error():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_more_options_failure():
+async def test_get_response_via_copy_button_more_options_failure(mock_page):
     """Test when more options button fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
-    last_msg.hover = AsyncMock()
 
     with (
         patch("playwright.async_api.expect") as mock_expect,
         patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ) as mock_save,
     ):
         mock_expect_obj = MagicMock()
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=PlaywrightAsyncError("Not visible")
-        )
+        mock_expect_obj.to_be_visible.side_effect = PlaywrightAsyncError("Not visible")
         mock_expect.return_value = mock_expect_obj
 
         result = await get_response_via_copy_button(
@@ -949,20 +884,16 @@ async def test_get_response_via_copy_button_more_options_failure():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_cancelled_during_more_options():
+async def test_get_response_via_copy_button_cancelled_during_more_options(mock_page):
     """Test CancelledError when clicking more options."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
+    last_msg = create_robust_locator()
     mock_page.locator.return_value.last = last_msg
-    last_msg.hover = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
-        mock_expect_obj.to_be_visible = AsyncMock(side_effect=asyncio.CancelledError)
+        mock_expect_obj.to_be_visible.side_effect = asyncio.CancelledError
         mock_expect.return_value = mock_expect_obj
 
         with pytest.raises(asyncio.CancelledError):
@@ -970,33 +901,31 @@ async def test_get_response_via_copy_button_cancelled_during_more_options():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_copy_button_failure():
+async def test_get_response_via_copy_button_copy_button_failure(mock_page):
     """Test when copy markdown button fails."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
-    copy_btn = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
+    copy_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
     mock_page.get_by_role.return_value = copy_btn
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
 
     with (
         patch("playwright.async_api.expect") as mock_expect,
         patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ) as mock_save,
     ):
         mock_expect_obj = MagicMock()
         # More options visible, copy button not visible
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=[None, PlaywrightAsyncError("Copy button not visible")]
-        )
+        mock_expect_obj.to_be_visible.side_effect = [
+            None,
+            PlaywrightAsyncError("Copy button not visible"),
+        ]
         mock_expect.return_value = mock_expect_obj
 
         result = await get_response_via_copy_button(
@@ -1008,27 +937,27 @@ async def test_get_response_via_copy_button_copy_button_failure():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_cancelled_during_copy_click():
+async def test_get_response_via_copy_button_cancelled_during_copy_click(mock_page):
     """Test CancelledError when clicking copy button."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
+
         # More options visible, then cancelled on copy button
-        mock_expect_obj.to_be_visible = AsyncMock(
-            side_effect=[None, asyncio.CancelledError]
-        )
+        async def async_success(*args, **kwargs):
+            return None
+
+        mock_expect_obj.to_be_visible.side_effect = [
+            async_success(),
+            asyncio.CancelledError,
+        ]
         mock_expect.return_value = mock_expect_obj
 
         with pytest.raises(asyncio.CancelledError):
@@ -1036,30 +965,27 @@ async def test_get_response_via_copy_button_cancelled_during_copy_click():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_copy_not_successful():
+async def test_get_response_via_copy_button_copy_not_successful(mock_page):
     """Test when copy_success flag is False."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
-    copy_btn = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
+    copy_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
     mock_page.get_by_role.return_value = copy_btn
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
         mock_expect_obj.to_be_visible = AsyncMock()
         mock_expect.return_value = mock_expect_obj
 
-        copy_btn.click = AsyncMock(side_effect=PlaywrightAsyncError("Silent failure"))
+        copy_btn.click.side_effect = PlaywrightAsyncError("Silent failure")
 
         with patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ):
             result = await get_response_via_copy_button(
@@ -1069,22 +995,18 @@ async def test_get_response_via_copy_button_copy_not_successful():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_clipboard_empty():
+async def test_get_response_via_copy_button_clipboard_empty(mock_page):
     """Test when clipboard content is empty."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
-    copy_btn = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
+    copy_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
     mock_page.get_by_role.return_value = copy_btn
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
-    copy_btn.click = AsyncMock()
-    mock_page.evaluate = AsyncMock(return_value="")  # Empty clipboard
+    mock_page.evaluate.return_value = ""  # Empty clipboard
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -1099,29 +1021,25 @@ async def test_get_response_via_copy_button_clipboard_empty():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_clipboard_read_error():
+async def test_get_response_via_copy_button_clipboard_read_error(mock_page):
     """Test clipboard read failure."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
-    copy_btn = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
+    copy_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
     mock_page.get_by_role.return_value = copy_btn
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
-    copy_btn.click = AsyncMock()
-    mock_page.evaluate = AsyncMock(
-        side_effect=PlaywrightAsyncError("clipboard-read permission denied")
+    mock_page.evaluate.side_effect = PlaywrightAsyncError(
+        "clipboard-read permission denied"
     )
 
     with (
         patch("playwright.async_api.expect") as mock_expect,
         patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ) as mock_save,
     ):
@@ -1138,27 +1056,23 @@ async def test_get_response_via_copy_button_clipboard_read_error():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_clipboard_read_other_error():
+async def test_get_response_via_copy_button_clipboard_read_other_error(mock_page):
     """Test clipboard read with non-permission error."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
-    copy_btn = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
+    copy_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
     mock_page.get_by_role.return_value = copy_btn
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
-    copy_btn.click = AsyncMock()
-    mock_page.evaluate = AsyncMock(side_effect=PlaywrightAsyncError("Network error"))
+    mock_page.evaluate.side_effect = PlaywrightAsyncError("Network error")
 
     with (
         patch("playwright.async_api.expect") as mock_expect,
         patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ) as mock_save,
     ):
@@ -1175,24 +1089,18 @@ async def test_get_response_via_copy_button_clipboard_read_other_error():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_cancelled_during_clipboard():
+async def test_get_response_via_copy_button_cancelled_during_clipboard(mock_page):
     """Test CancelledError during clipboard read."""
-    import asyncio
-
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
-    more_opts = MagicMock()
-    copy_btn = MagicMock()
+    last_msg = create_robust_locator()
+    more_opts = create_robust_locator()
+    copy_btn = create_robust_locator()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = more_opts
     mock_page.get_by_role.return_value = copy_btn
-    last_msg.hover = AsyncMock()
-    more_opts.click = AsyncMock()
-    copy_btn.click = AsyncMock()
-    mock_page.evaluate = AsyncMock(side_effect=asyncio.CancelledError)
+    mock_page.evaluate.side_effect = asyncio.CancelledError
 
     with patch("playwright.async_api.expect") as mock_expect:
         mock_expect_obj = MagicMock()
@@ -1204,45 +1112,16 @@ async def test_get_response_via_copy_button_cancelled_during_clipboard():
 
 
 @pytest.mark.asyncio
-async def test_get_response_via_copy_button_client_disconnected():
-    """Test ClientDisconnectedError is re-raised."""
-    from models import ClientDisconnectedError
-
-    mock_page = make_mock_page()
-    check_disconnect = MagicMock(side_effect=ClientDisconnectedError("Disconnected"))
-
-    with pytest.raises(ClientDisconnectedError):
-        await get_response_via_copy_button(mock_page, "req_id", check_disconnect)
-
-
-@pytest.mark.asyncio
-async def test_get_response_via_copy_button_cancelled_top_level():
-    """Test top-level CancelledError handling."""
-    import asyncio
-
-    mock_page = make_mock_page()
-    check_disconnect = MagicMock()
-
-    last_msg = MagicMock()
-    mock_page.locator.return_value.last = last_msg
-    last_msg.hover = AsyncMock(side_effect=asyncio.CancelledError)
-
-    with pytest.raises(asyncio.CancelledError):
-        await get_response_via_copy_button(mock_page, "req_id", check_disconnect)
-
-
-@pytest.mark.asyncio
-async def test_get_response_via_copy_button_unexpected_error():
+async def test_get_response_via_copy_button_unexpected_error(mock_page):
     """Test unexpected exception handling."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
-    last_msg = MagicMock()
+    last_msg = create_robust_locator()
     mock_page.locator.return_value.last = last_msg
-    last_msg.hover = AsyncMock(side_effect=RuntimeError("Unexpected"))
+    last_msg.hover.side_effect = RuntimeError("Unexpected")
 
     with patch(
-        "browser_utils.operations_modules.interactions.save_error_snapshot",
+        "browser_utils.operations.save_error_snapshot",
         new_callable=AsyncMock,
     ) as mock_save:
         result = await get_response_via_copy_button(
@@ -1254,14 +1133,13 @@ async def test_get_response_via_copy_button_unexpected_error():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_client_disconnect_early():
+async def test_wait_for_response_completion_client_disconnect_early(mock_page):
     """Test client disconnect at loop start."""
     from models import ClientDisconnectedError
 
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator()
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock(side_effect=ClientDisconnectedError("Disconnected"))
 
     result = await _wait_for_response_completion(
@@ -1281,20 +1159,18 @@ async def test_wait_for_response_completion_client_disconnect_early():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_timeout():
+async def test_wait_for_response_completion_timeout(mock_page):
     """Test timeout before completion."""
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator(text="text")
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock()
 
     # Always return non-completion state
-    prompt_area.input_value = AsyncMock(return_value="text")
-    submit_btn.is_disabled = AsyncMock(return_value=False)
+    submit_btn.is_disabled.return_value = False
 
     with patch(
-        "browser_utils.operations_modules.interactions.save_error_snapshot",
+        "browser_utils.operations.save_error_snapshot",
         new_callable=AsyncMock,
     ) as mock_save:
         result = await _wait_for_response_completion(
@@ -1315,14 +1191,15 @@ async def test_wait_for_response_completion_timeout():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_client_disconnect_after_timeout_check():
+async def test_wait_for_response_completion_client_disconnect_after_timeout_check(
+    mock_page,
+):
     """Test client disconnect after timeout check."""
     from models import ClientDisconnectedError
 
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator()
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
 
     call_count = [0]
 
@@ -1333,8 +1210,7 @@ async def test_wait_for_response_completion_client_disconnect_after_timeout_chec
 
     check_disconnect = MagicMock(side_effect=check_with_delay)
 
-    prompt_area.input_value = AsyncMock(return_value="")
-    submit_btn.is_disabled = AsyncMock(return_value=True)
+    submit_btn.is_disabled.return_value = True
 
     result = await _wait_for_response_completion(
         mock_page,
@@ -1353,17 +1229,14 @@ async def test_wait_for_response_completion_client_disconnect_after_timeout_chec
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_submit_button_timeout():
+async def test_wait_for_response_completion_submit_button_timeout(mock_page):
     """Test submit button is_disabled timeout."""
     from playwright.async_api import TimeoutError
 
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator(text="")
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock()
-
-    prompt_area.input_value = AsyncMock(return_value="")
 
     call_count = [0]
 
@@ -1373,8 +1246,8 @@ async def test_wait_for_response_completion_submit_button_timeout():
             raise TimeoutError("Timeout")
         return True
 
-    submit_btn.is_disabled = submit_timeout
-    edit_btn.is_visible = AsyncMock(return_value=True)
+    submit_btn.is_disabled.side_effect = submit_timeout
+    edit_btn.is_visible.return_value = True
 
     result = await _wait_for_response_completion(
         mock_page,
@@ -1393,14 +1266,15 @@ async def test_wait_for_response_completion_submit_button_timeout():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_client_disconnect_after_button_check():
+async def test_wait_for_response_completion_client_disconnect_after_button_check(
+    mock_page,
+):
     """Test client disconnect after button state check."""
     from models import ClientDisconnectedError
 
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator()
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
 
     call_count = [0]
 
@@ -1411,8 +1285,7 @@ async def test_wait_for_response_completion_client_disconnect_after_button_check
 
     check_disconnect = MagicMock(side_effect=check_with_delay)
 
-    prompt_area.input_value = AsyncMock(return_value="")
-    submit_btn.is_disabled = AsyncMock(return_value=True)
+    submit_btn.is_disabled.return_value = True
 
     result = await _wait_for_response_completion(
         mock_page,
@@ -1431,23 +1304,15 @@ async def test_wait_for_response_completion_client_disconnect_after_button_check
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_debug_logging():
+async def test_wait_for_response_completion_debug_logging(mock_page):
     """Test debug logging for main conditions."""
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator(text="")
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock()
 
-    call_count = [0]
-
-    async def input_value_side_effect():
-        call_count[0] += 1
-        return ""
-
-    prompt_area.input_value = input_value_side_effect
-    submit_btn.is_disabled = AsyncMock(return_value=True)
-    edit_btn.is_visible = AsyncMock(return_value=True)
+    submit_btn.is_disabled.return_value = True
+    edit_btn.is_visible.return_value = True
 
     with patch("config.DEBUG_LOGS_ENABLED", True):
         result = await _wait_for_response_completion(
@@ -1467,18 +1332,16 @@ async def test_wait_for_response_completion_debug_logging():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_edit_button_timeout():
+async def test_wait_for_response_completion_edit_button_timeout(mock_page):
     """Test edit button is_visible timeout with debug logging."""
     from playwright.async_api import TimeoutError
 
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator(text="")
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock()
 
-    prompt_area.input_value = AsyncMock(return_value="")
-    submit_btn.is_disabled = AsyncMock(return_value=True)
+    submit_btn.is_disabled.return_value = True
 
     call_count = [0]
 
@@ -1488,7 +1351,7 @@ async def test_wait_for_response_completion_edit_button_timeout():
             raise TimeoutError("Edit button not visible yet")
         return True
 
-    edit_btn.is_visible = edit_visible_side_effect
+    edit_btn.is_visible.side_effect = edit_visible_side_effect
 
     with patch("config.DEBUG_LOGS_ENABLED", True):
         result = await _wait_for_response_completion(
@@ -1508,14 +1371,15 @@ async def test_wait_for_response_completion_edit_button_timeout():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_client_disconnect_after_edit_check():
+async def test_wait_for_response_completion_client_disconnect_after_edit_check(
+    mock_page,
+):
     """Test client disconnect after edit button check."""
     from models import ClientDisconnectedError
 
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator()
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
 
     call_count = [0]
 
@@ -1526,9 +1390,8 @@ async def test_wait_for_response_completion_client_disconnect_after_edit_check()
 
     check_disconnect = MagicMock(side_effect=check_with_delay)
 
-    prompt_area.input_value = AsyncMock(return_value="")
-    submit_btn.is_disabled = AsyncMock(return_value=True)
-    edit_btn.is_visible = AsyncMock(return_value=False)
+    submit_btn.is_disabled.return_value = True
+    edit_btn.is_visible.return_value = False
 
     result = await _wait_for_response_completion(
         mock_page,
@@ -1547,17 +1410,15 @@ async def test_wait_for_response_completion_client_disconnect_after_edit_check()
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_heuristic_completion():
+async def test_wait_for_response_completion_heuristic_completion(mock_page):
     """Test heuristic completion when conditions met 3+ times."""
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator(text="")
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock()
 
-    prompt_area.input_value = AsyncMock(return_value="")
-    submit_btn.is_disabled = AsyncMock(return_value=True)
-    edit_btn.is_visible = AsyncMock(return_value=False)
+    submit_btn.is_disabled.return_value = True
+    edit_btn.is_visible.return_value = False
 
     result = await _wait_for_response_completion(
         mock_page,
@@ -1576,12 +1437,11 @@ async def test_wait_for_response_completion_heuristic_completion():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_response_completion_conditions_not_met_with_debug():
+async def test_wait_for_response_completion_conditions_not_met_with_debug(mock_page):
     """Test debug logging when main conditions not met."""
-    mock_page = make_mock_page()
-    prompt_area = MagicMock()
-    submit_btn = MagicMock()
-    edit_btn = MagicMock()
+    prompt_area = create_robust_locator()
+    submit_btn = create_robust_locator()
+    edit_btn = create_robust_locator()
     check_disconnect = MagicMock()
 
     call_count = [0]
@@ -1592,9 +1452,9 @@ async def test_wait_for_response_completion_conditions_not_met_with_debug():
             return "text"
         return ""
 
-    prompt_area.input_value = input_value_side_effect
-    submit_btn.is_disabled = AsyncMock(return_value=True)
-    edit_btn.is_visible = AsyncMock(return_value=True)
+    prompt_area.input_value.side_effect = input_value_side_effect
+    submit_btn.is_disabled.return_value = True
+    edit_btn.is_visible.return_value = True
 
     with patch("config.DEBUG_LOGS_ENABLED", True):
         result = await _wait_for_response_completion(
@@ -1614,22 +1474,21 @@ async def test_wait_for_response_completion_conditions_not_met_with_debug():
 
 
 @pytest.mark.asyncio
-async def test_get_final_response_content_all_methods_fail():
+async def test_get_final_response_content_all_methods_fail(mock_page):
     """Test when both edit and copy methods fail."""
-    mock_page = make_mock_page()
     check_disconnect = MagicMock()
 
     with (
         patch(
-            "browser_utils.operations_modules.interactions.get_response_via_edit_button",
+            "browser_utils.operations.get_response_via_edit_button",
             new_callable=AsyncMock,
         ) as mock_edit,
         patch(
-            "browser_utils.operations_modules.interactions.get_response_via_copy_button",
+            "browser_utils.operations.get_response_via_copy_button",
             new_callable=AsyncMock,
         ) as mock_copy,
         patch(
-            "browser_utils.operations_modules.interactions.save_error_snapshot",
+            "browser_utils.operations.save_error_snapshot",
             new_callable=AsyncMock,
         ) as mock_save,
     ):

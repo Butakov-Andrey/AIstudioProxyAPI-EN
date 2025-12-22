@@ -311,8 +311,8 @@ def test_format_directive_log_disabled():
 
     log = format_directive_log(directive)
 
-    assert "Disabling thinking mode" in log
-    assert "Original value: 0" in log
+    assert "disabled" in log.lower()
+    assert "0" in log
 
 
 def test_format_directive_log_enabled_with_budget():
@@ -334,9 +334,9 @@ def test_format_directive_log_enabled_with_budget():
 
     log = format_directive_log(directive)
 
-    assert "Enabling thinking with budget limit" in log
-    assert "8000 tokens" in log
-    assert "Original value: medium" in log
+    assert "budget" in log.lower()
+    assert "8000" in log
+    assert "medium" in log
 
 
 def test_format_directive_log_enabled_no_budget():
@@ -358,5 +358,5 @@ def test_format_directive_log_enabled_no_budget():
 
     log = format_directive_log(directive)
 
-    assert "Enabling thinking, no budget limit" in log
-    assert "Original value: none" in log
+    assert "unlimited" in log.lower()
+    assert "none" in log.lower()

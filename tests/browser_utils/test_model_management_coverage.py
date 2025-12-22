@@ -619,68 +619,45 @@ async def test_set_model_display_exception(mock_page):
     await _set_model_from_page_display(mock_page, set_storage=False)
 
 
-# ===== Complex Revert Logic Coverage (Lines 430-554) =====
+# ===== Updated Switch Model Coverage (No revert logic anymore) =====
 
 
 @pytest.mark.asyncio
-async def test_switch_model_revert_read_fail_with_original(mock_page):
-    """Lines 431-459: Revert path when reading display fails, with original prefs."""
-    original_prefs = json.dumps({"promptModel": "models/original-model"})
-
-    # Setup evaluation sequence
-    evaluations = [
-        original_prefs,  # First: get original prefs
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Final prefs (mismatch)
-        None,  # Revert: restore original prefs
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    # Model name locator fails on revert attempt
-    mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Display read failed"),  # First storage check fails
-            Exception("Revert read fails"),  # Revert display read also fails
-        ]
-    )
-    mock_page.locator.return_value = mock_locator
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            return_value=True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-        # Should attempt to restore original prefs
-        assert mock_page.goto.call_count >= 2
-
-
-@pytest.mark.asyncio
-async def test_switch_model_revert_read_fail_no_original(mock_page):
-    """Lines 455-459: Revert path when no original prefs available."""
-    # No original prefs
+async def test_switch_model_validation_fail_storage(mock_page):
+    """Cover failure path when storage does not match target."""
+    original_prefs = json.dumps({"promptModel": "models/old"})
     mock_page.evaluate.side_effect = [
-        None,  # No original prefs
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Final prefs (mismatch)
+        original_prefs,  # get original
+        None,  # set target
+        None,  # set target (compat)
+        original_prefs,  # get final (mismatch!)
+    ]
+
+    with (
+        patch(
+            "browser_utils.models.switcher._verify_and_apply_ui_state",
+            return_value=True,
+        ),
+        patch("browser_utils.models.switcher.expect_async") as mock_expect,
+    ):
+        mock_expect.return_value.to_be_visible = AsyncMock()
+        result = await switch_ai_studio_model(mock_page, "new", "req1")
+        assert result is False
+
+
+@pytest.mark.asyncio
+async def test_switch_model_validation_fail_display(mock_page):
+    """Cover failure path when page display does not match target."""
+    prefs = json.dumps({"promptModel": "models/new"})
+    mock_page.evaluate.side_effect = [
+        json.dumps({"promptModel": "models/old"}),  # original
+        None,  # set
+        None,  # set compat
+        prefs,  # final check ok
     ]
 
     mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Display read failed"),  # Storage check fails
-            Exception("Revert read fails"),  # Revert display read also fails
-        ]
-    )
+    mock_locator.first.inner_text = AsyncMock(return_value="wrong-display")
     mock_page.locator.return_value = mock_locator
 
     with (
@@ -691,301 +668,7 @@ async def test_switch_model_revert_read_fail_no_original(mock_page):
         patch("browser_utils.models.switcher.expect_async") as mock_expect,
     ):
         mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-
-
-@pytest.mark.asyncio
-async def test_switch_model_revert_with_valid_display(mock_page):
-    """Lines 461-526: Revert with successful display read."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,  # Original prefs
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Final prefs mismatch
-        "current-model",  # Revert: read current display name (invalid, will be replaced)
-        json.dumps({}),  # Revert: get current localStorage for base prefs
-        None,  # Revert: set localStorage with reverted model
-        None,  # Revert: set localStorage again (UI state compatibility)
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("First check fails"),  # Initial storage check fails
-            "current-model",  # Revert: successfully read display
-        ]
-    )
-    mock_page.locator.return_value = mock_locator
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            return_value=True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-        # Should navigate for revert
-        assert mock_page.goto.call_count >= 2
-
-
-@pytest.mark.asyncio
-async def test_switch_model_revert_ls_parse_fail(mock_page):
-    """Lines 483-488: Revert localStorage parse fails, uses original prefs."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,  # Original prefs
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Mismatch
-        "invalid json",  # Revert: current localStorage is invalid JSON
-        None,  # Revert: set localStorage with reverted model
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Check fails"),  # Initial check fails
-            "fallback-model",  # Revert: successfully read display
-        ]
-    )
-    mock_page.locator.return_value = mock_locator
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            return_value=True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-
-
-@pytest.mark.asyncio
-async def test_switch_model_revert_ui_state_fail(mock_page):
-    """Lines 494-496: Revert UI state setting fails."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,  # Original prefs
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Mismatch
-        json.dumps({}),  # Revert: get current localStorage
-        None,  # Revert: set localStorage
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Check fails"),
-            "revert-model",
-        ]
-    )
-    mock_page.locator.return_value = mock_locator
-
-    ui_calls = [True, False, False]  # Initial succeeds, revert fails twice
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            side_effect=lambda *args: ui_calls.pop(0) if ui_calls else False,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-
-
-@pytest.mark.asyncio
-async def test_switch_model_revert_final_ui_success(mock_page):
-    """Lines 518-522: Revert final UI state verification success."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Mismatch
-        json.dumps({}),  # Revert: get localStorage
-        None,  # Revert: set localStorage
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Check fails"),
-            "revert-model",
-        ]
-    )
-    mock_page.locator.return_value = mock_locator
-
-    ui_calls = [True, True, True]  # All UI state calls succeed
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            side_effect=lambda *args: ui_calls.pop(0) if ui_calls else True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-
-
-@pytest.mark.asyncio
-async def test_switch_model_no_revert_id_with_original(mock_page):
-    """Lines 527-553: No valid revert ID, fallback to original prefs."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Mismatch
-        None,  # Final fallback: restore original
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    mock_locator = MagicMock()
-    # Return "Cannot read" to trigger no-valid-ID path
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Check fails"),
-            "   ",  # Whitespace-only, strips to empty -> treated as invalid
-        ]
-    )
-    mock_page.locator.return_value = mock_locator
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            return_value=True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-        # Should attempt final fallback restoration
-        assert mock_page.goto.call_count >= 2
-
-
-@pytest.mark.asyncio
-async def test_switch_model_no_revert_id_no_original(mock_page):
-    """Lines 551-552: No revert ID and no original prefs."""
-    evaluations = [
-        None,  # No original prefs
-        None,  # Set new promptModel
-        None,  # Set UI state
-        json.dumps({"promptModel": "models/wrong"}),  # Mismatch
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Check fails"),
-            "",  # Empty display name
-        ]
-    )
-    mock_page.locator.return_value = mock_locator
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            return_value=True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-
-
-@pytest.mark.asyncio
-async def test_switch_model_exception_recovery_with_original(mock_page):
-    """Lines 564-586: Exception handling with original prefs recovery."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,  # Get original prefs
-        Exception("Critical failure"),  # Trigger exception path
-        None,  # Recovery: restore original
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            return_value=True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-        patch("browser_utils.operations.save_error_snapshot", new_callable=AsyncMock),
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
-        assert result is False
-        # Should attempt recovery
-        assert mock_page.goto.call_count >= 1
-
-
-@pytest.mark.asyncio
-async def test_switch_model_exception_recovery_fail(mock_page):
-    """Lines 582-585: Exception recovery itself fails."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,  # Get original prefs
-        Exception("First failure"),  # Trigger exception
-        Exception("Recovery also fails"),  # Recovery evaluate fails
-    ]
-    mock_page.evaluate.side_effect = evaluations
-
-    mock_page.goto.side_effect = Exception("Goto fails")
-
-    with (
-        patch(
-            "browser_utils.models.switcher._verify_and_apply_ui_state",
-            return_value=True,
-        ),
-        patch("browser_utils.models.switcher.expect_async") as mock_expect,
-        patch("browser_utils.operations.save_error_snapshot", new_callable=AsyncMock),
-    ):
-        mock_expect.return_value.to_be_visible = AsyncMock()
-
-        result = await switch_ai_studio_model(mock_page, "new-model", "req1")
-
+        result = await switch_ai_studio_model(mock_page, "new", "req1")
         assert result is False
 
 
@@ -1205,26 +888,19 @@ async def test_switch_model_incognito_cancellederror(mock_page):
 
 @pytest.mark.asyncio
 async def test_switch_model_revert_cancellederror(mock_page):
-    """Lines 429-430: CancelledError during revert display read."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    # Make evaluation also throw CancelledError on revert attempts
-    evaluations = [
-        original_prefs,
+    """Lines 360-361: CancelledError during display name read."""
+    # We trigger CancelledError when reading the displayed model name
+    # after navigation, which is part of the validation flow.
+    prefs = json.dumps({"promptModel": "models/old"})
+    mock_page.evaluate.side_effect = [
+        prefs,
         None,
         None,
-        json.dumps({"promptModel": "models/wrong"}),
-        asyncio.CancelledError(),  # CancelledError during revert evaluate
+        json.dumps({"promptModel": "models/new"}),
     ]
-    mock_page.evaluate.side_effect = evaluations
 
     mock_locator = MagicMock()
-    mock_locator.first.inner_text = AsyncMock(
-        side_effect=[
-            Exception("Check fails"),  # Initial check fails, enters revert
-            asyncio.CancelledError(),  # CancelledError during revert display read
-        ]
-    )
+    mock_locator.first.inner_text = AsyncMock(side_effect=asyncio.CancelledError())
     mock_page.locator.return_value = mock_locator
 
     with (
@@ -1233,25 +909,18 @@ async def test_switch_model_revert_cancellederror(mock_page):
             return_value=True,
         ),
         patch("browser_utils.models.switcher.expect_async") as mock_expect,
-        patch("browser_utils.operations.save_error_snapshot", new_callable=AsyncMock),
     ):
         mock_expect.return_value.to_be_visible = AsyncMock()
 
         with pytest.raises(asyncio.CancelledError):
-            await switch_ai_studio_model(mock_page, "new-model", "req1")
+            await switch_ai_studio_model(mock_page, "new", "req1")
 
 
 @pytest.mark.asyncio
 async def test_switch_model_exception_recovery_cancellederror(mock_page):
-    """Lines 582-583: CancelledError during exception recovery."""
-    original_prefs = json.dumps({"promptModel": "models/original"})
-
-    evaluations = [
-        original_prefs,
-        Exception("Trigger exception path"),
-        asyncio.CancelledError(),  # CancelledError during recovery
-    ]
-    mock_page.evaluate.side_effect = evaluations
+    """Lines 208-209: CancelledError propagation."""
+    # We trigger CancelledError during the initial evaluate
+    mock_page.evaluate.side_effect = asyncio.CancelledError()
 
     with (
         patch(
@@ -1259,7 +928,6 @@ async def test_switch_model_exception_recovery_cancellederror(mock_page):
             return_value=True,
         ),
         patch("browser_utils.models.switcher.expect_async") as mock_expect,
-        patch("browser_utils.operations.save_error_snapshot", new_callable=AsyncMock),
     ):
         mock_expect.return_value.to_be_visible = AsyncMock()
 

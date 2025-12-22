@@ -1,3 +1,4 @@
+import asyncio
 import unittest.mock
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -13,6 +14,8 @@ from browser_utils.page_controller_modules.thinking import (
 def mock_controller(mock_page):
     logger = MagicMock()
     controller = ThinkingController(mock_page, logger, "req_123")
+    controller.params_cache = {}
+    controller.cache_lock = asyncio.Lock()
     return controller
 
 
@@ -80,7 +83,11 @@ def test_get_thinking_category(mock_controller):
 @pytest.mark.asyncio
 async def test_has_thinking_dropdown(mock_controller, mock_page):
     # Case 1: Exists and visible
-    mock_page.locator.return_value.count = AsyncMock(return_value=1)
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)
+    mock_locator.first = mock_locator
+    mock_page.locator.return_value = mock_locator
+
     mock_expect = MagicMock()
     mock_expect.return_value.to_be_visible = AsyncMock()
 
@@ -117,12 +124,17 @@ async def test_handle_thinking_budget_disabled(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
     # reasoning_effort=0 -> disabled
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 0}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": 0},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
 
     mock_controller._control_thinking_mode_toggle.assert_called_with(
@@ -141,7 +153,11 @@ async def test_handle_thinking_budget_disabled_non_flash(mock_controller):
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 0}, "gemini-2.5-pro", MagicMock(return_value=False)
+        {"reasoning_effort": 0},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-2.5-pro",
+        MagicMock(return_value=False),
     )
 
     # THINKING_PRO has no main toggle (always on), so budget toggle is called
@@ -164,32 +180,52 @@ async def test_handle_thinking_budget_enabled_level(mock_controller):
 
     # High
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "high"}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": "high"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_called_with("high", unittest.mock.ANY)
 
     # Low
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "low"}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": "low"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_called_with("low", unittest.mock.ANY)
 
     # Int >= 8000 -> High
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 8000}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": 8000},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_called_with("high", unittest.mock.ANY)
 
     # Int < 8000 -> Low
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 100}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": 100},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_called_with("low", unittest.mock.ANY)
 
     # Invalid -> Keep current (None)
     mock_controller._set_thinking_level.reset_mock()
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "invalid"}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": "invalid"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_not_called()
 
@@ -225,6 +261,8 @@ async def test_handle_thinking_budget_flash_4_levels(mock_controller):
         mock_controller._set_thinking_level.reset_mock()
         await mock_controller._handle_thinking_budget(
             {"reasoning_effort": input_level},
+            mock_controller.params_cache,
+            mock_controller.cache_lock,
             "gemini-3-flash-preview",
             MagicMock(return_value=False),
         )
@@ -270,6 +308,8 @@ async def test_handle_thinking_budget_flash_numeric_thresholds(mock_controller):
         mock_controller._set_thinking_level.reset_mock()
         await mock_controller._handle_thinking_budget(
             {"reasoning_effort": input_value},
+            mock_controller.params_cache,
+            mock_controller.cache_lock,
             "gemini-3-flash-preview",
             MagicMock(return_value=False),
         )
@@ -287,6 +327,8 @@ async def test_handle_thinking_budget_enabled_budget_caps(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
@@ -295,6 +337,8 @@ async def test_handle_thinking_budget_enabled_budget_caps(mock_controller):
     # Flash Lite (cap 32k or 24k? Code says 24576 for flash-lite)
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": 100000},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
         "gemini-2.0-flash-lite",
         MagicMock(return_value=False),
     )
@@ -309,19 +353,24 @@ async def test_handle_thinking_budget_no_limit(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
-    # normalize_reasoning_effort returns budget_enabled=False for -1 or 'none' if configured so?
-    # Actually normalize_reasoning_effort behavior: 'none' -> thinking_enabled=True, budget_enabled=False
+    # normalize_reasoning_effort_with_stream_check returns budget_enabled=False for -1 or 'none' if configured so?
+    # Actually normalize_reasoning_effort_with_stream_check behavior: 'none' -> thinking_enabled=True, budget_enabled=False
     # Let's rely on _handle_thinking_budget logic for "budget_enabled"
 
     # If reasoning_effort is None -> thinking disabled by default if normalize returns disabled
     # If reasoning_effort is "none" (string) -> Thinking enabled (default), Budget disabled (unlimited)
 
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "none"}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": "none"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
     mock_controller._control_thinking_mode_toggle.assert_called_with(
         should_be_enabled=True, check_client_disconnected=unittest.mock.ANY
@@ -495,6 +544,7 @@ async def test_handle_thinking_budget_various_inputs(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
@@ -502,7 +552,11 @@ async def test_handle_thinking_budget_various_inputs(mock_controller):
 
     # String "none" -> enabled (No budget limit implies enabled)
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "none"}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": "none"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
     mock_controller._control_thinking_mode_toggle.assert_called_with(
         should_be_enabled=True, check_client_disconnected=unittest.mock.ANY
@@ -510,7 +564,11 @@ async def test_handle_thinking_budget_various_inputs(mock_controller):
 
     # String "100" -> enabled
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "100"}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": "100"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
     mock_controller._control_thinking_mode_toggle.assert_called_with(
         should_be_enabled=True, check_client_disconnected=unittest.mock.ANY
@@ -518,7 +576,11 @@ async def test_handle_thinking_budget_various_inputs(mock_controller):
 
     # String "0" -> disabled
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "0"}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": "0"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
     mock_controller._control_thinking_mode_toggle.assert_called_with(
         should_be_enabled=False, check_client_disconnected=unittest.mock.ANY
@@ -526,7 +588,11 @@ async def test_handle_thinking_budget_various_inputs(mock_controller):
 
     # String "-1" -> enabled
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "-1"}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": "-1"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
     mock_controller._control_thinking_mode_toggle.assert_called_with(
         should_be_enabled=True, check_client_disconnected=unittest.mock.ANY
@@ -534,7 +600,11 @@ async def test_handle_thinking_budget_various_inputs(mock_controller):
 
     # Int -1 -> enabled
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": -1}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": -1},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
     mock_controller._control_thinking_mode_toggle.assert_called_with(
         should_be_enabled=True, check_client_disconnected=unittest.mock.ANY
@@ -552,7 +622,11 @@ async def test_handle_thinking_budget_disabled_uses_level(mock_controller):
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 0}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": 0},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
 
     # THINKING_LEVEL has no main toggle (has_main_toggle=False), so no toggle call
@@ -570,12 +644,13 @@ async def test_handle_thinking_budget_downgrade_logic(mock_controller):
     mock_directive.thinking_enabled = False
 
     with patch(
-        "browser_utils.page_controller_modules.thinking.normalize_reasoning_effort",
+        "browser_utils.page_controller_modules.thinking.normalize_reasoning_effort_with_stream_check",
         return_value=mock_directive,
     ):
         mock_controller._get_thinking_category = MagicMock(
             return_value=ThinkingCategory.THINKING_FLASH
         )
+        mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
         # _control_thinking_mode_toggle fails (returns False)
         mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=False)
@@ -585,13 +660,20 @@ async def test_handle_thinking_budget_downgrade_logic(mock_controller):
         # Pass "high" -> _should_enable_from_raw returns True -> desired_enabled=True
         # But mock directive says False
         await mock_controller._handle_thinking_budget(
-            {"reasoning_effort": "high"}, "model", MagicMock(return_value=False)
+            {"reasoning_effort": "high"},
+            mock_controller.params_cache,
+            mock_controller.cache_lock,
+            "model",
+            MagicMock(return_value=False),
         )
 
-        # Should attempt to disable toggle
-        mock_controller._control_thinking_mode_toggle.assert_called_with(
-            should_be_enabled=False, check_client_disconnected=unittest.mock.ANY
-        )
+        # Should attempt to enable toggle first (master toggle logic at line 136)
+        # then attempt to disable it (fallback/downgrade logic at line 249)
+        assert mock_controller._control_thinking_mode_toggle.call_count == 2
+
+        # Check second call (the one we're interested in for downgrade logic)
+        _, kwargs = mock_controller._control_thinking_mode_toggle.call_args
+        assert kwargs["should_be_enabled"] is False
 
         # Upon failure (since we mocked return_value=False), should set budget to 0
         mock_controller._control_thinking_budget_toggle.assert_called_with(
@@ -607,13 +689,18 @@ async def test_handle_thinking_budget_cap_gemini_2_5(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_budget_value = AsyncMock()
 
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 40000}, "gemini-2.5-pro", MagicMock(return_value=False)
+        {"reasoning_effort": 40000},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-2.5-pro",
+        MagicMock(return_value=False),
     )
 
     mock_controller._set_thinking_budget_value.assert_called_with(
@@ -627,6 +714,7 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
@@ -636,7 +724,11 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
 
     # "high" -> Enable
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "high"}, "model", check_disconnect_mock
+        {"reasoning_effort": "high"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        check_disconnect_mock,
     )
     assert mock_controller._control_thinking_mode_toggle.call_count == 1
     _, kwargs = mock_controller._control_thinking_mode_toggle.call_args
@@ -645,7 +737,11 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
 
     # "low" -> Enable
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "low"}, "model", check_disconnect_mock
+        {"reasoning_effort": "low"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        check_disconnect_mock,
     )
     assert mock_controller._control_thinking_mode_toggle.call_count == 1
     _, kwargs = mock_controller._control_thinking_mode_toggle.call_args
@@ -654,7 +750,11 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
 
     # "-1" -> Enable
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "-1"}, "model", check_disconnect_mock
+        {"reasoning_effort": "-1"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        check_disconnect_mock,
     )
     assert mock_controller._control_thinking_mode_toggle.call_count == 1
     _, kwargs = mock_controller._control_thinking_mode_toggle.call_args
@@ -663,7 +763,11 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
 
     # -1 (int) -> Enable
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": -1}, "model", check_disconnect_mock
+        {"reasoning_effort": -1},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        check_disconnect_mock,
     )
     assert mock_controller._control_thinking_mode_toggle.call_count == 1
     _, kwargs = mock_controller._control_thinking_mode_toggle.call_args
@@ -671,19 +775,38 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # "none" -> Enable (unlimited budget)
-    # normalize_reasoning_effort("none") -> thinking_enabled=True
+    # normalize_reasoning_effort_with_stream_check("none") -> thinking_enabled=True
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "none"}, "model", check_disconnect_mock
+        {"reasoning_effort": "none"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        check_disconnect_mock,
     )
     assert mock_controller._control_thinking_mode_toggle.call_count == 1
     _, kwargs = mock_controller._control_thinking_mode_toggle.call_args
     assert kwargs["should_be_enabled"] is True
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
-    # "invalid" -> Disable
-    await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "invalid"}, "model", check_disconnect_mock
-    )
+    # "invalid" -> Disable (when ENABLE_THINKING_BUDGET is False)
+    with patch(
+        "browser_utils.page_controller_modules.thinking.normalize_reasoning_effort_with_stream_check"
+    ) as mock_norm:
+        from browser_utils.thinking_normalizer import ThinkingDirective
+
+        mock_norm.return_value = ThinkingDirective(
+            thinking_enabled=False,
+            budget_enabled=False,
+            budget_value=None,
+            original_value="invalid",
+        )
+        await mock_controller._handle_thinking_budget(
+            {"reasoning_effort": "invalid"},
+            mock_controller.params_cache,
+            mock_controller.cache_lock,
+            "model",
+            check_disconnect_mock,
+        )
     assert mock_controller._control_thinking_mode_toggle.call_count == 1
     _, kwargs = mock_controller._control_thinking_mode_toggle.call_args
     assert kwargs["should_be_enabled"] is False
@@ -704,7 +827,11 @@ async def test_handle_thinking_budget_skip_level_disabled(mock_controller):
     check_disconnect_mock = MagicMock(return_value=False)
 
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 0}, "gemini-3-pro", check_disconnect_mock
+        {"reasoning_effort": 0},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        check_disconnect_mock,
     )
 
     # THINKING_LEVEL has no main toggle
@@ -717,6 +844,7 @@ async def test_handle_thinking_budget_caps(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
@@ -726,7 +854,11 @@ async def test_handle_thinking_budget_caps(mock_controller):
 
     # flash -> 24576
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 40000}, "gemini-flash", check_disconnect_mock
+        {"reasoning_effort": 40000},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-flash",
+        check_disconnect_mock,
     )
     mock_controller._set_thinking_budget_value.assert_called_with(
         24576, unittest.mock.ANY
@@ -734,7 +866,11 @@ async def test_handle_thinking_budget_caps(mock_controller):
 
     # flash-lite -> 24576
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 40000}, "flash-lite", check_disconnect_mock
+        {"reasoning_effort": 40000},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "flash-lite",
+        check_disconnect_mock,
     )
     mock_controller._set_thinking_budget_value.assert_called_with(
         24576, unittest.mock.ANY
@@ -892,7 +1028,11 @@ async def test_handle_thinking_budget_invalid_string(mock_controller):
     # Test with invalid string that can't be parsed to int - should hit exception handler
     params = {"reasoning_effort": "invalid_value"}
     await mock_controller._handle_thinking_budget(
-        params, "gemini-3-pro", MagicMock(return_value=False)
+        params,
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
 
     # The exception handling path should be taken, leading to level_to_set = None
@@ -909,28 +1049,35 @@ async def test_should_enable_from_raw_edge_cases(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
     # Test string "none" (line 58-59) - should enable thinking
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "none"}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": "none"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "model",
+        MagicMock(return_value=False),
     )
     mock_controller._control_thinking_mode_toggle.assert_called_with(
         should_be_enabled=True, check_client_disconnected=unittest.mock.ANY
     )
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
-    # Test invalid type (boolean) - normalize_reasoning_effort returns default config
+    # Test invalid type (list) - normalize_reasoning_effort_with_stream_check returns default config
     # which typically enables thinking (line 66 returns False in _should_enable_from_raw,
     # but directive.thinking_enabled takes precedence)
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": [1, 2, 3]},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
         "model",
-        MagicMock(return_value=False),  # Use list instead
+        MagicMock(return_value=False),
     )
-    # normalize_reasoning_effort returns default (ENABLE_THINKING_BUDGET)
+    # normalize_reasoning_effort_with_stream_check returns default (ENABLE_THINKING_BUDGET)
     # Just verify it doesn't crash - behavior depends on config
 
 
@@ -947,19 +1094,31 @@ async def test_set_thinking_level_string_conversion_paths(mock_controller):
 
     # Test string "none" -> high (line 110-111)
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "none"}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": "none"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_called_with("high", unittest.mock.ANY)
 
     # Test string that parses to int >= 8000 (line 114-115)
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "9000"}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": "9000"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_called_with("high", unittest.mock.ANY)
 
     # Test string that parses to int < 8000 (line 115)
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "5000"}, "gemini-3-pro", MagicMock(return_value=False)
+        {"reasoning_effort": "5000"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-3-pro",
+        MagicMock(return_value=False),
     )
     mock_controller._set_thinking_level.assert_called_with("low", unittest.mock.ANY)
 
@@ -967,6 +1126,8 @@ async def test_set_thinking_level_string_conversion_paths(mock_controller):
     mock_controller._set_thinking_level.reset_mock()
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "not_a_number_or_keyword"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
         "gemini-3-pro",
         MagicMock(return_value=False),
     )
@@ -980,6 +1141,7 @@ async def test_handle_thinking_budget_no_main_toggle_enabled(mock_controller):
     mock_controller._get_thinking_category = MagicMock(
         return_value=ThinkingCategory.THINKING_FLASH
     )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=False)
 
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
@@ -987,7 +1149,11 @@ async def test_handle_thinking_budget_no_main_toggle_enabled(mock_controller):
 
     # Test with reasoning_effort that enables thinking but model has no main toggle
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 5000}, "gemini-2.5-pro", MagicMock(return_value=False)
+        {"reasoning_effort": 5000},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-2.5-pro",
+        MagicMock(return_value=False),
     )
 
     # Should call _control_thinking_mode_toggle even without main toggle (line 148-152)
@@ -1726,7 +1892,11 @@ async def test_handle_thinking_budget_non_thinking_category(mock_controller):
 
     # Should return early without calling any toggles
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": "high"}, "gemini-2.0-flash", MagicMock(return_value=False)
+        {"reasoning_effort": "high"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
+        "gemini-2.0-flash",
+        MagicMock(return_value=False),
     )
 
     mock_controller._control_thinking_mode_toggle.assert_not_called()
@@ -1760,6 +1930,8 @@ async def test_handle_thinking_budget_flash_string_numeric_parsing(mock_controll
         mock_controller._set_thinking_level.reset_mock()
         await mock_controller._handle_thinking_budget(
             {"reasoning_effort": input_value},
+            mock_controller.params_cache,
+            mock_controller.cache_lock,
             "gemini-3-flash-preview",
             MagicMock(return_value=False),
         )
@@ -1783,6 +1955,8 @@ async def test_handle_thinking_budget_pro_string_exception(mock_controller):
     # Test string that can't be parsed as int
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "invalid_string"},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
         "gemini-3-pro",
         MagicMock(return_value=False),
     )
@@ -1812,6 +1986,8 @@ async def test_handle_thinking_budget_pro_string_numeric(mock_controller):
         mock_controller._set_thinking_level.reset_mock()
         await mock_controller._handle_thinking_budget(
             {"reasoning_effort": input_value},
+            mock_controller.params_cache,
+            mock_controller.cache_lock,
             "gemini-3-pro",
             MagicMock(return_value=False),
         )
@@ -1835,6 +2011,8 @@ async def test_handle_thinking_budget_default_level_none(mock_controller):
     # Pass None reasoning_effort to trigger default level logic (line 101, 191-200)
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": None},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
         "gemini-3-pro",
         MagicMock(return_value=False),
     )
@@ -1855,6 +2033,8 @@ async def test_handle_thinking_budget_default_level_flash(mock_controller):
     # Pass None reasoning_effort to trigger default level logic
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": None},
+        mock_controller.params_cache,
+        mock_controller.cache_lock,
         "gemini-3-flash",
         MagicMock(return_value=False),
     )

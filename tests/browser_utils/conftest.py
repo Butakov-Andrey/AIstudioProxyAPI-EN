@@ -62,6 +62,7 @@ def mock_server_state(request):
     # Always ensure model_list_fetch_event exists and is set to avoid hanging
     if (
         not hasattr(mock_state, "model_list_fetch_event")
+        or isinstance(mock_state.model_list_fetch_event, MagicMock)
         or mock_state.model_list_fetch_event is None
     ):
         mock_event = asyncio.Event()

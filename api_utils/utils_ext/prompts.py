@@ -587,16 +587,16 @@ def prepare_combined_prompt(
                     current_turn_parts.append("\n")
                 current_turn_parts.append("\n".join(tool_result_lines))
 
-    if len(current_turn_parts) > 1 or (role == "assistant" and tool_calls):
-        combined_parts.append("".join(current_turn_parts))
-    elif not combined_parts and not current_turn_parts:
-        logger.debug(
-            f"(Prepare Prompt) Skipping empty message for role {role} at index {i} (and no tool calls)."
-        )
-    elif len(current_turn_parts) == 1 and not combined_parts:
-        logger.debug(
-            f"(Prepare Prompt) Skipping empty message for role {role} at index {i} (prefix only)."
-        )
+        if len(current_turn_parts) > 1 or (role == "assistant" and tool_calls):
+            combined_parts.append("".join(current_turn_parts))
+        elif not combined_parts and not current_turn_parts:
+            logger.debug(
+                f"(Prepare Prompt) Skipping empty message for role {role} at index {i} (and no tool calls)."
+            )
+        elif len(current_turn_parts) == 1 and not combined_parts:
+            logger.debug(
+                f"(Prepare Prompt) Skipping empty message for role {role} at index {i} (prefix only)."
+            )
 
     final_prompt = "".join(combined_parts)
     if final_prompt:

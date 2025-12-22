@@ -251,10 +251,15 @@ async def test_maybe_execute_tools(mock_tools_registry, mock_logger):
     assert call_args[1] == '{"arg": 1}'  # It passes the extracted JSON string
 
 
-def test_collect_and_validate_attachments(mock_file_utils, mock_logger):
+def test_collect_and_validate_attachments(mock_file_utils, mock_logger, tmp_path):
     """Test attachment collection and validation."""
     mock_extract, _, mock_exists = mock_file_utils
     mock_exists.return_value = True
+
+    valid_initial = str(tmp_path / "initial.png")
+    valid_existing = str(tmp_path / "existing.png")
+    valid_msg_att = str(tmp_path / "msg_att.png")
+
     mock_extract.return_value = "/tmp/data.png"
 
     # Mock request object
@@ -265,20 +270,20 @@ def test_collect_and_validate_attachments(mock_file_utils, mock_logger):
             self.attachments = attachments or []
 
     class MockRequest:
-        attachments = ["/tmp/existing.png", {"url": "data:image/png..."}]
+        attachments = [valid_existing, {"url": "data:image/png..."}]
         messages = [
-            MockMessage(role="user", content="text", attachments=["/tmp/msg_att.png"])
+            MockMessage(role="user", content="text", attachments=[valid_msg_att])
         ]
 
     req = MockRequest()
-    initial_list = ["/tmp/initial.png"]
+    initial_list = [valid_initial]
 
     result = collect_and_validate_attachments(req, "req1", initial_list)
 
-    assert "/tmp/initial.png" in result
-    assert "/tmp/existing.png" in result
+    assert valid_initial in result
+    assert valid_existing in result
     assert "/tmp/data.png" in result
-    assert "/tmp/msg_att.png" in result
+    assert valid_msg_att in result
 
 
 def test_generate_sse_stop_chunk_with_usage():
@@ -475,7 +480,7 @@ def test_prepare_combined_prompt_complex_nested_dict(
 
     content = {
         "text": "Look at these files",
-        "images": [{"url": f"file://{img_file}"}],  # Platform-appropriate file URL
+        "images": [{"url": img_file.as_uri()}],  # Platform-appropriate file URL
         "files": [{"path": str(doc_file)}],  # Platform-appropriate absolute path
         "media": [{"url": "data:video..."}],  # data url
     }
@@ -737,33 +742,43 @@ def test_prepare_combined_prompt_tool_result_list_exception(mock_logger):
     assert "tool_call_id=1" in prompt
 
 
-def test_collect_and_validate_attachments_top_level(mock_file_utils, mock_logger):
+def test_collect_and_validate_attachments_top_level(
+    mock_file_utils, mock_logger, tmp_path
+):
     """Test top level attachments in request."""
     mock_extract, _, mock_exists = mock_file_utils
     mock_exists.return_value = True
 
+    valid_top1 = str(tmp_path / "top1.png")
+    valid_top2 = tmp_path / "top2.png"
+
     class MockRequest:
-        attachments = ["/tmp/top1.png", {"url": "file:///c:/top2.png"}]
+        attachments = [valid_top1, {"url": valid_top2.as_uri()}]
         messages = []
 
     req = MockRequest()
     result = collect_and_validate_attachments(req, "req1", [])
 
-    assert "/tmp/top1.png" in result
+    assert valid_top1 in result
     assert any("top2.png" in f for f in result)
 
 
-def test_collect_and_validate_attachments_initial_filter(mock_file_utils, mock_logger):
+def test_collect_and_validate_attachments_initial_filter(
+    mock_file_utils, mock_logger, tmp_path
+):
     """Test filtering of initial image list."""
     _, _, mock_exists = mock_file_utils
 
+    exists_path = str(tmp_path / "exists.png")
+    missing_path = str(tmp_path / "missing.png")
+
     # mock_exists side effect to filter
     def side_effect(path):
-        return path == "/exists.png"
+        return str(path) == exists_path
 
     mock_exists.side_effect = side_effect
 
-    initial = ["/exists.png", "/missing.png", "relative.png"]
+    initial = [exists_path, missing_path, "relative.png"]
 
     # Need request object
     class MockRequest:
@@ -771,8 +786,8 @@ def test_collect_and_validate_attachments_initial_filter(mock_file_utils, mock_l
 
     result = collect_and_validate_attachments(MockRequest(), "req1", initial)
 
-    assert "/exists.png" in result
-    assert "/missing.png" not in result
+    assert exists_path in result
+    assert missing_path not in result
     assert "relative.png" not in result
 
 
@@ -939,7 +954,7 @@ def test_collect_and_validate_attachments_detailed(
             str(valid_top_level),
             str(missing),
             {"url": "data:image/png;base64,data1"},
-            {"url": f"file://{valid_file_url}"},
+            {"url": valid_file_url.as_uri()},
             "",  # Empty string
             None,  # None
             {"url": ""},  # Empty URL in dict
@@ -950,7 +965,7 @@ def test_collect_and_validate_attachments_detailed(
                 content="msg1",
                 images=[str(valid_image)],
                 files=[{"path": str(valid_file)}],
-                media=[f"file://{valid_media}"],
+                media=[valid_media.as_uri()],
             )
         ]
 
@@ -1124,15 +1139,19 @@ def test_prepare_combined_prompt_audio_absolute_path(
     assert str(audio_file) in files
 
 
-def test_prepare_combined_prompt_video_absolute_path(mock_file_utils, mock_logger):
+def test_prepare_combined_prompt_video_absolute_path(
+    mock_file_utils, mock_logger, tmp_path
+):
     """Test video with absolute path (lines 427-431)."""
     _, _, mock_exists = mock_file_utils
     mock_exists.return_value = True
 
+    video_file = str(tmp_path / "video.mp4")
+
     # Absolute path for video
     content_item = {
         "type": "input_video",
-        "input_video": {"url": "/home/user/video.mp4"},
+        "input_video": {"url": video_file},
     }
 
     messages = [
@@ -1141,7 +1160,7 @@ def test_prepare_combined_prompt_video_absolute_path(mock_file_utils, mock_logge
 
     prompt, files = prepare_combined_prompt(messages, "req1")
 
-    assert "/home/user/video.mp4" in files
+    assert video_file in files
 
 
 def test_get_latest_user_text_dict_non_text_type(mock_logger):
@@ -1354,15 +1373,19 @@ def test_prepare_combined_prompt_dict_content_file_field(
     assert str(file_path) in files
 
 
-def test_prepare_combined_prompt_dict_content_file_path(mock_file_utils, mock_logger):
+def test_prepare_combined_prompt_dict_content_file_path(
+    mock_file_utils, mock_logger, tmp_path
+):
     """Test dict content with file.path field (lines 318-322)."""
     _, _, mock_exists = mock_file_utils
     mock_exists.return_value = True
 
+    pdf_file = str(tmp_path / "file.pdf")
+
     content = [
         {
             "type": "file_url",
-            "file": {"path": "/absolute/path/file.pdf"},
+            "file": {"path": pdf_file},
         }
     ]
 
@@ -1370,7 +1393,7 @@ def test_prepare_combined_prompt_dict_content_file_path(mock_file_utils, mock_lo
 
     prompt, files = prepare_combined_prompt(messages, "req1")
 
-    assert "/absolute/path/file.pdf" in files
+    assert pdf_file in files
 
 
 def test_prepare_combined_prompt_object_url_attribute(

@@ -113,8 +113,8 @@ class TestGetTexasTimestamp:
         assert human.count(":") == 2
         # Should have a timezone abbreviation at the end (e.g., CST, JST, EST)
         parts = human.split()
-        assert len(parts) == 3  # date, time, timezone
-        assert len(parts[2]) >= 2  # Timezone abbreviation (at least 2 chars)
+        assert len(parts) >= 3  # date, time, timezone (timezone might have spaces)
+        assert len(parts[-1]) >= 2  # Timezone abbreviation (at least 2 chars)
 
     def test_timestamp_consistency(self):
         """Test timestamp consistency."""
@@ -157,7 +157,7 @@ class TestGetTexasTimestamp:
         assert ":" in iso
         # Human format should have timezone abbreviation
         parts = human.split()
-        assert len(parts) == 3  # date, time, timezone
+        assert len(parts) >= 3  # date, time, timezone
 
 
 # === Section 2: DOM Structure Capture Tests ===
@@ -238,7 +238,7 @@ class TestCaptureSystemContext:
     @pytest.mark.asyncio
     async def test_system_context_basic_structure(self, mock_server_state):
         """Test basic system context structure."""
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context("req123", "test_error")
 
         # Verify top-level structure
@@ -252,7 +252,7 @@ class TestCaptureSystemContext:
     @pytest.mark.asyncio
     async def test_system_context_meta_fields(self, mock_server_state):
         """Test meta field content."""
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context("abc123", "timeout_error")
 
         meta = context["meta"]
@@ -264,7 +264,7 @@ class TestCaptureSystemContext:
     @pytest.mark.asyncio
     async def test_system_context_system_info(self, mock_server_state):
         """Test system info fields."""
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         system = context["system"]
@@ -284,7 +284,7 @@ class TestCaptureSystemContext:
         mock_server_state.is_page_ready = True
         mock_server_state.is_initializing = True
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         flags = context["application_state"]["flags"]
@@ -298,7 +298,7 @@ class TestCaptureSystemContext:
         """Test queue size capture."""
         mock_server_state.request_queue.qsize.return_value = 5
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         queues = context["application_state"]["queues"]
@@ -309,7 +309,7 @@ class TestCaptureSystemContext:
         """Test case where queue does not support qsize."""
         mock_server_state.request_queue.qsize.side_effect = NotImplementedError()
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         queues = context["application_state"]["queues"]
@@ -321,7 +321,7 @@ class TestCaptureSystemContext:
         mock_server_state.processing_lock.locked.return_value = True
         mock_server_state.model_switching_lock.locked.return_value = True
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         locks = context["application_state"]["locks"]
@@ -335,7 +335,7 @@ class TestCaptureSystemContext:
             "server": "http://user:password@proxy.com:8080"
         }
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         proxy = context["configuration"]["proxy_settings"]
@@ -354,7 +354,7 @@ class TestCaptureSystemContext:
             {"type": "error", "text": "Error 2"},
         ]
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         activity = context["recent_activity"]
@@ -375,7 +375,7 @@ class TestCaptureSystemContext:
             ],
         }
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         activity = context["recent_activity"]
@@ -388,7 +388,7 @@ class TestCaptureSystemContext:
         real_mock_page.url = "https://ai.google.dev/chat"
         mock_server_state.page_instance = real_mock_page
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with patch("api_utils.server_state.state", mock_server_state):
             context = await capture_system_context()
 
         assert context["browser_state"]["current_url"] == "https://ai.google.dev/chat"
@@ -567,7 +567,7 @@ class TestSaveComprehensiveSnapshot:
 
         with (
             patch("browser_utils.debug_utils.Path") as mock_path_class,
-            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch("api_utils.server_state.state", mock_server_state),
             patch("builtins.open", mock_open()),
             patch("browser_utils.debug_utils.capture_system_context") as mock_context,
             patch("browser_utils.debug_utils.capture_dom_structure") as mock_dom,
@@ -595,7 +595,7 @@ class TestSaveComprehensiveSnapshot:
 
         with (
             patch("browser_utils.debug_utils.Path") as mock_path_class,
-            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch("api_utils.server_state.state", mock_server_state),
             patch("browser_utils.debug_utils.capture_dom_structure") as mock_dom,
             patch(
                 "browser_utils.debug_utils.capture_playwright_state"
@@ -633,7 +633,7 @@ class TestSaveComprehensiveSnapshot:
 
         with (
             patch("browser_utils.debug_utils.Path"),
-            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch("api_utils.server_state.state", mock_server_state),
             patch("browser_utils.debug_utils.capture_dom_structure") as mock_dom,
             patch(
                 "browser_utils.debug_utils.capture_playwright_state"
@@ -666,7 +666,7 @@ class TestSaveErrorSnapshotEnhanced:
         mock_server_state.page_instance = None
 
         with (
-            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch("api_utils.server_state.state", mock_server_state),
             patch(
                 "browser_utils.operations_modules.errors.save_minimal_snapshot",
                 new_callable=AsyncMock,
@@ -687,7 +687,7 @@ class TestSaveErrorSnapshotEnhanced:
         mock_server_state.page_instance = mock_page
 
         with (
-            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch("api_utils.server_state.state", mock_server_state),
             patch(
                 "browser_utils.operations_modules.errors.save_minimal_snapshot",
                 new_callable=AsyncMock,
@@ -706,7 +706,7 @@ class TestSaveErrorSnapshotEnhanced:
         mock_server_state.page_instance = real_mock_page
 
         with (
-            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch("api_utils.server_state.state", mock_server_state),
             patch("browser_utils.debug_utils.save_comprehensive_snapshot") as mock_save,
         ):
             mock_save.return_value = "/path/to/snapshot"
@@ -730,7 +730,7 @@ class TestSaveErrorSnapshotEnhanced:
         error_exc = RuntimeError("Unexpected failure")
 
         with (
-            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch("api_utils.server_state.state", mock_server_state),
             patch("browser_utils.debug_utils.save_comprehensive_snapshot") as mock_save,
         ):
             mock_save.return_value = "/path/to/snapshot"

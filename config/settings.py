@@ -82,6 +82,9 @@ NO_PROXY_ENV = os.environ.get("NO_PROXY")
 
 # --- Script Injection Configuration ---
 ENABLE_SCRIPT_INJECTION = get_boolean_env("ENABLE_SCRIPT_INJECTION", True)
+USERSCRIPT_PATH = os.environ.get(
+    "USERSCRIPT_PATH", str(_PROJECT_ROOT / "browser_utils" / "more_models.js")
+)
 ONLY_COLLECT_CURRENT_USER_ATTACHMENTS = get_boolean_env(
     "ONLY_COLLECT_CURRENT_USER_ATTACHMENTS", False
 )

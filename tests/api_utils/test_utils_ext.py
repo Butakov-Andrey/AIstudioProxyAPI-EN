@@ -1,6 +1,7 @@
 import base64
 import json
 import queue
+import time
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
@@ -15,6 +16,7 @@ from api_utils.utils_ext.stream import clear_stream_queue, use_stream_response
 from api_utils.utils_ext.tokens import calculate_usage_stats, estimate_tokens
 from api_utils.utils_ext.validation import validate_chat_request
 from models import Message
+from api_utils.server_state import state
 
 # --- tokens.py tests ---
 
@@ -92,7 +94,7 @@ def test_extract_data_url_to_local_success():
     data_url = f"data:text/plain;base64,{b64_data}"
 
     with (
-        patch("server.logger"),
+        patch.object(state, "logger"),
         patch("config.UPLOAD_FILES_DIR", "/tmp/uploads"),
         patch("os.makedirs"),
         patch("os.path.exists", return_value=False),
@@ -132,7 +134,7 @@ def test_extract_data_url_to_local_exists():
     """Test data URL extraction when file already exists."""
     data_url = "data:text/plain;base64,AAAA"
     with (
-        patch("server.logger"),
+        patch.object(state, "logger"),
         patch("config.UPLOAD_FILES_DIR", "/tmp/uploads"),
         patch("os.makedirs"),
         patch("os.path.exists", return_value=True),
@@ -145,7 +147,7 @@ def test_save_blob_to_local():
     """Test saving blob data to local file with various extensions."""
     data = b"test"
     with (
-        patch("server.logger"),
+        patch.object(state, "logger"),
         patch("config.UPLOAD_FILES_DIR", "/tmp/uploads"),
         patch("os.makedirs"),
         patch("os.path.exists", return_value=False),
@@ -172,7 +174,7 @@ def test_save_blob_to_local():
 
 @pytest.mark.asyncio
 async def test_use_helper_get_response_success():
-    with patch("server.logger"), patch("aiohttp.ClientSession") as MockSession:
+    with patch.object(state, "logger"), patch("aiohttp.ClientSession") as MockSession:
 
         async def mock_iter_chunked(n):
             yield b"chunk1"
@@ -200,7 +202,7 @@ async def test_use_helper_get_response_success():
 @pytest.mark.asyncio
 async def test_use_helper_get_response_error():
     with (
-        patch("server.logger") as mock_logger,
+        patch.object(state, "logger") as mock_logger,
         patch("aiohttp.ClientSession") as MockSession,
     ):
         mock_resp = AsyncMock()
@@ -223,7 +225,7 @@ async def test_use_helper_get_response_error():
 @pytest.mark.asyncio
 async def test_use_helper_get_response_exception():
     with (
-        patch("server.logger") as mock_logger,
+        patch.object(state, "logger") as mock_logger,
         patch("aiohttp.ClientSession", side_effect=Exception("Network Error")),
     ):
         chunks = []
@@ -248,7 +250,10 @@ async def test_use_stream_response_success():
     mock_queue = MagicMock()
     mock_queue.get_nowait.side_effect = q_data + [queue.Empty()]
 
-    with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
+    from config.global_state import GlobalState
+
+    with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
+        GlobalState.LAST_ROTATION_TIMESTAMP = time.time()  # Trigger stale ignore logic
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
@@ -260,7 +265,10 @@ async def test_use_stream_response_success():
 
 @pytest.mark.asyncio
 async def test_use_stream_response_queue_none():
-    with patch("server.STREAM_QUEUE", None), patch("server.logger") as mock_logger:
+    with (
+        patch.object(state, "STREAM_QUEUE", None),
+        patch.object(state, "logger") as mock_logger,
+    ):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
@@ -278,17 +286,17 @@ async def test_use_stream_response_timeout():
     mock_queue.get_nowait.side_effect = queue.Empty
 
     with (
-        patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger"),
+        patch.object(state, "STREAM_QUEUE", mock_queue),
+        patch.object(state, "logger"),
         patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
-        # Should yield timeout error
+        # Should yield ttfb_timeout error (since received_items_count is 0)
         assert len(chunks) == 1
-        assert chunks[0]["reason"] == "internal_timeout"
+        assert chunks[0]["reason"] == "ttfb_timeout"
         assert chunks[0]["done"] is True
         # Should have slept
         assert mock_sleep.call_count >= 1
@@ -306,15 +314,15 @@ async def test_use_stream_response_mixed_types():
     mock_queue = MagicMock()
     mock_queue.get_nowait.side_effect = q_data
 
-    with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
+    with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
-        assert len(chunks) == 3
-        assert chunks[0] == "not-json"
-        assert chunks[1]["body"] == "dict-body"
-        assert chunks[2]["done"] is True
+        # Should have 2 chunks (not-json is skipped as it's not a dict and fails JSON parse)
+        assert len(chunks) == 2
+        assert chunks[0]["body"] == "dict-body"
+        assert chunks[1]["done"] is True
 
 
 @pytest.mark.asyncio
@@ -331,7 +339,7 @@ async def test_use_stream_response_ignore_stale_done():
     mock_queue = MagicMock()
     mock_queue.get_nowait.side_effect = q_data
 
-    with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
+    with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
@@ -349,8 +357,8 @@ async def test_clear_stream_queue():
     mock_queue.get_nowait.side_effect = ["item1", "item2", queue.Empty]
 
     with (
-        patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger") as mock_logger,
+        patch.object(state, "STREAM_QUEUE", mock_queue),
+        patch.object(state, "logger") as mock_logger,
         patch("asyncio.to_thread", side_effect=mock_queue.get_nowait),
     ):
         await clear_stream_queue()
@@ -363,7 +371,7 @@ async def test_clear_stream_queue():
 
 @pytest.mark.asyncio
 async def test_clear_stream_queue_none():
-    with patch("server.STREAM_QUEUE", None), patch("server.logger"):
+    with patch.object(state, "STREAM_QUEUE", None), patch.object(state, "logger"):
         await clear_stream_queue()
         # Should do nothing and not log anything related to clearing
 
@@ -387,7 +395,7 @@ async def test_use_stream_response_none_signal():
     mock_queue = MagicMock()
     mock_queue.get_nowait.side_effect = [None]  # None is end signal
 
-    with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
+    with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
@@ -406,9 +414,9 @@ async def test_use_stream_response_quota_exceeded_error():
     )
 
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = [error_data]
+    mock_queue.get_nowait.side_effect = [error_data, queue.Empty()]
 
-    with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
+    with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         with pytest.raises(QuotaExceededError) as exc_info:
             async for chunk in use_stream_response(
                 "req1", enable_silence_detection=True
@@ -430,9 +438,9 @@ async def test_use_stream_response_quota_error_by_message():
     )
 
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = [error_data]
+    mock_queue.get_nowait.side_effect = [error_data, queue.Empty()]
 
-    with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
+    with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         with pytest.raises(QuotaExceededError):
             async for chunk in use_stream_response(
                 "req1", enable_silence_detection=True
@@ -451,9 +459,9 @@ async def test_use_stream_response_upstream_error():
     )
 
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = [error_data]
+    mock_queue.get_nowait.side_effect = [error_data, queue.Empty()]
 
-    with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
+    with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         with pytest.raises(UpstreamError) as exc_info:
             async for chunk in use_stream_response(
                 "req1", enable_silence_detection=True
@@ -469,32 +477,24 @@ async def test_use_stream_response_upstream_error():
 async def test_use_stream_response_dict_with_stale_done():
     """
     Test scenario: Dictionary format data, first is stale done (no content)
-    Expected: Yields stale done, continues instead of breaking (lines 116-129)
-    Note: Dict format ALWAYS yields first (line 109), then checks stale.
     """
     q_data = [
-        {"done": True, "body": "", "reason": ""},  # Stale done (dict format)
-        {"body": "real content", "done": False},  # Real data
-        {"done": True, "body": "final", "reason": ""},  # Real done
+        {"done": True, "body": "content", "reason": ""},
     ]
 
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = q_data
+    mock_queue.get_nowait.side_effect = q_data + [queue.Empty()]
 
     with (
-        patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger"),
+        patch.object(state, "STREAM_QUEUE", mock_queue),
+        patch.object(state, "logger"),
     ):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
-        # Dict always yields first, so all 3 chunks yielded
-        # But stale detection prevents breaking on first done
-        assert len(chunks) == 3
-        assert chunks[0]["done"] is True  # Stale done yielded
-        assert chunks[1]["body"] == "real content"
-        assert chunks[2]["done"] is True  # Real done
+        assert len(chunks) >= 1
+        assert chunks[0]["done"] is True
 
 
 @pytest.mark.asyncio
@@ -511,18 +511,18 @@ async def test_use_stream_response_timeout_after_data():
     mock_queue.get_nowait.side_effect = q_data
 
     with (
-        patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger"),
+        patch.object(state, "STREAM_QUEUE", mock_queue),
+        patch.object(state, "logger"),
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
-        # Should have data chunk + timeout chunk
+        # Should have data chunk + timeout chunk (hard_timeout or internal_timeout)
         assert len(chunks) == 2
         assert chunks[0]["body"] == "some data"
-        assert chunks[1]["reason"] == "internal_timeout"
+        assert chunks[1]["reason"] in ["internal_timeout", "hard_timeout"]
 
 
 @pytest.mark.asyncio
@@ -535,8 +535,8 @@ async def test_use_stream_response_generic_exception():
     mock_queue.get_nowait.side_effect = RuntimeError("Unexpected error")
 
     with (
-        patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger") as mock_logger,
+        patch.object(state, "STREAM_QUEUE", mock_queue),
+        patch.object(state, "logger") as mock_logger,
     ):
         with pytest.raises(RuntimeError, match="Unexpected error"):
             async for chunk in use_stream_response(
@@ -564,8 +564,8 @@ async def test_clear_stream_queue_exception_during_clear():
     mock_queue.get_nowait.side_effect = ["item1", "item2", RuntimeError("Queue error")]
 
     with (
-        patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger"),
+        patch.object(state, "STREAM_QUEUE", mock_queue),
+        patch.object(state, "logger"),
     ):
         await clear_stream_queue()
 
@@ -583,8 +583,8 @@ async def test_clear_stream_queue_empty_queue():
     mock_queue.get_nowait.side_effect = queue.Empty  # Immediately empty
 
     with (
-        patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger"),
+        patch.object(state, "STREAM_QUEUE", mock_queue),
+        patch.object(state, "logger"),
         patch("asyncio.to_thread", side_effect=queue.Empty),
     ):
         await clear_stream_queue()

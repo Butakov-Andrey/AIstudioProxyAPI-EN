@@ -818,6 +818,8 @@ async def get_response_via_edit_button(
             await last_message_container.hover(timeout=CLICK_TIMEOUT_MS / 2)
             await asyncio.sleep(0.3)  # Wait for hover effect
             check_client_disconnected("Edit Response - after hover: ")
+        except (ClientDisconnectedError, asyncio.CancelledError):
+            raise
         except Exception as hover_err:
             logger.warning(
                 f"[{req_id}]   - (get_response_via_edit_button) Hover last message failed (ignoring): {type(hover_err).__name__}"
@@ -831,6 +833,8 @@ async def get_response_via_edit_button(
             check_client_disconnected("Edit Response - 'Edit' button visible after: ")
             await edit_button.click(timeout=CLICK_TIMEOUT_MS)
             logger.info(f"[{req_id}]   - 'Edit' button clicked.")
+        except (ClientDisconnectedError, asyncio.CancelledError):
+            raise
         except Exception as edit_btn_err:
             logger.error(
                 f"[{req_id}]   - 'Edit' button not visible or click failed: {edit_btn_err}"
@@ -995,6 +999,8 @@ async def get_response_via_copy_button(
             )
             await more_options_button.click(timeout=CLICK_TIMEOUT_MS)
             logger.info(f"[{req_id}]   - 'More options' clicked (via get_by_label).")
+        except (ClientDisconnectedError, asyncio.CancelledError):
+            raise
         except Exception as more_opts_err:
             logger.error(
                 f"[{req_id}]   - 'More options' button (via get_by_label) not visible or click failed: {more_opts_err}"
@@ -1018,6 +1024,8 @@ async def get_response_via_copy_button(
             await copy_markdown_button.click(timeout=CLICK_TIMEOUT_MS, force=True)
             copy_success = True
             logger.info(f"[{req_id}]   - 'Copy markdown' clicked (via get_by_role).")
+        except (ClientDisconnectedError, asyncio.CancelledError):
+            raise
         except Exception as copy_err:
             logger.error(
                 f"[{req_id}]   - 'Copy markdown' button (via get_by_role) click failed: {copy_err}"

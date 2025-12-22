@@ -251,11 +251,23 @@ async def test_execute_chat_clear_overlay_hidden_initially(
 @pytest.mark.timeout(5)
 async def test_dismiss_backdrops(chat_controller, mock_page_controller):
     """Test _dismiss_backdrops logic."""
+    # Mock for survey iframe check (return 0 = no survey)
+    survey_locator = MagicMock()
+    survey_locator.count = AsyncMock(return_value=0)
+
+    # Mock for backdrop - first call returns count 1 (exists), second call returns 0 (gone)
     backdrop = MagicMock()
-    # First call returns count 1 (exists), second call returns 0 (gone)
     backdrop.count = AsyncMock(side_effect=[1, 0])
 
-    mock_page_controller.page.locator.return_value = backdrop
+    # Different locators for different selectors
+    def locator_side_effect(selector):
+        if "google-hats-survey" in selector or "google_hats" in selector:
+            return survey_locator
+        else:  # cdk-overlay-backdrop
+            return backdrop
+
+    mock_page_controller.page.locator.side_effect = locator_side_effect
+    mock_page_controller.page.evaluate = AsyncMock()
 
     with patch(
         "browser_utils.page_controller_modules.chat.expect_async"
@@ -381,7 +393,10 @@ async def test_execute_chat_clear_wait_disappear_timeout(
                 clear_btn, confirm_btn, overlay, mock_check_disconnect
             )
 
-        assert "Maximum retries reached" in str(excinfo.value)
+        assert (
+            "Maximum retries reached" in str(excinfo.value)
+            or "maximum retries" in str(excinfo.value).lower()
+        )
 
 
 # ==================== New Tests for Improved Coverage ====================
@@ -494,7 +509,9 @@ async def test_clear_chat_error_snapshot_non_disconnect(
                 mock_save_snapshot.assert_awaited_once()
                 call_args = mock_save_snapshot.call_args
                 assert "clear_chat_error_" in call_args[0][0]
-                assert call_args.kwargs["error_exception"] == test_error
+                # Check error info is in extra_context dict
+                extra_context = call_args.kwargs.get("extra_context", {})
+                assert extra_context.get("error_exception") == str(test_error)
 
 
 @pytest.mark.asyncio

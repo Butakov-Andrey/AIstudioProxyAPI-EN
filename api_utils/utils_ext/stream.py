@@ -35,7 +35,11 @@ async def use_stream_response(
         UI_GENERATION_WAIT_TIMEOUT_MS,
     )
     from config.global_state import GlobalState
-    from models import ClientDisconnectedError
+    from models import (
+        ClientDisconnectedError,
+        QuotaExceededError,
+        UpstreamError,
+    )
 
     set_request_id(req_id)
     if STREAM_QUEUE is None:
@@ -195,6 +199,19 @@ async def use_stream_response(
                         pass
 
                 if isinstance(actual_data, dict):
+                    if actual_data.get("error"):
+                        status = actual_data.get("status", 500)
+                        message = actual_data.get("message", "Unknown error")
+                        if status == 429 or "quota" in message.lower():
+                            raise QuotaExceededError(
+                                f"AI Studio quota exceeded: {message}", req_id=req_id
+                            )
+                        else:
+                            raise UpstreamError(
+                                f"AI Studio error: {message}",
+                                status_code=status,
+                            )
+
                     parsed_data = actual_data
                     p_reason = str(parsed_data.get("reason", ""))
                     p_body = str(parsed_data.get("body", ""))

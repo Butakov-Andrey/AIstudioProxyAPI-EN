@@ -19,6 +19,17 @@ def mock_page():
 
 
 @pytest.fixture
+def mock_state_with_logs():
+    """Create a mock state with console_logs and network_log that we can inspect."""
+    mock_state = Mock()
+    mock_state.console_logs = []
+    mock_state.network_log = {"requests": [], "responses": []}
+
+    with patch("api_utils.server_state.state", mock_state):
+        yield mock_state
+
+
+@pytest.fixture
 def mock_console_message():
     """Create mock console message"""
     msg = Mock()
@@ -48,7 +59,7 @@ def mock_response():
     return resp
 
 
-def test_listeners_attached(mock_page, mock_server_module):
+def test_listeners_attached(mock_page, mock_state_with_logs):
     """Test all listeners attached"""
     setup_debug_listeners(mock_page)
 
@@ -60,7 +71,7 @@ def test_listeners_attached(mock_page, mock_server_module):
     assert "response" in listener_names
 
 
-def test_console_handler_log(mock_page, mock_server_module, mock_console_message):
+def test_console_handler_log(mock_page, mock_state_with_logs, mock_console_message):
     """Test console log captured"""
     setup_debug_listeners(mock_page)
 
@@ -77,15 +88,15 @@ def test_console_handler_log(mock_page, mock_server_module, mock_console_message
     console_handler(mock_console_message)
 
     # Verify log captured
-    assert len(mock_server_module.console_logs) == 1
-    log_entry = mock_server_module.console_logs[0]
+    assert len(mock_state_with_logs.console_logs) == 1
+    log_entry = mock_state_with_logs.console_logs[0]
     assert log_entry["type"] == "log"
     assert log_entry["text"] == "test message"
     assert "timestamp" in log_entry
     assert "location" in log_entry
 
 
-def test_console_handler_error(mock_page, mock_server_module):
+def test_console_handler_error(mock_page, mock_state_with_logs):
     """Test console error captured"""
     setup_debug_listeners(mock_page)
 
@@ -103,11 +114,11 @@ def test_console_handler_error(mock_page, mock_server_module):
     assert console_handler is not None
     console_handler(error_msg)
 
-    assert len(mock_server_module.console_logs) == 1
-    assert mock_server_module.console_logs[0]["type"] == "error"
+    assert len(mock_state_with_logs.console_logs) == 1
+    assert mock_state_with_logs.console_logs[0]["type"] == "error"
 
 
-def test_request_handler_xhr(mock_page, mock_server_module, mock_request):
+def test_request_handler_xhr(mock_page, mock_state_with_logs, mock_request):
     """Test XHR request captured"""
     setup_debug_listeners(mock_page)
 
@@ -120,14 +131,14 @@ def test_request_handler_xhr(mock_page, mock_server_module, mock_request):
     assert request_handler is not None
     request_handler(mock_request)
 
-    assert len(mock_server_module.network_log["requests"]) == 1
-    req_entry = mock_server_module.network_log["requests"][0]
+    assert len(mock_state_with_logs.network_log["requests"]) == 1
+    req_entry = mock_state_with_logs.network_log["requests"][0]
     assert req_entry["url"] == "https://example.com/api/data"
     assert req_entry["method"] == "GET"
     assert "timestamp" in req_entry
 
 
-def test_request_handler_image_filtered(mock_page, mock_server_module):
+def test_request_handler_image_filtered(mock_page, mock_state_with_logs):
     """Test image request filtered out"""
     setup_debug_listeners(mock_page)
 
@@ -145,10 +156,10 @@ def test_request_handler_image_filtered(mock_page, mock_server_module):
     assert request_handler is not None
     request_handler(image_req)
 
-    assert len(mock_server_module.network_log["requests"]) == 0
+    assert len(mock_state_with_logs.network_log["requests"]) == 0
 
 
-def test_request_handler_css_filtered(mock_page, mock_server_module):
+def test_request_handler_css_filtered(mock_page, mock_state_with_logs):
     """Test CSS request filtered out"""
     setup_debug_listeners(mock_page)
 
@@ -166,10 +177,10 @@ def test_request_handler_css_filtered(mock_page, mock_server_module):
     assert request_handler is not None
     request_handler(css_req)
 
-    assert len(mock_server_module.network_log["requests"]) == 0
+    assert len(mock_state_with_logs.network_log["requests"]) == 0
 
 
-def test_response_handler_success(mock_page, mock_server_module, mock_response):
+def test_response_handler_success(mock_page, mock_state_with_logs, mock_response):
     """Test successful response captured"""
     setup_debug_listeners(mock_page)
 
@@ -182,14 +193,14 @@ def test_response_handler_success(mock_page, mock_server_module, mock_response):
     assert response_handler is not None
     response_handler(mock_response)
 
-    assert len(mock_server_module.network_log["responses"]) == 1
-    resp_entry = mock_server_module.network_log["responses"][0]
+    assert len(mock_state_with_logs.network_log["responses"]) == 1
+    resp_entry = mock_state_with_logs.network_log["responses"][0]
     assert resp_entry["status"] == 200
     assert resp_entry["url"] == "https://example.com/api/data"
     assert "timestamp" in resp_entry
 
 
-def test_response_handler_error_status(mock_page, mock_server_module):
+def test_response_handler_error_status(mock_page, mock_state_with_logs):
     """Test error response captured"""
     setup_debug_listeners(mock_page)
 
@@ -207,11 +218,11 @@ def test_response_handler_error_status(mock_page, mock_server_module):
     assert response_handler is not None
     response_handler(error_resp)
 
-    assert len(mock_server_module.network_log["responses"]) == 1
-    assert mock_server_module.network_log["responses"][0]["status"] == 404
+    assert len(mock_state_with_logs.network_log["responses"]) == 1
+    assert mock_state_with_logs.network_log["responses"][0]["status"] == 404
 
 
-def test_console_handler_exception_caught(mock_page, mock_server_module):
+def test_console_handler_exception_caught(mock_page, mock_state_with_logs):
     """Test exception in console handler caught"""
     setup_debug_listeners(mock_page)
 
@@ -234,7 +245,7 @@ def test_console_handler_exception_caught(mock_page, mock_server_module):
         assert mock_logger.error.called
 
 
-def test_request_handler_exception_caught(mock_page, mock_server_module):
+def test_request_handler_exception_caught(mock_page, mock_state_with_logs):
     """Test exception in request handler caught"""
     setup_debug_listeners(mock_page)
 
