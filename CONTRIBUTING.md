@@ -55,6 +55,39 @@ We use:
 
 See [Development Guide](docs/development-guide.md) for detailed coding conventions.
 
+## CI/CD & GitHub Workflows
+
+We use GitHub Actions to ensure code quality and manage releases.
+
+### 1. PR Checks
+Triggered on every Pull Request and push to `main`. Your PR **must** pass these checks to be merged:
+- **Linting**: `ruff check .`
+- **Type Checking**: `pyright`
+- **Tests**: `pytest`
+
+**Tip:** Run these checks locally before submitting to avoid CI failures:
+```bash
+poetry run ruff check .
+poetry run pyright
+poetry run pytest
+```
+
+### 2. Upstream Sync
+Runs daily at 00:00 UTC to sync with the [upstream repository](https://github.com/CJackHwang/AIstudioProxyAPI).
+- Creates a Pull Request automatically if new upstream commits are found.
+- Can be triggered manually via the **Actions** tab.
+
+### 3. Release Process
+Automates release creation.
+- **Trigger**: Push a tag (e.g., `v4.0.5`) or trigger manually via **Actions**.
+- **Action**: Creates a GitHub Release with auto-generated changelog and source archives.
+
+To create a release:
+```bash
+git tag v4.0.5
+git push origin v4.0.5
+```
+
 ## Reporting Issues
 
 Please include:

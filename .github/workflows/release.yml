@@ -1,0 +1,201 @@
+# Automated Release Workflow for AI Studio Proxy API
+# Creates GitHub releases with source code archives when version tags are pushed
+# or manually triggered via workflow_dispatch.
+#
+# Usage:
+#   - Push a tag: git tag v4.0.5 && git push origin v4.0.5
+#   - Manual: Actions -> Release -> Run workflow -> Enter version (e.g., v4.0.5)
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Matches v1.0.0, v2.1.3, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v4.0.5)'
+        required: true
+        type: string
+
+# Ensure only one release workflow runs at a time
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # Required for creating releases
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Validate version format (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format '$VERSION'. Expected format: v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+          echo "Version format validated: $VERSION"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_number=${VERSION#v}" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Verify tag exists (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag '$VERSION' does not exist. Please create the tag first:"
+            echo "::error::  git tag $VERSION && git push origin $VERSION"
+            exit 1
+          fi
+          echo "Tag $VERSION exists and is valid"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Find the previous tag for comparison
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "^$VERSION$" | head -n 1)
+          
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Generating changelog from $PREVIOUS_TAG to $VERSION"
+            
+            # Generate commit log grouped by type
+            CHANGELOG=$(cat << 'CHANGELOG_EOF'
+          ## What's Changed
+
+          CHANGELOG_EOF
+          )
+            
+            # Get commits between tags
+            COMMITS=$(git log --pretty=format:"- %s (%h)" "$PREVIOUS_TAG..$VERSION" 2>/dev/null || echo "")
+            
+            if [ -n "$COMMITS" ]; then
+              CHANGELOG="$CHANGELOG
+          $COMMITS"
+            else
+              CHANGELOG="$CHANGELOG
+          - Various improvements and updates"
+            fi
+            
+            CHANGELOG="$CHANGELOG
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$VERSION"
+          else
+            echo "No previous tag found, this appears to be the first release"
+            CHANGELOG="## What's Changed
+
+          This is the first release of the English version fork.
+
+          See the commit history for details."
+          fi
+          
+          # Write to file for use in release
+          echo "$CHANGELOG" > CHANGELOG.md
+          echo "Changelog generated successfully"
+
+      - name: Build release body
+        id: release_body
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NUMBER="${{ steps.version.outputs.version_number }}"
+          
+          cat > RELEASE_BODY.md << 'EOF'
+          ${{ steps.version.outputs.version }} brings improvements and updates to the AI Studio Proxy API.
+
+          EOF
+          
+          # Append the generated changelog
+          cat CHANGELOG.md >> RELEASE_BODY.md
+          
+          cat >> RELEASE_BODY.md << 'EOF'
+
+          ---
+
+          ## Installation
+
+          ### Quick Start
+          ```bash
+          # Clone the repository
+          git clone https://github.com/${{ github.repository }}.git
+          cd AIstudioProxyAPI-EN
+
+          # Install dependencies with Poetry
+          poetry install
+
+          # Run the server
+          poetry run python server.py
+          ```
+
+          ### Docker
+          ```bash
+          docker-compose -f docker/docker-compose.yml up -d
+          ```
+
+          For detailed installation instructions, see the [Installation Guide](https://github.com/${{ github.repository }}/blob/main/docs/guides/installation-guide.md).
+
+          ## Documentation
+
+          - [Quick Start Guide](https://github.com/${{ github.repository }}/blob/main/docs/guides/quick-start-guide.md)
+          - [API Usage](https://github.com/${{ github.repository }}/blob/main/docs/guides/api-usage.md)
+          - [Environment Configuration](https://github.com/${{ github.repository }}/blob/main/docs/guides/environment-configuration.md)
+          - [Troubleshooting](https://github.com/${{ github.repository }}/blob/main/docs/guides/troubleshooting.md)
+
+          ## Source Code
+
+          Source code archives (zip and tar.gz) are automatically attached below.
+
+          ---
+
+          **Thank you to all contributors!**
+          EOF
+          
+          echo "Release body generated successfully"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "AI Studio Proxy API ${{ steps.version.outputs.version }}"
+          tag_name: ${{ steps.version.outputs.version }}
+          body_path: RELEASE_BODY.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          generate_release_notes: false  # We generate our own
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Release URL:** https://github.com/${{ github.repository }}/releases/tag/$VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Included Assets" >> $GITHUB_STEP_SUMMARY
+          echo "- Source code (zip)" >> $GITHUB_STEP_SUMMARY
+          echo "- Source code (tar.gz)" >> $GITHUB_STEP_SUMMARY
