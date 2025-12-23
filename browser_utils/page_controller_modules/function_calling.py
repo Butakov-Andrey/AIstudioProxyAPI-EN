@@ -453,6 +453,7 @@ class FunctionCallingController(BaseController):
         Set function declarations in the AI Studio UI.
 
         This method:
+        0. Disables Google Search (required as it blocks function calling)
         1. Enables function calling if not already enabled
         2. Opens the function declarations dialog
         3. Switches to Code Editor tab
@@ -471,6 +472,23 @@ class FunctionCallingController(BaseController):
         )
 
         try:
+            # Step 0: Disable Google Search if enabled (blocks FC)
+            from config import GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR
+
+            search_toggle = self.page.locator(
+                GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR
+            )
+            if await search_toggle.count() > 0 and await search_toggle.is_visible(
+                timeout=2000
+            ):
+                is_checked = await search_toggle.get_attribute("aria-checked")
+                if is_checked == "true":
+                    self.logger.info(
+                        f"[{self.req_id}] Disabling Google Search to enable function calling"
+                    )
+                    await search_toggle.click(timeout=CLICK_TIMEOUT_MS)
+                    await asyncio.sleep(0.5)
+
             # Step 1: Enable function calling if not already enabled
             if not await self.is_function_calling_enabled(check_client_disconnected):
                 if not await self.enable_function_calling(check_client_disconnected):
