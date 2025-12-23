@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api_utils.app import (
+    VERSION,
     APIKeyAuthMiddleware,
     _initialize_browser_and_page,
     _initialize_globals,
@@ -39,7 +40,7 @@ def client(app):
 def test_create_app(app):
     """Test that the app is created correctly."""
     assert app.title == "AI Studio Proxy Server (Integrated Mode)"
-    assert app.version == "0.6.0-integrated"
+    assert app.version == VERSION
 
 
 def test_middleware_initialization(app):

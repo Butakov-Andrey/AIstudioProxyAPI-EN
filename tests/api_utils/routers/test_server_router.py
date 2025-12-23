@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from api_utils.app import VERSION
 from api_utils.routers.server import (
     RestartRequest,
     ServerStatus,
@@ -110,7 +111,7 @@ def test_server_status_model():
         launch_mode="headless",
         server_port=2048,
         stream_port=3120,
-        version="1.0.0",
+        version=VERSION,
         python_version="3.12.0",
         started_at="2024-01-01T00:00:00",
     )

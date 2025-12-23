@@ -14,6 +14,8 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from ..app import VERSION
+
 logger = logging.getLogger("CamoufoxLauncher")
 
 router = APIRouter(prefix="/api/server", tags=["server"])
@@ -89,7 +91,7 @@ async def get_server_status() -> JSONResponse:
             os.environ.get("SERVER_PORT_INFO", os.environ.get("PORT", 2048))
         ),
         stream_port=int(os.environ.get("STREAM_PORT", 3120)),
-        version="1.0.0",  # Could read from package
+        version=VERSION,
         python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         started_at=started_at.isoformat(),
     )

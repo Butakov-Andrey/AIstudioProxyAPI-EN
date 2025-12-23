@@ -39,6 +39,8 @@ from models import WebSocketConnectionManager
 
 from . import auth_utils
 
+VERSION = "4.0.6"
+
 
 # --- Lifespan Context Manager ---
 def _setup_logging():
@@ -376,7 +378,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AI Studio Proxy Server (Integrated Mode)",
         description="Proxy server interacting with AI Studio via Playwright.",
-        version="4.0.6",
+        version=VERSION,
         lifespan=lifespan,
     )
     app.add_middleware(APIKeyAuthMiddleware)
