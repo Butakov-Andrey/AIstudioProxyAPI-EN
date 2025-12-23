@@ -87,6 +87,11 @@ from .utils import (
     prepare_combined_prompt,
 )
 from .utils_ext.files import collect_and_validate_attachments
+from .utils_ext.function_calling_orchestrator import (
+    FunctionCallingState,
+    get_function_calling_orchestrator,
+    should_skip_tool_injection,
+)
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats
 from .utils_ext.usage_tracker import increment_profile_usage
@@ -578,8 +583,22 @@ async def _handle_playwright_response(
             await increment_profile_usage(state.current_auth_profile_path, total_tokens)
 
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
-        message_payload = {"role": "assistant", "content": consolidated_content}
-        finish_reason_val = "stop"
+
+        # Handle function calls if detected
+        if response_data.get("has_function_calls"):
+            from api_utils.utils_ext.function_calling_orchestrator import (
+                get_function_calling_orchestrator,
+            )
+
+            orchestrator = get_function_calling_orchestrator()
+            message_payload, finish_reason_val = (
+                orchestrator.format_function_calls_for_response(
+                    response_data.get("function_calls", []), consolidated_content
+                )
+            )
+        else:
+            message_payload = {"role": "assistant", "content": consolidated_content}
+            finish_reason_val = "stop"
 
         response_payload = build_chat_completion_response_json(
             req_id,
@@ -775,6 +794,26 @@ async def _process_request_refactored(
         page_controller = PageController(page, context["logger"], req_id)
         await _handle_model_switching(req_id, context, check_client_disconnected)
         await _handle_parameter_cache(req_id, context)
+
+        # --- Native Function Calling Setup (Phase 3) ---
+        # Configure native function calling if mode is native/auto and tools are present
+        fc_orchestrator = get_function_calling_orchestrator()
+        fc_state: Optional[FunctionCallingState] = None
+
+        if getattr(request, "tools", None):
+            try:
+                fc_state = await fc_orchestrator.prepare_request(
+                    tools=request.tools,
+                    tool_choice=getattr(request, "tool_choice", None),
+                    page_controller=page_controller,
+                    check_client_disconnected=check_client_disconnected,
+                    req_id=req_id,
+                )
+            except Exception as fc_err:
+                logger.warning(
+                    f"[{req_id}] Function calling setup failed: {fc_err}, continuing with emulated mode"
+                )
+                # Continue with request - fallback to emulated mode happens in prepare_combined_prompt
 
         prepared_prompt, attachments_list = await _prepare_and_validate_request(
             req_id, request, check_client_disconnected

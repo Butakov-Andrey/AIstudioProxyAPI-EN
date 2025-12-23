@@ -36,6 +36,7 @@ from .operations import (
 )
 from .page_controller_modules.base import BaseController
 from .page_controller_modules.chat import ChatController
+from .page_controller_modules.function_calling import FunctionCallingController
 from .page_controller_modules.input import InputController
 from .page_controller_modules.parameters import ParameterController
 from .page_controller_modules.response import ResponseController
@@ -48,6 +49,7 @@ class PageController(
     ChatController,
     ResponseController,
     ThinkingController,
+    FunctionCallingController,
     BaseController,
 ):
     """Encapsulates all operations for interacting with the AI Studio page."""
@@ -286,12 +288,36 @@ class PageController(
         prompt_length: int = 0,
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Retrieve response content with full integrity check."""
+        """Retrieve response content with full integrity check and function calls."""
         content = await self.get_response(
             check_client_disconnected, prompt_length, timeout
         )
+
+        # Parse function calls from DOM as well
+        has_fc, function_calls, text_content = await self.parse_function_calls(
+            check_client_disconnected
+        )
+
         c, r = self._separate_thinking_and_response(content)
-        return {"content": c, "reasoning_content": r, "recovery_method": "direct"}
+
+        result = {
+            "content": c,
+            "reasoning_content": r,
+            "recovery_method": "direct",
+            "has_function_calls": has_fc,
+            "function_calls": function_calls,
+        }
+
+        if has_fc:
+            # If function calls found, use the text content (with calls removed) as content
+            # But we need to separate thinking from it too
+            c_fc, r_fc = self._separate_thinking_and_response(text_content)
+            result["content"] = c_fc
+            # Keep original reasoning if not found in text_content
+            if r_fc:
+                result["reasoning_content"] = r_fc
+
+        return result
 
     def _separate_thinking_and_response(self, content: str) -> Tuple[str, str]:
         """Separate thinking and response."""

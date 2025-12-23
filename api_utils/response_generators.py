@@ -463,9 +463,13 @@ async def gen_sse_from_playwright(
     data_receiving = False
     try:
         page_controller = PageController(page, logger, req_id)
-        final_content = await page_controller.get_response(
+        # Use get_response_with_function_calls which handles both content and functions
+        response_data = await page_controller.get_response_with_function_calls(
             check_client_disconnected, prompt_length=prompt_length, timeout=timeout
         )
+        final_content = response_data.get("content", "")
+        function_calls = response_data.get("function_calls", [])
+
         data_receiving = True
         lines = final_content.split("\n")
         for line_idx, line in enumerate(lines):
@@ -501,9 +505,30 @@ async def gen_sse_from_playwright(
         ):
             await increment_profile_usage(state.current_auth_profile_path, total_tokens)
 
-        yield generate_sse_stop_chunk(
-            req_id, model_name_for_stream, "stop", usage_stats
-        )
+        if function_calls:
+            from api_utils.utils_ext.function_calling_orchestrator import (
+                get_function_calling_orchestrator,
+            )
+
+            orchestrator = get_function_calling_orchestrator()
+            tool_calls_deltas = orchestrator.format_streaming_tool_calls(function_calls)
+            for delta in tool_calls_deltas:
+                chunk = {
+                    "id": f"chatcmpl-{req_id}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name_for_stream,
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+                }
+                yield f"data: {json.dumps(chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
+
+            yield generate_sse_stop_chunk(
+                req_id, model_name_for_stream, "tool_calls", usage_stats
+            )
+        else:
+            yield generate_sse_stop_chunk(
+                req_id, model_name_for_stream, "stop", usage_stats
+            )
     except (QuotaExceededError, QuotaExceededRetry):
         raise
     except ClientDisconnectedError:
