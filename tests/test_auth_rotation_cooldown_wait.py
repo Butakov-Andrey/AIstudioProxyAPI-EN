@@ -19,14 +19,18 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture(autouse=True)
 def setup_teardown():
     """Set up and tear down global state for each test."""
+    from browser_utils import auth_rotation
+
     GlobalState.AUTH_ROTATION_LOCK.set()
     GlobalState.DEPLOYMENT_EMERGENCY_MODE = False
     GlobalState.reset_quota_status()
+    auth_rotation._ROTATION_TIMESTAMPS.clear()
 
     yield
 
     GlobalState.reset_quota_status()
     GlobalState.AUTH_ROTATION_LOCK.set()
+    auth_rotation._ROTATION_TIMESTAMPS.clear()
 
 
 async def test_perform_auth_rotation_waits_for_cooldown():

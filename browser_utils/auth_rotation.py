@@ -383,9 +383,11 @@ async def perform_auth_rotation(target_model_id: str = None) -> bool:
         else:
             effective_rotation_limit = _ROTATION_LIMIT_COUNT
 
-        # Filter timestamps within the window
+        # Filter timestamps within the window, ensuring we only process numeric values
         _ROTATION_TIMESTAMPS = [
-            t for t in _ROTATION_TIMESTAMPS if current_time - t < _ROTATION_LIMIT_WINDOW
+            t
+            for t in _ROTATION_TIMESTAMPS
+            if isinstance(t, (int, float)) and current_time - t < _ROTATION_LIMIT_WINDOW
         ]
 
         if len(_ROTATION_TIMESTAMPS) >= effective_rotation_limit:
