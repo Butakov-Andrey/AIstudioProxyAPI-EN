@@ -79,13 +79,13 @@ Runs daily at 00:00 UTC to sync with the [upstream repository](https://github.co
 
 ### 3. Release Process
 Automates release creation.
-- **Trigger**: Push a tag (e.g., `v4.0.5`) or trigger manually via **Actions**.
+- **Trigger**: Push a tag (e.g., `v4.0.6`) or trigger manually via **Actions**.
 - **Action**: Creates a GitHub Release with auto-generated changelog and source archives.
 
 To create a release:
 ```bash
-git tag v4.0.5
-git push origin v4.0.5
+git tag v4.0.6
+git push origin v4.0.6
 ```
 
 ## Reporting Issues

@@ -376,7 +376,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AI Studio Proxy Server (Integrated Mode)",
         description="Proxy server interacting with AI Studio via Playwright.",
-        version="0.6.0-integrated",
+        version="4.0.6",
         lifespan=lifespan,
     )
     app.add_middleware(APIKeyAuthMiddleware)

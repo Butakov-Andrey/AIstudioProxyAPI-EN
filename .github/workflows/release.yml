@@ -3,9 +3,9 @@
 # on pushes to main (nightly builds), or manually triggered via workflow_dispatch.
 #
 # Release Types:
-#   - Stable: Push a tag (git tag v4.0.5 && git push origin v4.0.5)
+#   - Stable: Push a tag (git tag v4.0.6 && git push origin v4.0.6)
 #   - Nightly: Automatic on every push to main branch (rolling release)
-#   - Manual: Actions -> Release -> Run workflow -> Enter version (e.g., v4.0.5)
+#   - Manual: Actions -> Release -> Run workflow -> Enter version (e.g., v4.0.6)
 
 name: Release
 
@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., v4.0.5)'
+        description: 'Version to release (e.g., v4.0.6)'
         required: true
         type: string
 
