@@ -312,7 +312,8 @@ async def test_use_stream_response_mixed_types():
     ]
 
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = q_data
+    # Add queue.Empty after data to prevent StopIteration when mock exhausts
+    mock_queue.get_nowait.side_effect = q_data + [queue.Empty()]
 
     with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         chunks = []
