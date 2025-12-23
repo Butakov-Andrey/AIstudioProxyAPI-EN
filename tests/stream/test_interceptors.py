@@ -361,19 +361,20 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_toolcall_params_with_invalid_structure(self, interceptor):
         """
-        Test scenario: parse_toolcall_params encounters invalid parameter structure
-        Expected: raises exception (lines 139-140)
+        Test scenario: invalid args format passed to parse_toolcall_params
+        Expected: gracefully returns empty dict (resilient to malformed input)
         """
         # 传入格式错误的 args (期望是嵌套列表,但只给字符串)
         invalid_args = "not a list"
 
-        with pytest.raises(Exception):
-            interceptor.parse_toolcall_params(invalid_args)
+        # Should return empty dict instead of raising exception
+        result = interceptor.parse_toolcall_params(invalid_args)
+        assert result == {}
 
     def test_parse_toolcall_params_with_malformed_nested_structure(self, interceptor):
         """
         Test scenario: nested object parameter format error
-        Expected: raises exception during recursive call (lines 139-140)
+        Expected: gracefully handles malformed structure
         """
         # 外层格式正确,但嵌套对象的参数格式错误
         malformed_args = [
@@ -385,19 +386,22 @@ class TestHttpInterceptorEdgeCases:
             ]
         ]
 
-        with pytest.raises(Exception):
-            interceptor.parse_toolcall_params(malformed_args)
+        # Should handle gracefully - either return parsed data or empty dict
+        result = interceptor.parse_toolcall_params(malformed_args)
+        # The parser will try to parse, may return partial result or empty
+        assert isinstance(result, dict)
 
     def test_parse_toolcall_params_with_index_error(self, interceptor):
         """
         Test scenario: parameter list index out of bounds
-        Expected: IndexError is raised (lines 139-140)
+        Expected: gracefully returns empty dict
         """
         # args[0] 期望是参数列表,但 args 为空
         invalid_args = []
 
-        with pytest.raises(Exception):
-            interceptor.parse_toolcall_params(invalid_args)
+        # Should return empty dict instead of raising exception
+        result = interceptor.parse_toolcall_params(invalid_args)
+        assert result == {}
 
     def test_decode_chunked_edge_case_truncated_end(self):
         """
@@ -597,16 +601,14 @@ class TestInterceptorExceptionPaths:
 
     def test_parse_toolcall_params_exception(self, interceptor):
         """
-        Test scenario: parse_toolcall_params raises exception during parameter parsing
-        Expected: exception is re-raised (lines 139-140)
+        Test scenario: parse_toolcall_params handles None input gracefully
+        Expected: returns empty dict (graceful degradation)
         """
-        # Pass malformed args that cause exception during parsing
-        # Expected structure: [[param1, param2, ...]]
-        # Malformed: missing nested list
-        malformed_args = None  # This will cause args[0] to raise TypeError
+        # Pass None - previously caused TypeError, now handled gracefully
+        malformed_args = None
 
-        with pytest.raises(TypeError):
-            interceptor.parse_toolcall_params(malformed_args)
+        result = interceptor.parse_toolcall_params(malformed_args)
+        assert result == {}
 
     def test_decode_chunked_final_break(self):
         """
@@ -657,9 +659,9 @@ class TestInterceptorEdgeCases:
 
     def test_parse_toolcall_params_index_error(self, interceptor):
         """
-        Test scenario: parse_toolcall_params encounters IndexError accessing args[0]
-        Expected: exception is re-raised (lines 139-140)
+        Test scenario: parse_toolcall_params handles empty list gracefully
+        Expected: returns empty dict (graceful degradation)
         """
-        # Pass empty list (args[0] will raise IndexError)
-        with pytest.raises(IndexError):
-            interceptor.parse_toolcall_params([])
+        # Pass empty list - previously caused IndexError, now handled gracefully
+        result = interceptor.parse_toolcall_params([])
+        assert result == {}

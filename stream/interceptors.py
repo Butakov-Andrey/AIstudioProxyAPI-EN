@@ -3,7 +3,7 @@ import logging
 import re
 import sys
 import zlib
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import unquote
 
 from config.global_state import GlobalState
@@ -193,9 +193,67 @@ class HttpInterceptor:
 
         return resp
 
+    def _unwrap_to_param_list(
+        self, args: Any, max_depth: int = 10
+    ) -> Optional[List[Any]]:
+        """Unwrap nested lists until we find the actual parameter list.
+
+        A parameter list is a list where each element is a [name, value] tuple
+        and the name (first element) is a string.
+
+        Args:
+            args: The nested structure to unwrap.
+            max_depth: Maximum unwrap depth to prevent infinite loops.
+
+        Returns:
+            The parameter list, or None if not found.
+        """
+        current = args
+        for _ in range(max_depth):
+            if not isinstance(current, list) or len(current) == 0:
+                return None
+
+            # Check if current is already a param list
+            # A param list is a list of [string_name, value] tuples
+            first_elem = current[0]
+            if isinstance(first_elem, list) and len(first_elem) >= 2:
+                # Check if first element of first tuple is a string (param name)
+                if isinstance(first_elem[0], str):
+                    # This is the param list!
+                    return current
+
+            # Not a param list yet, unwrap one level
+            if isinstance(current[0], list):
+                current = current[0]
+            else:
+                # Can't unwrap further
+                return None
+
+        self.logger.warning(f"Max unwrap depth reached for args: {args}")
+        return None
+
     def parse_toolcall_params(self, args: Any) -> Dict[str, Any]:
+        """Parse function call parameters from AI Studio's wire format.
+
+        AI Studio uses a type-length encoding:
+        - Length 1: null
+        - Length 2: number/integer
+        - Length 3: string
+        - Length 4: boolean
+        - Length 5: object (nested structure)
+        - Length 6: array
+
+        The wire format has variable nesting levels. We unwrap until we find
+        the actual parameter tuples (where first element is a string).
+        """
         try:
-            params = args[0]
+            # Unwrap nested lists until we find the parameter list
+            # A parameter list is a list of [name, value] tuples where name is a string
+            params = self._unwrap_to_param_list(args)
+            if params is None:
+                self.logger.warning(f"Could not find param list in args: {args}")
+                return {}
+
             func_params = {}
             for param in params:
                 param_name = param[0]
@@ -214,9 +272,61 @@ class HttpInterceptor:
                         func_params[param_name] = self.parse_toolcall_params(
                             param_value[4]
                         )
+                    elif len(param_value) == 6:  # array
+                        # Arrays are at index 5, containing list of encoded items
+                        array_items = param_value[5]
+                        if isinstance(array_items, list):
+                            func_params[param_name] = self._parse_array_items(
+                                array_items
+                            )
+                        else:
+                            func_params[param_name] = []
+                    else:
+                        # Unknown type - log and store raw value
+                        self.logger.debug(
+                            f"Unknown param type length {len(param_value)} for {param_name}"
+                        )
+                        func_params[param_name] = param_value
+                else:
+                    # Non-list value - store directly
+                    self.logger.debug(
+                        f"Non-list param value for {param_name}: {type(param_value)}"
+                    )
+                    func_params[param_name] = param_value
             return func_params
         except Exception as e:
+            self.logger.debug(f"Error parsing toolcall params: {e}")
             raise e
+
+    def _parse_array_items(self, array_items: List[Any]) -> List[Any]:
+        """Parse array items from AI Studio's wire format.
+
+        Each item in the array follows the same type encoding as parameters.
+        """
+        result = []
+        for item in array_items:
+            if isinstance(item, list):
+                if len(item) == 1:  # null
+                    result.append(None)
+                elif len(item) == 2:  # number
+                    result.append(item[1])
+                elif len(item) == 3:  # string
+                    result.append(item[2])
+                elif len(item) == 4:  # boolean
+                    result.append(item[3] == 1)
+                elif len(item) == 5:  # object
+                    result.append(self.parse_toolcall_params(item[4]))
+                elif len(item) == 6:  # nested array
+                    nested_items = item[5]
+                    if isinstance(nested_items, list):
+                        result.append(self._parse_array_items(nested_items))
+                    else:
+                        result.append([])
+                else:
+                    result.append(item)
+            else:
+                result.append(item)
+        return result
 
     @staticmethod
     def _decompress_zlib_stream(compressed_stream: Union[bytearray, bytes]) -> bytes:

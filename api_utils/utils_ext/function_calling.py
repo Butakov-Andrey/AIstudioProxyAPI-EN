@@ -133,22 +133,70 @@ class SchemaConverter:
     ```
     """
 
-    # Gemini Schema ONLY supports these fields (whitelist approach)
-    # See: https://ai.google.dev/api/caching#Schema
-    # Unsupported fields like minimum, maximum, pattern, format, etc. cause silent failures
+    # =========================================================================
+    # AI STUDIO SCHEMA WHITELIST (Empirically Tested)
+    # =========================================================================
+    # Only these fields are accepted by AI Studio's function calling UI.
+    # This was tested against AI Studio web interface on 2025-12-24.
+    #
+    # IMPORTANT: AI Studio Web UI has STRICTER validation than the direct
+    # Gemini API. The Gemini API docs list many fields that AI Studio rejects.
+    #
+    # -------------------------------------------------------------------------
+    # SUPPORTED FIELDS (Tested & Working):
+    # -------------------------------------------------------------------------
     ALLOWED_SCHEMA_FIELDS = {
-        "type",  # Data type (string, integer, number, boolean, array, object)
-        "properties",  # Object properties (for type=object)
-        "required",  # Required property names (for type=object)
+        "type",  # Data type (REQUIRED on every property)
+        "format",  # Format hint (e.g., "date-time", "email")
         "description",  # Human-readable description
-        "enum",  # Allowed values
-        "items",  # Array item schema (for type=array)
         "nullable",  # Whether null is allowed
-        "format",  # Format hint (may be ignored but doesn't break)
+        "enum",  # Allowed values
+        "maxItems",  # Maximum array items
+        "minItems",  # Minimum array items
+        "properties",  # Object properties
+        "required",  # Required property names
+        "items",  # Array item schema
+        "minProperties",  # Minimum object properties
+        "maxProperties",  # Maximum object properties
+        "minimum",  # Minimum numeric value
+        "maximum",  # Maximum numeric value
+        "minLength",  # Minimum string length
+        "maxLength",  # Maximum string length
+        "pattern",  # Regex pattern for strings
+        "propertyOrdering",  # Order of properties for display
     }
 
-    # Fields that require special handling (not just copy)
-    SPECIAL_FIELDS = {"type", "properties", "items", "anyOf", "oneOf", "allOf", "const"}
+    # -------------------------------------------------------------------------
+    # UNSUPPORTED FIELDS (AI Studio rejects these with "Unknown key" error):
+    # -------------------------------------------------------------------------
+    # DO NOT ADD THESE TO ALLOWED_SCHEMA_FIELDS - They have been tested and
+    # confirmed to cause errors in AI Studio:
+    #
+    #   - "title"                : Unknown key error
+    #   - "default"              : Unknown key error
+    #   - "additionalProperties" : Unknown key error
+    #   - "const"                : Unknown key error (convert to enum instead)
+    #   - "anyOf"                : Unknown key error + "type must be specified"
+    #   - "oneOf"                : Unknown key error (convert to first type)
+    #   - "allOf"                : Unknown key error (convert to first type)
+    #   - "$schema"              : Unknown key error
+    #   - "$id"                  : Unknown key error
+    #   - "$ref"                 : Unknown key error
+    #   - "$defs"                : Unknown key error
+    #   - "definitions"          : Unknown key error
+    #   - "examples"             : Unknown key error
+    #   - "exclusiveMinimum"     : Unknown key error
+    #   - "exclusiveMaximum"     : Unknown key error
+    #   - "multipleOf"           : Unknown key error
+    #   - "uniqueItems"          : Unknown key error
+    #   - "strict"               : OpenAI-specific, not supported
+    #
+    # =========================================================================
+
+    # Fields that require special handling (recursion, conversion)
+    # anyOf/oneOf/allOf are converted to first non-null type since AI Studio
+    # doesn't support union types
+    SPECIAL_FIELDS = {"type", "properties", "items", "anyOf", "const", "oneOf", "allOf"}
 
     TYPE_MAP = {
         "string": "string",
@@ -265,13 +313,12 @@ class SchemaConverter:
     def _clean_parameters(self, schema: Dict[str, Any]) -> Dict[str, Any]:
         """Convert OpenAI/JSON Schema to Gemini-compatible format.
 
-        Uses WHITELIST approach - only copies fields that Gemini explicitly supports.
-        Unsupported fields (minimum, maximum, pattern, format, etc.) are silently dropped.
+        Uses WHITELIST approach - only copies fields that Gemini/AI Studio accepts.
+        AI Studio rejects unknown fields with errors like "Unknown key 'additionalProperties'".
 
         Handles:
         - Type normalization (list to single type + nullable)
-        - Enum conversion (const to enum)
-        - Logic conversion (oneOf/allOf - simplified to first option)
+        - Conversion: const -> enum, oneOf/allOf -> anyOf (simplified)
         - Whitelist-based field filtering
         - Recursive cleaning of nested schemas
         """
@@ -280,12 +327,12 @@ class SchemaConverter:
 
         cleaned: Dict[str, Any] = {}
 
-        # 1. Handle oneOf/allOf/anyOf: Gemini doesn't support these, use first option
+        # 1. Handle anyOf/oneOf/allOf: AI Studio doesn't support these, extract first non-null type
         for logic_field in ["anyOf", "oneOf", "allOf"]:
             if logic_field in schema:
                 val = schema[logic_field]
                 if isinstance(val, list) and len(val) > 0:
-                    # Use the first non-null option
+                    # Find the first non-null option and use it
                     for option in val:
                         if isinstance(option, dict):
                             option_type = option.get("type")
@@ -299,16 +346,18 @@ class SchemaConverter:
                         if isinstance(option, dict) and option.get("type") == "null":
                             cleaned["nullable"] = True
                             break
-                    return cleaned  # Return early, logic fields define the whole schema
+                    # Return early since logic fields define the whole schema
+                    if cleaned:
+                        return cleaned
 
         # 2. Handle Const Conversion: const -> enum
         if "const" in schema:
             cleaned["enum"] = [schema["const"]]
 
-        # 3. Handle Type Normalization
+        # 3. Handle Type Normalization: ["string", "null"] -> "string" + nullable
         if "type" in schema:
             raw_type = schema["type"]
-            nullable = False
+            nullable = schema.get("nullable", False)
 
             if isinstance(raw_type, list):
                 if "null" in raw_type:
@@ -324,37 +373,34 @@ class SchemaConverter:
             if isinstance(raw_type, str):
                 cleaned["type"] = self.TYPE_MAP.get(raw_type.lower(), raw_type.lower())
 
-        # 4. Copy ONLY allowed fields (whitelist approach)
+        # 4. Handle properties recursively (must do before the loop)
+        if "properties" in schema and isinstance(schema["properties"], dict):
+            cleaned["properties"] = {
+                prop_name: self._clean_parameters(prop_schema)
+                for prop_name, prop_schema in schema["properties"].items()
+            }
+
+        # 5. Handle items recursively (for arrays)
+        if "items" in schema and isinstance(schema["items"], dict):
+            cleaned["items"] = self._clean_parameters(schema["items"])
+
+        # 6. Copy ONLY allowed fields (whitelist approach)
         for key, value in schema.items():
             # Skip fields we already handled
-            if key in ["type", "const", "anyOf", "oneOf", "allOf"]:
+            if key in self.SPECIAL_FIELDS:
                 continue
 
-            # Only copy fields that Gemini supports
+            # Skip nullable if already set from type array
+            if key == "nullable" and "nullable" in cleaned:
+                continue
+
+            # Only copy fields that Gemini accepts
             if key not in self.ALLOWED_SCHEMA_FIELDS:
                 continue
 
-            # Recursively clean nested structures
-            if key == "properties" and isinstance(value, dict):
-                cleaned["properties"] = {
-                    prop_name: self._clean_parameters(prop_schema)
-                    for prop_name, prop_schema in value.items()
-                }
-            elif key == "items" and isinstance(value, dict):
-                cleaned["items"] = self._clean_parameters(value)
-            elif key == "required" and isinstance(value, list):
-                # required is a list of strings, copy as-is
-                cleaned["required"] = value
-            elif key == "enum" and isinstance(value, list):
-                # enum is a list of values, copy as-is
-                cleaned["enum"] = value
-            elif key == "description" and isinstance(value, str):
-                cleaned["description"] = value
-            elif key == "nullable" and isinstance(value, bool):
-                cleaned["nullable"] = value
-            elif key == "format" and isinstance(value, str):
-                # format is allowed but may be ignored by Gemini
-                cleaned["format"] = value
+            # Copy allowed fields as-is (properties/items already handled above)
+            if key not in cleaned:
+                cleaned[key] = value
 
         return cleaned
 

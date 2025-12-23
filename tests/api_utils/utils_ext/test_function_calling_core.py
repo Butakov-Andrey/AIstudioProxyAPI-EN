@@ -39,11 +39,15 @@ class TestFunctionCallingCore(unittest.TestCase):
         result = self.converter.convert_tool(openai_tool)
         self.assertEqual(result, expected)
 
-    def test_schema_converter_strips_unsupported_fields(self):
-        """Test that SchemaConverter strips unsupported fields using whitelist approach.
+    def test_schema_converter_preserves_gemini_supported_fields(self):
+        """Test that SchemaConverter preserves AI Studio-supported fields.
 
-        Gemini Schema only supports: type, properties, required, description, enum, items, nullable, format.
-        Fields like pattern, minLength, minimum, maximum, etc. must be stripped.
+        AI Studio ONLY supports: type, properties, required, description, enum, items,
+        nullable, format, minimum, maximum, minLength, maxLength, pattern,
+        minItems, maxItems, minProperties, maxProperties, propertyOrdering.
+
+        Fields like $schema, strict, additionalProperties, exclusiveMinimum,
+        title, default, anyOf, oneOf, allOf, const are STRIPPED.
         """
         openai_tool = {
             "type": "function",
@@ -55,19 +59,19 @@ class TestFunctionCallingCore(unittest.TestCase):
                         "location": {
                             "type": "string",
                             "description": "The city and state",
-                            "pattern": "^[a-zA-Z ]*$",  # Unsupported - must be stripped
-                            "minLength": 1,  # Unsupported - must be stripped
-                            "maxLength": 100,  # Unsupported - must be stripped
+                            "pattern": "^[a-zA-Z ]*$",  # Supported - preserved
+                            "minLength": 1,  # Supported - preserved
+                            "maxLength": 100,  # Supported - preserved
                         },
                         "count": {
                             "type": "integer",
-                            "minimum": 0,  # Unsupported - must be stripped
-                            "maximum": 100,  # Unsupported - must be stripped
-                            "exclusiveMinimum": 0,  # Unsupported - must be stripped
+                            "minimum": 0,  # Supported - preserved
+                            "maximum": 100,  # Supported - preserved
+                            "exclusiveMinimum": 0,  # NOT supported - stripped
                         },
                     },
                     "required": ["location"],
-                    "strict": True,  # Unsupported - must be stripped
+                    "strict": True,  # NOT supported - stripped
                 },
                 "strict": True,
             },
@@ -80,23 +84,23 @@ class TestFunctionCallingCore(unittest.TestCase):
         self.assertEqual(
             result["parameters"]["properties"]["location"]["type"], "string"
         )
-        # These unsupported fields MUST be stripped (whitelist approach)
-        self.assertNotIn("pattern", result["parameters"]["properties"]["location"])
-        self.assertNotIn("minLength", result["parameters"]["properties"]["location"])
-        self.assertNotIn("maxLength", result["parameters"]["properties"]["location"])
-        # But description is allowed
+        # These AI Studio-supported fields MUST be preserved
+        self.assertIn("pattern", result["parameters"]["properties"]["location"])
+        self.assertIn("minLength", result["parameters"]["properties"]["location"])
+        self.assertIn("maxLength", result["parameters"]["properties"]["location"])
         self.assertIn("description", result["parameters"]["properties"]["location"])
 
-        # Verify count property also has unsupported fields stripped
+        # Verify count property preserves supported fields but strips unsupported
         self.assertEqual(result["parameters"]["properties"]["count"]["type"], "integer")
-        self.assertNotIn("minimum", result["parameters"]["properties"]["count"])
-        self.assertNotIn("maximum", result["parameters"]["properties"]["count"])
+        self.assertIn("minimum", result["parameters"]["properties"]["count"])
+        self.assertIn("maximum", result["parameters"]["properties"]["count"])
+        # exclusiveMinimum is NOT supported by AI Studio - must be stripped
         self.assertNotIn(
             "exclusiveMinimum", result["parameters"]["properties"]["count"]
         )
 
     def test_schema_converter_strips_additional_properties(self):
-        """Test that SchemaConverter strips 'additionalProperties'."""
+        """Test that SchemaConverter strips 'additionalProperties' (AI Studio rejects it)."""
         openai_tool = {
             "type": "function",
             "function": {
@@ -109,6 +113,7 @@ class TestFunctionCallingCore(unittest.TestCase):
             },
         }
         result = self.converter.convert_tool(openai_tool)
+        # additionalProperties is NOT supported by AI Studio - must be stripped
         self.assertNotIn("additionalProperties", result["parameters"])
 
     def test_schema_converter_nullable_types(self):
@@ -131,7 +136,7 @@ class TestFunctionCallingCore(unittest.TestCase):
         self.assertEqual(prop["nullable"], True)
 
     def test_schema_converter_const_to_enum(self):
-        """Test conversion of 'const' to 'enum'."""
+        """Test that 'const' is converted to 'enum' (AI Studio doesn't support const)."""
         openai_tool = {
             "type": "function",
             "function": {
@@ -146,13 +151,15 @@ class TestFunctionCallingCore(unittest.TestCase):
         }
         result = self.converter.convert_tool(openai_tool)
         prop = result["parameters"]["properties"]["status"]
-        self.assertEqual(prop["enum"], ["active"])
+        # const is converted to enum (AI Studio doesn't support const)
         self.assertNotIn("const", prop)
+        self.assertIn("enum", prop)
+        self.assertEqual(prop["enum"], ["active"])
 
-    def test_schema_converter_logic_conversion(self):
-        """Test that 'oneOf', 'allOf', 'anyOf' are flattened to first non-null type.
+    def test_schema_converter_flattens_logic_operators(self):
+        """Test that 'oneOf', 'allOf', 'anyOf' are flattened to first type.
 
-        Gemini Schema doesn't support anyOf/oneOf/allOf, so we use the first
+        AI Studio does NOT support anyOf/oneOf/allOf, so we extract the first
         non-null type option and set nullable=True if null was an option.
         """
         openai_tool = {
@@ -170,19 +177,25 @@ class TestFunctionCallingCore(unittest.TestCase):
         result = self.converter.convert_tool(openai_tool)
         assert result is not None, "convert_tool returned None"
         prop = result["parameters"]["properties"]["value"]
-        # oneOf is NOT supported by Gemini - should use first type
-        self.assertNotIn("anyOf", prop)
+        # oneOf is NOT supported by AI Studio - flattened to first type
         self.assertNotIn("oneOf", prop)
+        self.assertNotIn("anyOf", prop)
         self.assertEqual(prop["type"], "string")  # First option
 
     def test_schema_converter_recursive_cleaning(self):
-        """Test that SchemaConverter recursively cleans complex nested schemas."""
+        """Test that SchemaConverter recursively cleans complex nested schemas.
+
+        AI Studio Whitelist Approach: Only supported fields are preserved.
+        Fields like $schema, $id, title, default, additionalProperties, const,
+        examples are all stripped.
+        """
         complex_tool = {
             "type": "function",
             "function": {
                 "name": "complex_tool",
                 "parameters": {
                     "$schema": "http://json-schema.org/draft-07/schema#",
+                    "$id": "should-be-stripped",
                     "title": "ComplexTool",
                     "type": "object",
                     "properties": {
@@ -215,30 +228,36 @@ class TestFunctionCallingCore(unittest.TestCase):
 
         # Verify parameters root level
         params = result["parameters"]
+        # $schema is NOT supported - must be stripped
         self.assertNotIn("$schema", params)
-        # title is now stripped
+        # $id is NOT supported - must be stripped
+        self.assertNotIn("$id", params)
+        # title is NOT supported - must be stripped
         self.assertNotIn("title", params)
-        # additionalProperties is now stripped
+        # additionalProperties is NOT supported - must be stripped
         self.assertNotIn("additionalProperties", params)
 
         # Verify nested object in array
         items_schema = params["properties"]["items"]["items"]
         self.assertEqual(items_schema["type"], "object")
-        # title is now stripped
+        # title is NOT supported - must be stripped
         self.assertNotIn("title", items_schema)
+        # additionalProperties is NOT supported - must be stripped
         self.assertNotIn("additionalProperties", items_schema)
 
         # Verify nested properties
         id_schema = items_schema["properties"]["id"]
         self.assertEqual(id_schema["type"], "string")
-        # default is now stripped
+        # default is NOT supported - must be stripped
         self.assertNotIn("default", id_schema)
+        # examples is NOT supported - must be stripped
         self.assertNotIn("examples", id_schema)
 
         status_schema = items_schema["properties"]["status"]
         self.assertEqual(status_schema["type"], "string")
-        self.assertEqual(status_schema["enum"], ["active"])
+        # const is converted to enum
         self.assertNotIn("const", status_schema)
+        self.assertEqual(status_schema["enum"], ["active"])
 
     def test_schema_converter_invalid_input(self):
         """Test SchemaConverter handles invalid inputs gracefully."""
