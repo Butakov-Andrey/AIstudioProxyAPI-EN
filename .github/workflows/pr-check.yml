@@ -111,6 +111,7 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # Prevent stuck jobs from blocking indefinitely
     # Remove dependency on lint/typecheck - tests should run regardless
     # Tests are the most critical check for functionality
     strategy:
@@ -153,6 +154,9 @@ jobs:
       - name: Run pytest with coverage
         run: |
           poetry run pytest \
+            -n auto \
+            --dist=loadfile \
+            -m "not integration" \
             --cov-report=xml \
             --cov-report=term-missing \
             --junitxml=test-results.xml
