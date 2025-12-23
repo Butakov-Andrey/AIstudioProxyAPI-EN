@@ -10,12 +10,16 @@ Implements Phase 1 of ADR-001: Native Function Calling Architecture.
 """
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
+
+
+logger = logging.getLogger("AIStudioProxyServer")
 
 
 # =============================================================================
@@ -129,58 +133,90 @@ class SchemaConverter:
     ```
     """
 
-    # Fields to strip from OpenAI format (not supported in Gemini)
-    STRIP_FIELDS = {"strict"}
+    # Gemini Schema ONLY supports these fields (whitelist approach)
+    # See: https://ai.google.dev/api/caching#Schema
+    # Unsupported fields like minimum, maximum, pattern, format, etc. cause silent failures
+    ALLOWED_SCHEMA_FIELDS = {
+        "type",  # Data type (string, integer, number, boolean, array, object)
+        "properties",  # Object properties (for type=object)
+        "required",  # Required property names (for type=object)
+        "description",  # Human-readable description
+        "enum",  # Allowed values
+        "items",  # Array item schema (for type=array)
+        "nullable",  # Whether null is allowed
+        "format",  # Format hint (may be ignored but doesn't break)
+    }
 
-    def convert_tool(self, openai_tool: Dict[str, Any]) -> Dict[str, Any]:
+    # Fields that require special handling (not just copy)
+    SPECIAL_FIELDS = {"type", "properties", "items", "anyOf", "oneOf", "allOf", "const"}
+
+    TYPE_MAP = {
+        "string": "string",
+        "integer": "integer",
+        "number": "number",
+        "boolean": "boolean",
+        "array": "array",
+        "object": "object",
+    }
+
+    def convert_tool(self, openai_tool: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Convert a single OpenAI tool definition to Gemini FunctionDeclaration.
 
+        Supports both standard OpenAI format and flat format (e.g. from opencode).
+        Safely ignores non-function tools.
+
         Args:
-            openai_tool: OpenAI tool definition with 'type' and 'function' fields.
+            openai_tool: OpenAI tool definition.
 
         Returns:
-            Gemini FunctionDeclaration dict.
+            Gemini FunctionDeclaration dict, or None if the tool should be ignored.
 
         Raises:
-            SchemaConversionError: If the tool format is invalid.
+            SchemaConversionError: If the tool is a function but the format is invalid.
         """
         if not isinstance(openai_tool, dict):
-            raise SchemaConversionError(
-                f"Tool definition must be a dict, got {type(openai_tool).__name__}"
-            )
+            return None
 
         tool_type = openai_tool.get("type")
         if tool_type != "function":
-            raise SchemaConversionError(
-                f"Only 'function' type tools are supported, got '{tool_type}'"
-            )
+            logger.debug(f"Ignoring non-function tool type: {tool_type}")
+            return None
 
+        # Try to find function definition (nested or flat)
         function_def = openai_tool.get("function")
-        if not isinstance(function_def, dict):
-            raise SchemaConversionError(
-                "Tool 'function' field must be a dict containing name, description, and parameters"
-            )
+        if isinstance(function_def, dict):
+            # Standard format: {"type": "function", "function": {"name": "...", ...}}
+            source = function_def
+        else:
+            # Maybe flat format: {"type": "function", "name": "...", "parameters": { ... }}
+            source = openai_tool
 
-        name = function_def.get("name")
+        name = source.get("name")
         if not name or not isinstance(name, str):
             raise SchemaConversionError(
                 "Function 'name' is required and must be a string"
             )
 
+        logger.debug(f"Converting OpenAI tool to Gemini: {name}")
+
         # Build Gemini FunctionDeclaration
         gemini_declaration: Dict[str, Any] = {"name": name}
 
         # Description is optional but recommended
-        description = function_def.get("description")
+        description = source.get("description")
         if description and isinstance(description, str):
             gemini_declaration["description"] = description
 
         # Parameters are optional (some functions have no params)
-        parameters = function_def.get("parameters")
+        parameters = source.get("parameters")
         if parameters and isinstance(parameters, dict):
             # Strip unsupported fields but keep the rest
             clean_params = self._clean_parameters(parameters)
             gemini_declaration["parameters"] = clean_params
+
+        logger.debug(
+            f"Converted tool '{name}' to Gemini format: {json.dumps(gemini_declaration, ensure_ascii=False)}"
+        )
 
         return gemini_declaration
 
@@ -194,7 +230,7 @@ class SchemaConverter:
             List of Gemini FunctionDeclaration dicts.
 
         Raises:
-            SchemaConversionError: If any tool conversion fails.
+            SchemaConversionError: If any tool conversion fails or tools is not a list.
         """
         if not isinstance(openai_tools, list):
             raise SchemaConversionError(
@@ -205,7 +241,8 @@ class SchemaConverter:
         for i, tool in enumerate(openai_tools):
             try:
                 declaration = self.convert_tool(tool)
-                declarations.append(declaration)
+                if declaration:
+                    declarations.append(declaration)
             except SchemaConversionError as e:
                 raise SchemaConversionError(f"Error converting tool at index {i}: {e}")
 
@@ -225,31 +262,100 @@ class SchemaConverter:
         """
         return json.dumps(declarations, indent=indent, ensure_ascii=False)
 
-    def _clean_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove unsupported fields from parameters schema.
+    def _clean_parameters(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert OpenAI/JSON Schema to Gemini-compatible format.
 
-        Args:
-            parameters: JSON Schema parameters object.
+        Uses WHITELIST approach - only copies fields that Gemini explicitly supports.
+        Unsupported fields (minimum, maximum, pattern, format, etc.) are silently dropped.
 
-        Returns:
-            Cleaned parameters with unsupported fields removed.
+        Handles:
+        - Type normalization (list to single type + nullable)
+        - Enum conversion (const to enum)
+        - Logic conversion (oneOf/allOf - simplified to first option)
+        - Whitelist-based field filtering
+        - Recursive cleaning of nested schemas
         """
+        if not isinstance(schema, dict):
+            return schema
+
         cleaned: Dict[str, Any] = {}
-        for key, value in parameters.items():
-            if key in self.STRIP_FIELDS:
+
+        # 1. Handle oneOf/allOf/anyOf: Gemini doesn't support these, use first option
+        for logic_field in ["anyOf", "oneOf", "allOf"]:
+            if logic_field in schema:
+                val = schema[logic_field]
+                if isinstance(val, list) and len(val) > 0:
+                    # Use the first non-null option
+                    for option in val:
+                        if isinstance(option, dict):
+                            option_type = option.get("type")
+                            if option_type != "null":
+                                # Merge the first valid option into cleaned
+                                merged = self._clean_parameters(option)
+                                cleaned.update(merged)
+                                break
+                    # Check if null was an option for nullable
+                    for option in val:
+                        if isinstance(option, dict) and option.get("type") == "null":
+                            cleaned["nullable"] = True
+                            break
+                    return cleaned  # Return early, logic fields define the whole schema
+
+        # 2. Handle Const Conversion: const -> enum
+        if "const" in schema:
+            cleaned["enum"] = [schema["const"]]
+
+        # 3. Handle Type Normalization
+        if "type" in schema:
+            raw_type = schema["type"]
+            nullable = False
+
+            if isinstance(raw_type, list):
+                if "null" in raw_type:
+                    nullable = True
+                # Get the first non-null type
+                types = [t for t in raw_type if t != "null"]
+                raw_type = types[0] if types else "string"
+
+            if nullable:
+                cleaned["nullable"] = True
+
+            # Map and lowercase type
+            if isinstance(raw_type, str):
+                cleaned["type"] = self.TYPE_MAP.get(raw_type.lower(), raw_type.lower())
+
+        # 4. Copy ONLY allowed fields (whitelist approach)
+        for key, value in schema.items():
+            # Skip fields we already handled
+            if key in ["type", "const", "anyOf", "oneOf", "allOf"]:
                 continue
-            if isinstance(value, dict):
-                cleaned[key] = self._clean_parameters(value)
-            elif isinstance(value, list):
-                cleaned_list: List[Any] = []
-                for item in value:
-                    if isinstance(item, dict):
-                        cleaned_list.append(self._clean_parameters(item))
-                    else:
-                        cleaned_list.append(item)
-                cleaned[key] = cleaned_list
-            else:
-                cleaned[key] = value
+
+            # Only copy fields that Gemini supports
+            if key not in self.ALLOWED_SCHEMA_FIELDS:
+                continue
+
+            # Recursively clean nested structures
+            if key == "properties" and isinstance(value, dict):
+                cleaned["properties"] = {
+                    prop_name: self._clean_parameters(prop_schema)
+                    for prop_name, prop_schema in value.items()
+                }
+            elif key == "items" and isinstance(value, dict):
+                cleaned["items"] = self._clean_parameters(value)
+            elif key == "required" and isinstance(value, list):
+                # required is a list of strings, copy as-is
+                cleaned["required"] = value
+            elif key == "enum" and isinstance(value, list):
+                # enum is a list of values, copy as-is
+                cleaned["enum"] = value
+            elif key == "description" and isinstance(value, str):
+                cleaned["description"] = value
+            elif key == "nullable" and isinstance(value, bool):
+                cleaned["nullable"] = value
+            elif key == "format" and isinstance(value, str):
+                # format is allowed but may be ignored by Gemini
+                cleaned["format"] = value
+
         return cleaned
 
 
@@ -325,6 +431,7 @@ class CallIdManager:
             arguments=arguments,
         )
         self._pending_calls[call_id] = pending
+        logger.debug(f"Registered pending call: {call_id} -> {function_name}")
         return pending
 
     def get_pending_call(self, call_id: str) -> Optional[PendingCall]:
@@ -431,6 +538,22 @@ class ResponseFormatter:
         """Get the call ID manager."""
         return self._id_manager
 
+    def format_non_streaming_response(
+        self,
+        parsed_calls: List[ParsedFunctionCall],
+        content: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Format a non-streaming response with tool calls.
+
+        Ensures structure: {"role": "assistant", "content": null, "tool_calls": [...]}
+        """
+        tool_calls = self.format_tool_calls(parsed_calls)
+        return {
+            "role": "assistant",
+            "content": content,
+            "tool_calls": tool_calls,
+        }
+
     def format_tool_call(
         self,
         parsed_call: ParsedFunctionCall,
@@ -455,6 +578,8 @@ class ResponseFormatter:
         """
         if call_id is None:
             call_id = self._id_manager.generate_id()
+
+        logger.debug(f"Formatting tool call: {call_id} ({parsed_call.name})")
 
         # Register the call for tracking
         self._id_manager.register_call(
@@ -489,6 +614,7 @@ class ResponseFormatter:
         Returns:
             List of OpenAI tool_call dicts.
         """
+        logger.debug(f"Formatting {len(parsed_calls)} tool call(s)")
         return [self.format_tool_call(call) for call in parsed_calls]
 
     def format_tool_call_delta(
@@ -618,6 +744,7 @@ class ResponseFormatter:
             chunks.append(
                 self.format_tool_call_delta(
                     index=index,
+                    call_id=call_id,  # Include ID in all chunks for consistency
                     arguments_fragment=fragment,
                 )
             )

@@ -162,8 +162,8 @@ async def _prepare_and_validate_request(
     req_id: str,
     request: ChatCompletionRequest,
     check_client_disconnected: Callable,
-) -> Tuple[str, List[str]]:
-    """Prepare and validate request, return (combined prompt, attachment path list)."""
+) -> Tuple[str, List[str], Optional[List[Dict[str, Any]]]]:
+    """Prepare and validate request, return (combined prompt, attachment path list, tool_exec_results)."""
     try:
         validate_chat_request(request.messages, req_id)
     except ValueError as e:
@@ -210,7 +210,7 @@ async def _prepare_and_validate_request(
         request, req_id, attachments_list
     )
 
-    return prepared_prompt, final_attachments
+    return prepared_prompt, final_attachments, tool_exec_results
 
 
 async def _handle_response_processing(
@@ -815,9 +815,62 @@ async def _process_request_refactored(
                 )
                 # Continue with request - fallback to emulated mode happens in prepare_combined_prompt
 
-        prepared_prompt, attachments_list = await _prepare_and_validate_request(
+        (
+            prepared_prompt,
+            attachments_list,
+            tool_exec_results,
+        ) = await _prepare_and_validate_request(
             req_id, request, check_client_disconnected
         )
+
+        # [TOOL-FORCED] If tool was executed locally (forced), return immediately bypassing AI Studio flow
+        if tool_exec_results:
+            logger.info(
+                f"[{req_id}] Active tool execution detected, returning results immediately."
+            )
+            tool_calls_list = []
+            for res in tool_exec_results:
+                tool_calls_list.append(
+                    {
+                        "id": f"call_{_random_id()}",
+                        "type": "function",
+                        "function": {
+                            "name": res["name"],
+                            "arguments": res["arguments"],
+                        },
+                    }
+                )
+
+            message_payload = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": tool_calls_list,
+            }
+
+            usage_stats = calculate_usage_stats(
+                [msg.model_dump() for msg in request.messages],
+                "",
+                "",
+            )
+
+            response_payload = build_chat_completion_response_json(
+                req_id,
+                request.model or MODEL_NAME,
+                message_payload,
+                "tool_calls",
+                usage_stats,
+                seed=request.seed
+                if hasattr(request, "seed") and request.seed is not None
+                else 0,
+            )
+
+            if not result_future.done():
+                result_future.set_result(JSONResponse(content=response_payload))
+
+            # Return dummy event for forced tool execution to satisfy type requirement
+            dummy_event = Event()
+            dummy_event.set()
+            return dummy_event, submit_button_locator, check_client_disconnected
 
         request_params = request.model_dump(exclude_none=True)
         if "stop" in request.model_fields_set and request.stop is None:

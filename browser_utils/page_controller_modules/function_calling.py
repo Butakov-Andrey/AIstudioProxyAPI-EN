@@ -220,7 +220,7 @@ class FunctionCallingController(BaseController):
         Returns:
             True if dialog opened successfully, False otherwise.
         """
-        self.logger.debug(f"[{self.req_id}] Opening function declarations dialog")
+        self.logger.debug(f"[{self.req_id}] UI: Opening function declarations dialog")
 
         await self._check_disconnect(
             check_client_disconnected, "Function declarations - opening dialog"
@@ -248,7 +248,7 @@ class FunctionCallingController(BaseController):
                 timeout=SELECTOR_VISIBILITY_TIMEOUT_MS
             )
 
-            self.logger.debug(f"[{self.req_id}] Function declarations dialog opened")
+            self.logger.debug(f"[{self.req_id}] UI: Dialog opened successfully")
             return True
 
         except asyncio.CancelledError:
@@ -257,7 +257,7 @@ class FunctionCallingController(BaseController):
             raise
         except Exception as e:
             self.logger.error(
-                f"[{self.req_id}] Error opening function declarations dialog: {e}"
+                f"[{self.req_id}] UI: Failed to open function declarations dialog: {e}"
             )
             from browser_utils.operations import save_error_snapshot
 
@@ -274,7 +274,7 @@ class FunctionCallingController(BaseController):
         Returns:
             True if switched successfully or already on Code Editor tab, False otherwise.
         """
-        self.logger.debug(f"[{self.req_id}] Switching to Code Editor tab")
+        self.logger.debug(f"[{self.req_id}] UI: Clicking Code Editor tab")
 
         await self._check_disconnect(
             check_client_disconnected, "Function declarations - switch to code editor"
@@ -289,21 +289,21 @@ class FunctionCallingController(BaseController):
             if await code_editor_tab.count() == 0:
                 # Might already be in Code Editor mode or single-mode dialog
                 self.logger.debug(
-                    f"[{self.req_id}] Code Editor tab not found, assuming single-mode"
+                    f"[{self.req_id}] UI: Code Editor tab not found, assuming single-mode"
                 )
                 return True
 
             # Check if already selected
             is_selected = await code_editor_tab.first.get_attribute("aria-selected")
             if is_selected == "true":
-                self.logger.debug(f"[{self.req_id}] Already on Code Editor tab")
+                self.logger.debug(f"[{self.req_id}] UI: Already on Code Editor tab")
                 return True
 
             # Click to switch
             await code_editor_tab.first.click(timeout=CLICK_TIMEOUT_MS)
             await asyncio.sleep(0.3)
 
-            self.logger.debug(f"[{self.req_id}] Switched to Code Editor tab")
+            self.logger.debug(f"[{self.req_id}] UI: Switched to Code Editor tab")
             return True
 
         except asyncio.CancelledError:
@@ -312,7 +312,7 @@ class FunctionCallingController(BaseController):
             raise
         except Exception as e:
             self.logger.warning(
-                f"[{self.req_id}] Error switching to Code Editor tab: {e}"
+                f"[{self.req_id}] UI: Error switching to Code Editor tab: {e}"
             )
             return True  # Continue anyway, might work
 
@@ -332,8 +332,7 @@ class FunctionCallingController(BaseController):
             True if input was successful, False otherwise.
         """
         self.logger.debug(
-            f"[{self.req_id}] Inputting function declarations "
-            f"({len(declarations_json)} chars)"
+            f"[{self.req_id}] UI: Pasting JSON ({len(declarations_json)} chars)"
         )
 
         await self._check_disconnect(
@@ -360,9 +359,7 @@ class FunctionCallingController(BaseController):
 
             await asyncio.sleep(0.2)
 
-            self.logger.debug(
-                f"[{self.req_id}] Function declarations JSON input complete"
-            )
+            self.logger.debug(f"[{self.req_id}] UI: JSON input complete")
             return True
 
         except asyncio.CancelledError:
@@ -371,7 +368,7 @@ class FunctionCallingController(BaseController):
             raise
         except Exception as e:
             self.logger.error(
-                f"[{self.req_id}] Error inputting function declarations: {e}"
+                f"[{self.req_id}] UI: Error inputting function declarations: {e}"
             )
             from browser_utils.operations import save_error_snapshot
 
@@ -388,9 +385,7 @@ class FunctionCallingController(BaseController):
         Returns:
             True if saved and closed successfully, False otherwise.
         """
-        self.logger.debug(
-            f"[{self.req_id}] Saving and closing function declarations dialog"
-        )
+        self.logger.debug(f"[{self.req_id}] UI: Saving and closing dialog")
 
         await self._check_disconnect(
             check_client_disconnected, "Function declarations - save and close"
@@ -413,14 +408,12 @@ class FunctionCallingController(BaseController):
             dialog = self.page.locator(FUNCTION_DECLARATIONS_DIALOG_SELECTOR)
             try:
                 await expect_async(dialog.first).not_to_be_visible(timeout=3000)
-                self.logger.debug(
-                    f"[{self.req_id}] Function declarations dialog closed successfully"
-                )
+                self.logger.debug(f"[{self.req_id}] UI: Dialog closed successfully")
                 return True
             except Exception:
                 # Dialog might still be open, try close button
                 self.logger.debug(
-                    f"[{self.req_id}] Dialog still visible, trying close button"
+                    f"[{self.req_id}] UI: Dialog still visible, trying close button"
                 )
                 close_button = self.page.locator(
                     FUNCTION_DECLARATIONS_CLOSE_BUTTON_SELECTOR
@@ -436,9 +429,7 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.error(
-                f"[{self.req_id}] Error saving function declarations: {e}"
-            )
+            self.logger.error(f"[{self.req_id}] UI: Error saving declarations: {e}")
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"function_save_error_{self.req_id}")

@@ -127,6 +127,7 @@ async def gen_sse_from_aux_stream(
     full_body_content = ""
     data_receiving = False
     is_response_finalized = False
+    finish_reason = "stop"
 
     has_started_body = False
 
@@ -328,6 +329,7 @@ async def gen_sse_from_aux_stream(
                         await asyncio.sleep(1.0)
 
                 if function:
+                    finish_reason = "tool_calls"
                     tool_calls_list = []
                     for func_idx, function_call_data in enumerate(function):
                         if isinstance(function_call_data, dict):
@@ -347,17 +349,16 @@ async def gen_sse_from_aux_stream(
                     choice_item = {
                         "index": 0,
                         "delta": {
-                            "role": "assistant",
-                            "content": None,
                             "tool_calls": tool_calls_list,
                         },
-                        "finish_reason": "tool_calls",
+                        "finish_reason": None,
                     }
                 else:
+                    finish_reason = "stop"
                     choice_item = {
                         "index": 0,
-                        "delta": {"role": "assistant"},
-                        "finish_reason": "stop",
+                        "delta": {},
+                        "finish_reason": None,
                     }
 
                 output = {
@@ -427,7 +428,7 @@ async def gen_sse_from_aux_stream(
                 "object": "chat.completion.chunk",
                 "model": model_name_for_stream,
                 "created": created_timestamp,
-                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
                 "usage": usage_stats,
             }
             yield f"data: {json.dumps(final_chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
@@ -518,7 +519,13 @@ async def gen_sse_from_playwright(
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": model_name_for_stream,
-                    "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"tool_calls": [delta]},
+                            "finish_reason": None,
+                        }
+                    ],
                 }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
 

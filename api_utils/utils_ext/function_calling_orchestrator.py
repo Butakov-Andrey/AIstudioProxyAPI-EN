@@ -132,12 +132,20 @@ class FunctionCallingOrchestrator:
 
         # Emulated mode always uses text injection
         if mode == FunctionCallingMode.EMULATED:
+            if self._config.debug:
+                self.logger.debug("FC: Mode is EMULATED, using prompt injection")
             return False
 
         # Native and auto modes should try native
         if mode in (FunctionCallingMode.NATIVE, FunctionCallingMode.AUTO):
+            if self._config.debug:
+                self.logger.debug(
+                    f"FC: Mode is {mode.value}, attempting native UI automation"
+                )
             return True
 
+        if self._config.debug:
+            self.logger.debug(f"FC: Mode {mode} unknown, defaulting to False")
         return False
 
     def get_effective_mode(
@@ -203,6 +211,25 @@ class FunctionCallingOrchestrator:
             f"[{req_id}] Attempting native function calling with {len(tools)} tool(s)"
         )
 
+        # Log tool choice if specific
+        if tool_choice:
+            if isinstance(tool_choice, dict):
+                forced_fn = tool_choice.get("function", {}).get(
+                    "name"
+                ) or tool_choice.get("name")
+                if forced_fn:
+                    self.logger.info(
+                        f"[{req_id}] Tool choice: FORCING specific tool '{forced_fn}'"
+                    )
+            elif isinstance(tool_choice, str) and tool_choice.lower() not in (
+                "auto",
+                "none",
+                "required",
+            ):
+                self.logger.info(
+                    f"[{req_id}] Tool choice: FORCING specific tool '{tool_choice}'"
+                )
+
         try:
             # Convert OpenAI tools to Gemini format
             gemini_declarations = self._schema_converter.convert_tools(tools)
@@ -216,6 +243,11 @@ class FunctionCallingOrchestrator:
             last_error: Optional[Exception] = None
             for attempt in range(1, self._config.native_retry_count + 1):
                 try:
+                    if self._config.debug:
+                        self.logger.debug(
+                            f"[{req_id}] Native FC setup attempt {attempt}/{self._config.native_retry_count}"
+                        )
+
                     check_client_disconnected(f"FC prepare attempt {attempt}")
 
                     # Check if function calling is available
@@ -379,9 +411,10 @@ class FunctionCallingOrchestrator:
         if not parsed_calls:
             return {"role": "assistant", "content": content or ""}, "stop"
 
-        tool_calls = self._response_formatter.format_tool_calls(parsed_calls)
-        message = build_assistant_message_with_tool_calls(tool_calls, content=None)
-        finish_reason = get_finish_reason(bool(tool_calls))
+        message = self._response_formatter.format_non_streaming_response(
+            parsed_calls, content=None
+        )
+        finish_reason = get_finish_reason(True)
 
         return message, finish_reason
 

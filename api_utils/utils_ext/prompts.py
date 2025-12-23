@@ -80,9 +80,14 @@ def prepare_combined_prompt(
                         typed_tool_choice: Dict[str, Any] = tool_choice
                         fn_val: Any = typed_tool_choice.get("function")
                         if isinstance(fn_val, dict):
-                            # Type narrowed to dict
+                            # Standard format: {"type": "function", "function": {"name": "..."}}
                             typed_fn: Dict[str, Any] = cast(Dict[str, Any], fn_val)
                             name_raw: Any = typed_fn.get("name")
+                            if isinstance(name_raw, str):
+                                chosen_name = name_raw
+                        elif "name" in typed_tool_choice:
+                            # Flat format: {"type": "function", "name": "..."}
+                            name_raw = typed_tool_choice.get("name")
                             if isinstance(name_raw, str):
                                 chosen_name = name_raw
                     elif tool_choice.lower() not in (
