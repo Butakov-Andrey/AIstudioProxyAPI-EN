@@ -338,7 +338,8 @@ async def test_use_stream_response_ignore_stale_done():
     ]
 
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = q_data
+    # Add queue.Empty() to prevent StopIteration when mock exhausts
+    mock_queue.get_nowait.side_effect = q_data + [queue.Empty()]
 
     with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         chunks = []
@@ -394,7 +395,8 @@ async def test_use_stream_response_none_signal():
     Expected: End normally, return nothing (lines 28-30)
     """
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = [None]  # None is end signal
+    # Add queue.Empty() to prevent StopIteration when mock exhausts
+    mock_queue.get_nowait.side_effect = [None, queue.Empty()]  # None is end signal
 
     with patch.object(state, "STREAM_QUEUE", mock_queue), patch.object(state, "logger"):
         chunks = []
