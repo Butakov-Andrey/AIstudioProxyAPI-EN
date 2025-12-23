@@ -23,6 +23,10 @@ from .function_calling import (
     create_tool_calls_response,
     get_finish_reason,
 )
+from .function_calling_cache import (
+    FunctionCallingCache,
+    FunctionCallingCacheEntry,
+)
 from .function_call_response_parser import (
     FunctionCallParseResult,
     FunctionCallResponseParser,
@@ -73,6 +77,9 @@ __all__ = [
     "get_finish_reason",
     "convert_openai_tools_to_gemini",
     "create_tool_calls_response",
+    # Function Calling Cache
+    "FunctionCallingCache",
+    "FunctionCallingCacheEntry",
     # Function Calling Orchestrator
     "FunctionCallingOrchestrator",
     "FunctionCallingState",

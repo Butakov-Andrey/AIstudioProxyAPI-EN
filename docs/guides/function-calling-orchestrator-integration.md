@@ -22,6 +22,8 @@ Function calling behavior is controlled by environment variables in `config/sett
 | `FUNCTION_CALLING_NATIVE_RETRY_COUNT` | `2` | Retry count for native mode |
 | `FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS` | `true` | Clear function declarations after each request |
 | `FUNCTION_CALLING_DEBUG` | `false` | Enable debug logging |
+| `FUNCTION_CALLING_CACHE_ENABLED` | `true` | Enable state caching to skip redundant UI operations |
+| `FUNCTION_CALLING_CACHE_TTL` | `0` | Cache TTL in seconds (0 = no expiration) |
 
 ### Mode Descriptions
 
@@ -30,6 +32,31 @@ Function calling behavior is controlled by environment variables in `config/sett
 - **NATIVE**: Tools are configured in AI Studio's UI via browser automation. The model returns structured function call responses.
 
 - **AUTO**: Attempts native mode first; falls back to emulated if native fails.
+
+## Performance & Caching
+
+The Native Function Calling system includes a caching layer to improve performance for agents that make repeated requests with the same tool definitions.
+
+### How Caching Works
+
+1.  **Digest Calculation**: The system calculates a SHA256 digest of the `tools` array in the request.
+2.  **Cache Lookup**: It checks if this digest matches the currently configured tools in the active browser session.
+3.  **Cache Hit**: If matched (and the function calling toggle is enabled), the system **skips** the UI automation steps (opening dialog, pasting JSON), saving 2-4 seconds.
+4.  **Cache Miss**: If unmatched, standard UI automation is performed, and the cache is updated.
+
+### Monitoring Cache
+
+You can monitor cache performance via logs:
+
+- `[FC:Cache] Cache HIT`: UI operations were skipped (Fast)
+- `[FC:Cache] Cache MISS`: UI operations were performed (Slower)
+
+### Invalidation
+
+The cache is automatically invalidated when:
+- The model is switched
+- A new chat is started (chat history cleared)
+- The `FUNCTION_CALLING_CACHE_TTL` expires (if set)
 
 ## Usage
 

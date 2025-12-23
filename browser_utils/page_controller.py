@@ -122,8 +122,12 @@ class PageController(
         )
 
     async def clear_chat_history(self, check_client_disconnected: Callable):
-        """Clear chat history."""
+        """Clear chat history and invalidate function calling cache."""
         self.logger.info(f"[{self.req_id}] Clearing chat history...")
+
+        # Invalidate FC cache since we're starting a new chat
+        self.invalidate_fc_cache("new_chat")
+
         btn = self.page.locator(CLEAR_CHAT_BUTTON_SELECTOR)
         if await btn.is_enabled(timeout=5000):
             await btn.click(timeout=CLICK_TIMEOUT_MS)

@@ -568,6 +568,56 @@ All timeout configurations are in milliseconds (ms) unless otherwise specified.
 
 ---
 
+## Function Calling Configuration
+
+### FUNCTION_CALLING_MODE
+
+- **Usage**: Function calling operation mode
+- **Type**: String
+- **Default**: `emulated`
+- **Allowed Values**: `emulated`, `native`, `auto`
+- **Description**:
+  - `emulated`: Legacy text-based function calling (tools injected in prompt)
+  - `native`: Uses AI Studio's native UI for function declarations
+  - `auto`: Tries native, falls back to emulated on failure
+
+### FUNCTION_CALLING_CACHE_ENABLED
+
+- **Usage**: Enable function calling state caching
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: When enabled, skips UI configuration if tool definitions haven't changed since the last request. Significantly improves performance.
+
+### FUNCTION_CALLING_CACHE_TTL
+
+- **Usage**: Cache Time-To-Live
+- **Type**: Integer (seconds)
+- **Default**: `0`
+- **Description**: How long to keep the cache valid. `0` means no expiration (valid until session changes).
+
+### FUNCTION_CALLING_NATIVE_FALLBACK
+
+- **Usage**: Fallback behavior for AUTO mode
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: If true, automatically switches to emulated mode if native UI automation fails.
+
+### FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS
+
+- **Usage**: Force clear function declarations
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: If true, clears function declarations after every request. **Recommended to set to `false` when using caching.**
+
+### FUNCTION_CALLING_DEBUG
+
+- **Usage**: Enable detailed debug logging for function calling
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: Logs detailed UI steps and selectors for troubleshooting.
+
+---
+
 ## Stream State Configuration
 
 ### STREAM_MAX_INITIAL_ERRORS

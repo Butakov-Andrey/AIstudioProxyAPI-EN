@@ -5,10 +5,12 @@ Central coordinator that routes function calling between native and emulated mod
 Integrates SchemaConverter, ResponseFormatter, and browser automation into the request flow.
 
 Implements Phase 3 of ADR-001: Native Function Calling Architecture.
+Includes caching to skip redundant UI operations for subsequent requests with same tools.
 """
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -35,6 +37,7 @@ from api_utils.utils_ext.function_calling import (  # noqa: E501
     build_assistant_message_with_tool_calls,
     get_finish_reason,
 )
+from api_utils.utils_ext.function_calling_cache import FunctionCallingCache
 # fmt: on
 
 
@@ -54,6 +57,8 @@ class FunctionCallingState:
         tools_configured: Whether tools were configured in native mode.
         fallback_used: Whether fallback to emulated mode was used.
         error_message: Any error message from native mode attempts.
+        tools_digest: Digest of tool definitions for caching.
+        cache_hit: Whether cache was used to skip UI operations.
     """
 
     mode: FunctionCallingMode
@@ -61,6 +66,8 @@ class FunctionCallingState:
     tools_configured: bool = False
     fallback_used: bool = False
     error_message: Optional[str] = None
+    tools_digest: Optional[str] = None
+    cache_hit: bool = False
 
 
 class FunctionCallingOrchestrator:
@@ -98,6 +105,7 @@ class FunctionCallingOrchestrator:
         self._config = FunctionCallingConfig.from_settings()
         self._schema_converter = SchemaConverter()
         self._response_formatter = ResponseFormatter()
+        self._cache = FunctionCallingCache.get_instance(self.logger)
 
     @property
     def config(self) -> FunctionCallingConfig:
@@ -108,6 +116,11 @@ class FunctionCallingOrchestrator:
     def response_formatter(self) -> ResponseFormatter:
         """Get the response formatter instance."""
         return self._response_formatter
+
+    @property
+    def cache(self) -> FunctionCallingCache:
+        """Get the function calling cache instance."""
+        return self._cache
 
     def should_use_native_mode(
         self,
@@ -172,14 +185,16 @@ class FunctionCallingOrchestrator:
         page_controller: PageController,
         check_client_disconnected: Callable,
         req_id: str,
+        model_name: Optional[str] = None,
     ) -> FunctionCallingState:
         """Prepare a request for function calling based on the configured mode.
 
         This method:
-        1. Determines if native mode should be used
-        2. If native mode: converts tools and configures browser UI
-        3. If emulated mode: no-op (prompt injection happens in prepare_combined_prompt)
-        4. Handles fallback if native mode fails and fallback is enabled
+        1. Computes tool digest and checks cache for existing state
+        2. If cache valid: skips UI automation (cache hit)
+        3. If cache miss: converts tools and configures browser UI
+        4. Updates cache on success
+        5. Handles fallback if native mode fails and fallback is enabled
 
         Args:
             tools: List of OpenAI-format tool definitions.
@@ -187,28 +202,55 @@ class FunctionCallingOrchestrator:
             page_controller: PageController instance for browser automation.
             check_client_disconnected: Callback to check client connection.
             req_id: Request ID for logging.
+            model_name: Optional model name for cache validation.
 
         Returns:
             FunctionCallingState with the configuration result.
         """
+        total_start = time.perf_counter()
         state = FunctionCallingState(mode=self.get_effective_mode(tools))
 
         # No tools or emulated mode - nothing to configure
         if not tools or len(tools) == 0:
             if self._config.debug:
-                self.logger.debug(f"[{req_id}] No tools in request, skipping FC setup")
+                self.logger.debug(
+                    f"[{req_id}] [FC] No tools in request, skipping FC setup"
+                )
             return state
 
         if state.mode == FunctionCallingMode.EMULATED:
             if self._config.debug:
                 self.logger.debug(
-                    f"[{req_id}] Using emulated mode, skipping native FC setup"
+                    f"[{req_id}] [FC] Using emulated mode, skipping native FC setup"
                 )
             return state
 
-        # Native or Auto mode - try to configure native function calling
+        # Native or Auto mode - compute digest and check cache
+        tools_digest = self._cache.compute_tools_digest(tools)
+        state.tools_digest = tools_digest
+
+        # Check cache first
+        if self._cache.is_cache_valid(tools_digest, model_name, req_id=req_id):
+            cached_state = self._cache.get_cached_state()
+            if (
+                cached_state
+                and cached_state.declarations_set
+                and cached_state.toggle_enabled
+            ):
+                elapsed = time.perf_counter() - total_start
+                self.logger.info(
+                    f"[{req_id}] [FC:Cache] HIT - skipping native FC setup "
+                    f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
+                )
+                state.native_enabled = True
+                state.tools_configured = True
+                state.cache_hit = True
+                return state
+
+        # Cache miss - proceed with native configuration
         self.logger.info(
-            f"[{req_id}] Attempting native function calling with {len(tools)} tool(s)"
+            f"[{req_id}] [FC] Configuring native function calling with {len(tools)} tool(s) "
+            f"(digest={tools_digest[:8]}...)"
         )
 
         # Log tool choice if specific
@@ -219,7 +261,7 @@ class FunctionCallingOrchestrator:
                 ) or tool_choice.get("name")
                 if forced_fn:
                     self.logger.info(
-                        f"[{req_id}] Tool choice: FORCING specific tool '{forced_fn}'"
+                        f"[{req_id}] [FC] Tool choice: FORCING specific tool '{forced_fn}'"
                     )
             elif isinstance(tool_choice, str) and tool_choice.lower() not in (
                 "auto",
@@ -227,25 +269,28 @@ class FunctionCallingOrchestrator:
                 "required",
             ):
                 self.logger.info(
-                    f"[{req_id}] Tool choice: FORCING specific tool '{tool_choice}'"
+                    f"[{req_id}] [FC] Tool choice: FORCING specific tool '{tool_choice}'"
                 )
 
         try:
             # Convert OpenAI tools to Gemini format
+            convert_start = time.perf_counter()
             gemini_declarations = self._schema_converter.convert_tools(tools)
+            convert_elapsed = time.perf_counter() - convert_start
 
             if self._config.debug:
                 self.logger.debug(
-                    f"[{req_id}] Converted {len(tools)} tools to Gemini format"
+                    f"[{req_id}] [FC:Perf] Converted {len(tools)} tools to Gemini format "
+                    f"in {convert_elapsed:.3f}s"
                 )
 
             # Retry loop for UI automation
             last_error: Optional[Exception] = None
             for attempt in range(1, self._config.native_retry_count + 1):
                 try:
-                    if self._config.debug:
-                        self.logger.debug(
-                            f"[{req_id}] Native FC setup attempt {attempt}/{self._config.native_retry_count}"
+                    if attempt > 1:
+                        self.logger.warning(
+                            f"[{req_id}] [FC:UI] Retry attempt {attempt}/{self._config.native_retry_count}"
                         )
 
                     check_client_disconnected(f"FC prepare attempt {attempt}")
@@ -260,16 +305,21 @@ class FunctionCallingOrchestrator:
                             "Function calling UI not available for this model"
                         )
 
-                    # Set function declarations via UI
+                    # Set function declarations via UI (with caching support)
                     success = await page_controller.set_function_declarations(
-                        gemini_declarations, check_client_disconnected
+                        gemini_declarations,
+                        check_client_disconnected,
+                        tools_digest=tools_digest,
+                        model_name=model_name,
                     )
 
                     if success:
                         state.native_enabled = True
                         state.tools_configured = True
+                        total_elapsed = time.perf_counter() - total_start
                         self.logger.info(
-                            f"[{req_id}] Native function calling configured successfully"
+                            f"[{req_id}] [FC:Perf] Native function calling configured "
+                            f"in {total_elapsed:.2f}s"
                         )
                         return state
                     else:
@@ -284,7 +334,7 @@ class FunctionCallingOrchestrator:
                 except Exception as e:
                     last_error = e
                     self.logger.warning(
-                        f"[{req_id}] Native FC attempt {attempt}/{self._config.native_retry_count} failed: {e}"
+                        f"[{req_id}] [FC] Native FC attempt {attempt}/{self._config.native_retry_count} failed: {e}"
                     )
                     if attempt < self._config.native_retry_count:
                         await asyncio.sleep(0.5)
@@ -296,7 +346,7 @@ class FunctionCallingOrchestrator:
 
         except SchemaConversionError as e:
             state.error_message = f"Schema conversion error: {e}"
-            self.logger.error(f"[{req_id}] {state.error_message}")
+            self.logger.error(f"[{req_id}] [FC] {state.error_message}")
 
             # Schema errors are not recoverable - don't fallback
             if state.mode == FunctionCallingMode.NATIVE:
@@ -306,20 +356,20 @@ class FunctionCallingOrchestrator:
             state.fallback_used = True
             state.mode = FunctionCallingMode.EMULATED
             self.logger.warning(
-                f"[{req_id}] Falling back to emulated mode due to schema error"
+                f"[{req_id}] [FC] Falling back to emulated mode due to schema error"
             )
             return state
 
         except NativeFunctionCallingError as e:
             state.error_message = str(e)
-            self.logger.warning(f"[{req_id}] Native function calling failed: {e}")
+            self.logger.warning(f"[{req_id}] [FC] Native function calling failed: {e}")
 
             # Check if fallback is allowed
             if state.mode == FunctionCallingMode.AUTO and self._config.native_fallback:
                 state.fallback_used = True
                 state.mode = FunctionCallingMode.EMULATED
                 self.logger.info(
-                    f"[{req_id}] Falling back to emulated mode for function calling"
+                    f"[{req_id}] [FC] Falling back to emulated mode for function calling"
                 )
                 return state
             elif state.mode == FunctionCallingMode.NATIVE:
@@ -332,7 +382,7 @@ class FunctionCallingOrchestrator:
             raise
         except Exception as e:
             state.error_message = f"Unexpected error: {e}"
-            self.logger.error(f"[{req_id}] Unexpected error in FC prepare: {e}")
+            self.logger.error(f"[{req_id}] [FC] Unexpected error in FC prepare: {e}")
 
             if state.mode == FunctionCallingMode.AUTO and self._config.native_fallback:
                 state.fallback_used = True
@@ -349,6 +399,7 @@ class FunctionCallingOrchestrator:
         page_controller: PageController,
         check_client_disconnected: Callable,
         req_id: str,
+        preserve_cache: bool = False,
     ) -> None:
         """Clean up function calling state after a request completes.
 
@@ -360,18 +411,38 @@ class FunctionCallingOrchestrator:
             page_controller: PageController instance for browser automation.
             check_client_disconnected: Callback to check client connection.
             req_id: Request ID for logging.
+            preserve_cache: If True, don't invalidate cache (for same-tool sequences).
         """
         if not FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS:
+            if self._config.debug:
+                self.logger.debug(
+                    f"[{req_id}] [FC] Skipping cleanup (CLEAR_BETWEEN_REQUESTS=False)"
+                )
             return
 
         if not state.tools_configured:
             return
 
-        try:
-            await page_controller.clear_function_declarations(check_client_disconnected)
+        # If this was a cache hit, we didn't actually change anything
+        if state.cache_hit:
             if self._config.debug:
                 self.logger.debug(
-                    f"[{req_id}] Cleared function declarations after request"
+                    f"[{req_id}] [FC] Skipping cleanup (cache hit, no UI changes made)"
+                )
+            return
+
+        try:
+            start_time = time.perf_counter()
+            # Pass invalidate_cache=not preserve_cache to control cache behavior
+            await page_controller.clear_function_declarations(
+                check_client_disconnected,
+                invalidate_cache=not preserve_cache,
+            )
+            elapsed = time.perf_counter() - start_time
+
+            if self._config.debug:
+                self.logger.debug(
+                    f"[{req_id}] [FC:Perf] Cleared function declarations in {elapsed:.2f}s"
                 )
         except ClientDisconnectedError:
             pass  # Client gone, nothing to clean up
@@ -379,7 +450,7 @@ class FunctionCallingOrchestrator:
             pass  # Cancelled, skip cleanup
         except Exception as e:
             self.logger.warning(
-                f"[{req_id}] Failed to clear function declarations: {e}"
+                f"[{req_id}] [FC] Failed to clear function declarations: {e}"
             )
 
     def format_function_calls_for_response(

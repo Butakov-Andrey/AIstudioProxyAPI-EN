@@ -868,9 +868,28 @@ async def process_with_fallback(
 }
 ```
 
----
+## 13. Performance & Caching
 
-## 13. Implementation Roadmap
+### 13.1 Problem Statement
+Native function calling involves expensive UI operations (opening dialogs, pasting JSON) which can take 2-4 seconds per request. In agentic workflows where tools remain constant across many turns, this adds significant latency.
+
+### 13.2 Caching Strategy
+To mitigate this, we employ a digest-based caching mechanism:
+
+1.  **State Tracking**: The system maintains a SHA256 digest of the currently configured tool definitions.
+2.  **Cache Hit**: If the incoming request's tools match the cached digest and the function calling toggle is already enabled, UI configuration is skipped completely.
+3.  **Cache Miss**: If tools differ, the standard UI automation sequence runs, and the cache is updated.
+4.  **Invalidation**: Cache is invalidated on:
+    *   Model switching
+    *   New chat creation (clearing history)
+    *   Explicit cache clear requests
+
+### 13.3 Configuration
+*   `FUNCTION_CALLING_CACHE_ENABLED`: Enable/disable caching (default: true)
+*   `FUNCTION_CALLING_CACHE_TTL`: Optional time-to-live for cache entries
+
+## 14. Implementation Roadmap
+
 
 ### Phase 1: Foundation (Effort: M)
 | Task | Priority | Risk |
@@ -916,7 +935,7 @@ async def process_with_fallback(
 
 ---
 
-## 14. Risks & Mitigations
+## 15. Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
@@ -926,6 +945,7 @@ async def process_with_fallback(
 | Streaming function calls incomplete | Medium | Medium | Buffer and validate before emitting |
 | Performance overhead from UI automation | Low | Medium | Cache function declarations when unchanged |
 | Native mode unsupported on some models | Low | Low | Per-model capability detection |
+| **Cache Desynchronization** | Low | Medium | Invalidate cache on all state-changing events (model switch, new chat) |
 
 ---
 

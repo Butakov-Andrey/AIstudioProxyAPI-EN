@@ -168,3 +168,12 @@ FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS = get_boolean_env(
 
 # Enable detailed function calling debug logs
 FUNCTION_CALLING_DEBUG = get_boolean_env("FUNCTION_CALLING_DEBUG", False)
+
+# --- Function Calling Cache Configuration ---
+# Enable caching of function calling toggle state and tool declarations
+# Skips redundant UI operations when same tools are used in subsequent requests
+FUNCTION_CALLING_CACHE_ENABLED = get_boolean_env("FUNCTION_CALLING_CACHE_ENABLED", True)
+
+# Cache TTL in seconds (0 = no expiration within session)
+# Cache is automatically invalidated on model switch or new chat
+FUNCTION_CALLING_CACHE_TTL = get_int_env("FUNCTION_CALLING_CACHE_TTL", 0)
