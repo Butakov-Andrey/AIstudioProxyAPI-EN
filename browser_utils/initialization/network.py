@@ -13,17 +13,21 @@ logger = logging.getLogger("AIStudioProxyServer")
 async def setup_network_interception_and_scripts(context: AsyncBrowserContext):
     """Setup network interception and script injection"""
     try:
-        from config.settings import ENABLE_SCRIPT_INJECTION
+        from config import settings
 
-        if not ENABLE_SCRIPT_INJECTION:
+        # Check for network interception toggle
+        if settings.NETWORK_INTERCEPTION_ENABLED:
+            # Setup network interception
+            await _setup_model_list_interception(context)
+        else:
+            logger.debug("[Network] Network interception disabled")
+
+        # Check for script injection toggle
+        if settings.ENABLE_SCRIPT_INJECTION:
+            # Optional: still inject scripts as fallback
+            await add_init_scripts_to_context(context)
+        else:
             logger.debug("[Network] Script injection disabled")
-            return
-
-        # Setup network interception
-        await _setup_model_list_interception(context)
-
-        # Optional: still inject scripts as fallback
-        await add_init_scripts_to_context(context)
 
     except asyncio.CancelledError:
         raise

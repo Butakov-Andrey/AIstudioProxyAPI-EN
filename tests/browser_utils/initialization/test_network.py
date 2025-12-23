@@ -17,10 +17,13 @@ from browser_utils.initialization.network import (
 
 @pytest.mark.asyncio
 async def test_setup_disabled():
-    """Test early return when script injection disabled"""
+    """Test early return when network interception disabled"""
     mock_context = AsyncMock()
 
-    with patch("config.settings.ENABLE_SCRIPT_INJECTION", False):
+    with (
+        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", False),
+        patch("config.settings.ENABLE_SCRIPT_INJECTION", False),
+    ):
         await setup_network_interception_and_scripts(mock_context)
 
         mock_context.route.assert_not_called()
@@ -28,18 +31,61 @@ async def test_setup_disabled():
 
 @pytest.mark.asyncio
 async def test_setup_enabled():
-    """Test setup when script injection enabled"""
+    """Test setup when both flags enabled"""
     mock_context = AsyncMock()
 
     with (
+        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", True),
         patch("config.settings.ENABLE_SCRIPT_INJECTION", True),
         patch(
             "browser_utils.initialization.network._setup_model_list_interception"
         ) as mock_setup,
-        patch("browser_utils.initialization.network.add_init_scripts_to_context"),
+        patch(
+            "browser_utils.initialization.network.add_init_scripts_to_context"
+        ) as mock_scripts,
     ):
         await setup_network_interception_and_scripts(mock_context)
         mock_setup.assert_called_once_with(mock_context)
+        mock_scripts.assert_called_once_with(mock_context)
+
+
+@pytest.mark.asyncio
+async def test_setup_granular_control():
+    """Test granular control of network interception and script injection"""
+    mock_context = AsyncMock()
+
+    # Case 1: Network enabled, Scripts disabled
+    with (
+        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", True),
+        patch("config.settings.ENABLE_SCRIPT_INJECTION", False),
+        patch(
+            "browser_utils.initialization.network._setup_model_list_interception"
+        ) as mock_setup,
+        patch(
+            "browser_utils.initialization.network.add_init_scripts_to_context"
+        ) as mock_scripts,
+    ):
+        await setup_network_interception_and_scripts(mock_context)
+        mock_setup.assert_called_once_with(mock_context)
+        mock_scripts.assert_not_called()
+
+    mock_setup.reset_mock()
+    mock_scripts.reset_mock()
+
+    # Case 2: Network disabled, Scripts enabled
+    with (
+        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", False),
+        patch("config.settings.ENABLE_SCRIPT_INJECTION", True),
+        patch(
+            "browser_utils.initialization.network._setup_model_list_interception"
+        ) as mock_setup,
+        patch(
+            "browser_utils.initialization.network.add_init_scripts_to_context"
+        ) as mock_scripts,
+    ):
+        await setup_network_interception_and_scripts(mock_context)
+        mock_setup.assert_not_called()
+        mock_scripts.assert_called_once_with(mock_context)
 
 
 @pytest.mark.asyncio

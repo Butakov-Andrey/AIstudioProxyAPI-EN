@@ -117,6 +117,7 @@ __all__ = [
     "APP_LOG_FILE_PATH",
     "NO_PROXY_ENV",
     "ENABLE_SCRIPT_INJECTION",
+    "NETWORK_INTERCEPTION_ENABLED",
     "USERSCRIPT_PATH",
     # Feature Toggle Settings
     "ENABLE_THINKING_BUDGET",

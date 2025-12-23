@@ -82,6 +82,7 @@ NO_PROXY_ENV = os.environ.get("NO_PROXY")
 
 # --- Script Injection Configuration ---
 ENABLE_SCRIPT_INJECTION = get_boolean_env("ENABLE_SCRIPT_INJECTION", True)
+NETWORK_INTERCEPTION_ENABLED = get_boolean_env("NETWORK_INTERCEPTION_ENABLED", True)
 USERSCRIPT_PATH = os.environ.get(
     "USERSCRIPT_PATH", str(_PROJECT_ROOT / "browser_utils" / "more_models.js")
 )
