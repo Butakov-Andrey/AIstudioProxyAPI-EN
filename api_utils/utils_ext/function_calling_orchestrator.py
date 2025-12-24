@@ -307,15 +307,54 @@ class FunctionCallingOrchestrator:
                 and cached_state.declarations_set
                 and cached_state.toggle_enabled
             ):
-                elapsed = time.perf_counter() - total_start
-                self.logger.info(
-                    f"[{req_id}] [FC:Cache] HIT - skipping native FC setup "
-                    f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
-                )
-                state.native_enabled = True
-                state.tools_configured = True
-                state.cache_hit = True
-                return state
+                # Cache HIT - but UI toggle may have been reset by new_chat
+                # Verify and re-enable toggle if needed before trusting cache
+                try:
+                    # Check actual UI toggle state (bypass instance cache)
+                    toggle_enabled = await page_controller.is_function_calling_enabled(
+                        check_client_disconnected, use_cache=False
+                    )
+                    if not toggle_enabled:
+                        self.logger.warning(
+                            f"[{req_id}] [FC:Cache] HIT but UI toggle disabled - re-enabling"
+                        )
+                        enable_success = await page_controller.enable_function_calling(
+                            check_client_disconnected
+                        )
+                        if not enable_success:
+                            self.logger.warning(
+                                f"[{req_id}] [FC:Cache] Failed to re-enable toggle, "
+                                "falling through to full setup"
+                            )
+                            # Fall through to full native configuration
+                        else:
+                            elapsed = time.perf_counter() - total_start
+                            self.logger.info(
+                                f"[{req_id}] [FC:Cache] HIT - toggle re-enabled "
+                                f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
+                            )
+                            state.native_enabled = True
+                            state.tools_configured = True
+                            state.cache_hit = True
+                            return state
+                    else:
+                        elapsed = time.perf_counter() - total_start
+                        self.logger.info(
+                            f"[{req_id}] [FC:Cache] HIT - skipping native FC setup "
+                            f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
+                        )
+                        state.native_enabled = True
+                        state.tools_configured = True
+                        state.cache_hit = True
+                        return state
+                except ClientDisconnectedError:
+                    raise
+                except Exception as e:
+                    self.logger.warning(
+                        f"[{req_id}] [FC:Cache] Toggle verification failed: {e}, "
+                        "falling through to full setup"
+                    )
+                    # Fall through to full native configuration
 
         # Cache miss - proceed with native configuration
         self.logger.info(
