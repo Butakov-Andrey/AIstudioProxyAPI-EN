@@ -105,10 +105,24 @@ class FunctionCallResponseParser:
         ),
         # Gemini-style function call
         re.compile(
-            r'functionCall\s*[\(:]\s*\{?\s*"?name"?\s*:\s*"([^"]+)"',
+            r'functionCall\s*[\(:]?\s*\{?\s*"?name"?\s*:\s*"([^"]+)"',
             re.IGNORECASE | re.DOTALL,
         ),
     ]
+
+    # Pattern for emulated/text-based function calls:
+    # "Request function call: <function_name>\nParameters:\n{...}"
+    # This handles cases where the model outputs text-formatted tool calls
+    # instead of using native function calling UI elements
+    EMULATED_FUNCTION_CALL_PATTERN = re.compile(
+        r"Request\s+function\s+call:\s*([^\n{]+?)(?:\s*\n|\s*\{)",
+        re.IGNORECASE,
+    )
+    # Pattern to extract the JSON parameters block after "Parameters:"
+    EMULATED_PARAMS_PATTERN = re.compile(
+        r"Parameters:\s*\n?\s*(\{[\s\S]*?\})\s*(?:\n\n|\Z|(?=Request\s+function\s+call:))",
+        re.IGNORECASE,
+    )
 
     # Pattern for extracting function name and params from various formats
     NAME_PATTERN = re.compile(r'"?name"?\s*:\s*"([^"]+)"', re.IGNORECASE)
@@ -484,19 +498,201 @@ class FunctionCallResponseParser:
             if await response_elem.count() > 0:
                 text_content = await response_elem.inner_text(timeout=2000)
 
-                # Check for function call patterns
-                for pattern in self.FUNCTION_CALL_PATTERNS:
-                    matches = pattern.findall(text_content)
-                    if matches:
-                        for match in matches:
-                            call = self._parse_function_call_from_match(match)
-                            if call:
-                                calls.append(call)
+                # Strategy A: Check for emulated text-based function calls first
+                # Format: "Request function call: <name>\nParameters:\n{...}"
+                emulated_calls = self._parse_emulated_function_calls(text_content)
+                if emulated_calls:
+                    calls.extend(emulated_calls)
+                    self.logger.debug(
+                        f"[{self.req_id}] Found {len(emulated_calls)} emulated text-based function call(s)"
+                    )
+
+                # Strategy B: Check for JSON-style function call patterns
+                if not calls:
+                    for pattern in self.FUNCTION_CALL_PATTERNS:
+                        matches = pattern.findall(text_content)
+                        if matches:
+                            for match in matches:
+                                call = self._parse_function_call_from_match(match)
+                                if call:
+                                    calls.append(call)
 
         except Exception as e:
             self.logger.debug(f"[{self.req_id}] Error parsing text function calls: {e}")
 
         return calls, text_content
+
+    def _parse_emulated_function_calls(self, text: str) -> List[Any]:
+        """Parse emulated text-based function calls.
+
+        Handles the format:
+            Request function call: <function_name>
+            Parameters:
+            {
+              "key": "value",
+              ...
+            }
+
+        This format is output by the model when it doesn't use the native
+        function calling UI elements but still intends to call a function.
+
+        Args:
+            text: The text content to parse.
+
+        Returns:
+            List of ParsedFunctionCall objects.
+        """
+        calls: List[Any] = []
+
+        if not text or "Request function call:" not in text:
+            return calls
+
+        try:
+            # Find all function call requests in the text
+            # Split by "Request function call:" to handle multiple calls
+            parts = re.split(
+                r"(?=Request\s+function\s+call:)", text, flags=re.IGNORECASE
+            )
+
+            for part in parts:
+                if not part.strip():
+                    continue
+
+                # Extract function name
+                name_match = self.EMULATED_FUNCTION_CALL_PATTERN.search(part)
+                if not name_match:
+                    continue
+
+                function_name = name_match.group(1).strip()
+
+                # Handle function name with inline params like "func_name{params}"
+                if "{" in function_name:
+                    # Split name from inline params - extract just the function name
+                    name_end = function_name.index("{")
+                    function_name = function_name[:name_end].strip()
+
+                    # Try to parse inline params
+                    try:
+                        # Find the complete JSON object
+                        brace_count = 0
+                        json_end = 0
+                        full_text = part[part.find("{") :]
+                        for i, char in enumerate(full_text):
+                            if char == "{":
+                                brace_count += 1
+                            elif char == "}":
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_end = i + 1
+                                    break
+                        if json_end > 0:
+                            arguments = json.loads(full_text[:json_end])
+                        else:
+                            arguments = {}
+                    except (json.JSONDecodeError, ValueError):
+                        arguments = {}
+                else:
+                    # Extract parameters from "Parameters:" block
+                    arguments = self._extract_emulated_params(part)
+
+                if function_name:
+                    # Clean up function name (remove any trailing colons, etc.)
+                    function_name = function_name.rstrip(":").strip()
+
+                    call = _create_parsed_call(
+                        name=function_name,
+                        arguments=arguments,
+                        raw_text=part[:500],  # Keep first 500 chars for debugging
+                    )
+                    calls.append(call)
+                    self.logger.debug(
+                        f"[{self.req_id}] Parsed emulated function call: {function_name} "
+                        f"with {len(arguments)} argument(s)"
+                    )
+
+        except Exception as e:
+            self.logger.debug(
+                f"[{self.req_id}] Error parsing emulated function calls: {e}"
+            )
+
+        return calls
+
+    def _extract_emulated_params(self, text: str) -> Dict[str, Any]:
+        """Extract parameters from emulated function call text.
+
+        Handles the "Parameters:" block with JSON content.
+
+        Args:
+            text: Text containing the Parameters block.
+
+        Returns:
+            Parsed arguments dictionary.
+        """
+        arguments: Dict[str, Any] = {}
+
+        # Try the dedicated params pattern first
+        params_match = self.EMULATED_PARAMS_PATTERN.search(text)
+        if params_match:
+            params_text = params_match.group(1)
+            try:
+                arguments = json.loads(params_text)
+                if isinstance(arguments, dict):
+                    return arguments
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: Find JSON object after "Parameters:"
+        params_idx = text.lower().find("parameters:")
+        if params_idx != -1:
+            after_params = text[params_idx + len("parameters:") :]
+
+            # Find the first { and extract the JSON object
+            brace_start = after_params.find("{")
+            if brace_start != -1:
+                # Count braces to find the matching closing brace
+                brace_count = 0
+                json_end = 0
+                for i, char in enumerate(after_params[brace_start:]):
+                    if char == "{":
+                        brace_count += 1
+                    elif char == "}":
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = brace_start + i + 1
+                            break
+
+                if json_end > 0:
+                    json_str = after_params[brace_start:json_end]
+                    try:
+                        arguments = json.loads(json_str)
+                        if isinstance(arguments, dict):
+                            return arguments
+                    except json.JSONDecodeError:
+                        # Try to clean up the JSON string
+                        cleaned = self._clean_json_string(json_str)
+                        try:
+                            arguments = json.loads(cleaned)
+                            if isinstance(arguments, dict):
+                                return arguments
+                        except json.JSONDecodeError:
+                            pass
+
+        return arguments
+
+    def _clean_json_string(self, json_str: str) -> str:
+        """Clean up a potentially malformed JSON string.
+
+        Args:
+            json_str: The JSON string to clean.
+
+        Returns:
+            Cleaned JSON string.
+        """
+        # Remove control characters (like <ctrl46> which appears in some outputs)
+        cleaned = re.sub(r"<ctrl\d+>", "", json_str)
+        # Remove other non-printable characters except newlines and tabs
+        cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", cleaned)
+        return cleaned
 
     def _parse_json_function_calls(self, json_text: str) -> List[Any]:
         """Parse function calls from JSON text.
