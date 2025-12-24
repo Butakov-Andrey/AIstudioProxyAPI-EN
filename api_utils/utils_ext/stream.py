@@ -298,9 +298,29 @@ async def use_stream_response(
                         and not has_seen_functions
                         and page
                     ):
-                        dom_functions, dom_text = await detect_function_calls_from_dom(
-                            page, req_id, logger
-                        )
+                        # Retry loop for DOM function call detection - UI elements may not render immediately
+                        # Similar to body text retry loop below, but shorter timeout for function calls
+                        dom_functions = []
+                        dom_text = ""
+                        max_fc_retries = 10  # 10 retries * 0.3s = 3 seconds max wait
+                        for fc_retry in range(max_fc_retries):
+                            (
+                                dom_functions,
+                                dom_text,
+                            ) = await detect_function_calls_from_dom(
+                                page, req_id, logger
+                            )
+                            if dom_functions:
+                                logger.info(
+                                    f"[{req_id}] ✅ DOM captured function calls after {fc_retry + 1} attempts"
+                                )
+                                break
+                            # Only retry if we haven't found functions and body is also empty
+                            # (indicates potential race condition with UI rendering)
+                            if accumulated_body:
+                                break  # We have body text, no need to wait for functions
+                            await asyncio.sleep(0.3)
+
                         if dom_functions:
                             parsed_data["function"] = dom_functions
                             has_seen_functions = True

@@ -265,11 +265,26 @@ async def gen_sse_from_aux_stream(
                 last_reason_pos = len(reason)
 
             # The Latch: Body Handling
-            # Strip "Request function call:..." text from body when function calls exist
+            # ALWAYS strip "Request function call:..." text from body
             # This prevents emulated FC text from appearing as content to clients
-            if function and body:
+            # even when function call detection fails (race condition protection)
+            original_body = body
+            if body:
                 body = _FUNCTION_CALL_TEXT_PATTERN.sub("", body).strip()
-                full_body_content = body
+                if body != original_body:
+                    full_body_content = body
+                    # If we stripped FC text but function is empty, try parsing from the original
+                    if not function:
+                        from api_utils.utils_ext.function_call_response_parser import (
+                            parse_emulated_function_calls_static,
+                        )
+
+                        parsed_fc = parse_emulated_function_calls_static(original_body)
+                        if parsed_fc:
+                            function = parsed_fc
+                            logger.info(
+                                f"[{req_id}] Recovered function calls from emulated text"
+                            )
 
             if len(body) > last_body_pos:
                 body_delta = body[last_body_pos:]

@@ -32,6 +32,85 @@ from config.selectors import (
 
 logger = logging.getLogger("AIStudioProxyServer")
 
+# Compiled patterns for static parsing (used outside class context)
+_STATIC_EMULATED_FC_PATTERN = re.compile(
+    r"Request\s+function\s+call:\s*([^\n{]+?)(?:\s*\n|\s*\{|\s*$)",
+    re.IGNORECASE,
+)
+_STATIC_EMULATED_PARAMS_PATTERN = re.compile(
+    r"Parameters:\s*\n?\s*(\{[\s\S]*?\})\s*(?:\n\n|\Z|(?=Request\s+function\s+call:))",
+    re.IGNORECASE,
+)
+
+
+def parse_emulated_function_calls_static(text: str) -> List[Any]:
+    """Static function to parse emulated text-based function calls without page instance.
+
+    Handles the format:
+        Request function call: <function_name>
+        Parameters:
+        {
+          "key": "value",
+          ...
+        }
+
+    This is useful for recovering function calls in response_generators.py
+    when the DOM-based detection fails due to timing issues.
+
+    Args:
+        text: The text content to parse.
+
+    Returns:
+        List of ParsedFunctionCall objects.
+    """
+    calls: List[Any] = []
+
+    if not text or "Request function call:" not in text:
+        return calls
+
+    try:
+        # Split by "Request function call:" to handle multiple calls
+        parts = re.split(r"(?=Request\s+function\s+call:)", text, flags=re.IGNORECASE)
+
+        for part in parts:
+            if not part.strip():
+                continue
+
+            # Extract function name
+            name_match = _STATIC_EMULATED_FC_PATTERN.search(part)
+            if not name_match:
+                continue
+
+            function_name = name_match.group(1).strip()
+
+            # Strip common prefixes like "default_api_"
+            if function_name.startswith("default_api_"):
+                function_name = function_name[len("default_api_") :]
+
+            # Extract parameters
+            arguments: Dict[str, Any] = {}
+            params_match = _STATIC_EMULATED_PARAMS_PATTERN.search(part)
+            if params_match:
+                try:
+                    json_str = params_match.group(1)
+                    # Clean control characters
+                    json_str = re.sub(r"<ctrl\d+>", "", json_str)
+                    arguments = json.loads(json_str)
+                except (json.JSONDecodeError, Exception):
+                    pass
+
+            call = _create_parsed_call(
+                name=function_name,
+                arguments=arguments,
+                raw_text=part[:200],
+            )
+            calls.append(call)
+
+    except Exception as e:
+        logger.debug(f"Static emulated FC parsing error: {e}")
+
+    return calls
+
 
 def _create_parsed_call(
     name: str, arguments: Dict[str, Any], raw_text: Optional[str] = None
