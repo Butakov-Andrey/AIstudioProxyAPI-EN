@@ -114,8 +114,9 @@ class FunctionCallResponseParser:
     # "Request function call: <function_name>\nParameters:\n{...}"
     # This handles cases where the model outputs text-formatted tool calls
     # instead of using native function calling UI elements
+    # Supports: with params (newline or {), without params (end of string/line)
     EMULATED_FUNCTION_CALL_PATTERN = re.compile(
-        r"Request\s+function\s+call:\s*([^\n{]+?)(?:\s*\n|\s*\{)",
+        r"Request\s+function\s+call:\s*([^\n{]+?)(?:\s*\n|\s*\{|\s*$)",
         re.IGNORECASE,
     )
     # Pattern to extract the JSON parameters block after "Parameters:"
@@ -565,32 +566,16 @@ class FunctionCallResponseParser:
 
                 function_name = name_match.group(1).strip()
 
-                # Handle function name with inline params like "func_name{params}"
-                if "{" in function_name:
-                    # Split name from inline params - extract just the function name
-                    name_end = function_name.index("{")
-                    function_name = function_name[:name_end].strip()
+                # Check if original text has inline params like "func_name{params}"
+                # The regex stops at '{', so check if '{' follows the match
+                match_end = name_match.end()
+                has_inline_params = (
+                    match_end <= len(part) and part[match_end - 1 : match_end] == "{"
+                )
 
-                    # Try to parse inline params
-                    try:
-                        # Find the complete JSON object
-                        brace_count = 0
-                        json_end = 0
-                        full_text = part[part.find("{") :]
-                        for i, char in enumerate(full_text):
-                            if char == "{":
-                                brace_count += 1
-                            elif char == "}":
-                                brace_count -= 1
-                                if brace_count == 0:
-                                    json_end = i + 1
-                                    break
-                        if json_end > 0:
-                            arguments = json.loads(full_text[:json_end])
-                        else:
-                            arguments = {}
-                    except (json.JSONDecodeError, ValueError):
-                        arguments = {}
+                if has_inline_params:
+                    # Try to parse inline params from original text
+                    arguments = self._parse_inline_params(part)
                 else:
                     # Extract parameters from "Parameters:" block
                     arguments = self._extract_emulated_params(part)
@@ -598,6 +583,14 @@ class FunctionCallResponseParser:
                 if function_name:
                     # Clean up function name (remove any trailing colons, etc.)
                     function_name = function_name.rstrip(":").strip()
+
+                    # Strip common prefixes that models add but clients don't expect
+                    # e.g., "default_api:write_to_file" -> "write_to_file"
+                    prefix_patterns = ["default_api:", "functions.", "tools."]
+                    for prefix in prefix_patterns:
+                        if function_name.startswith(prefix):
+                            function_name = function_name[len(prefix) :]
+                            break
 
                     call = _create_parsed_call(
                         name=function_name,
@@ -693,6 +686,104 @@ class FunctionCallResponseParser:
         # Remove other non-printable characters except newlines and tabs
         cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", cleaned)
         return cleaned
+
+    def _parse_inline_params(self, text: str) -> Dict[str, Any]:
+        """Parse inline parameters from function call text.
+
+        Handles formats like:
+        - func_name{key: "value"}  (JavaScript-like)
+        - func_name{key: <ctrl46>value<ctrl46>}  (control char delimiters)
+        - func_name{"key": "value"}  (JSON)
+
+        Args:
+            text: Text containing the inline params.
+
+        Returns:
+            Parsed arguments dictionary.
+        """
+        arguments: Dict[str, Any] = {}
+
+        try:
+            # Find the complete JSON/object block
+            brace_start = text.find("{")
+            if brace_start == -1:
+                return arguments
+
+            brace_count = 0
+            json_end = 0
+            full_text = text[brace_start:]
+
+            for i, char in enumerate(full_text):
+                if char == "{":
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_end = i + 1
+                        break
+
+            if json_end == 0:
+                return arguments
+
+            raw_params = full_text[:json_end]
+
+            # Strategy 1: Try direct JSON parse
+            try:
+                arguments = json.loads(raw_params)
+                if isinstance(arguments, dict):
+                    return arguments
+            except json.JSONDecodeError:
+                pass
+
+            # Strategy 2: Clean <ctrlNN> markers and retry
+            # <ctrl46> appears to be used as string delimiters (ASCII 46 = '.')
+            # Replace with quotes for JSON compatibility
+            cleaned = re.sub(r"<ctrl\d+>", '"', raw_params)
+            try:
+                arguments = json.loads(cleaned)
+                if isinstance(arguments, dict):
+                    return arguments
+            except json.JSONDecodeError:
+                pass
+
+            # Strategy 3: Convert JavaScript-like notation to JSON
+            # Handle unquoted keys: {key: "value"} -> {"key": "value"}
+            js_to_json = re.sub(r"(\{|,)\s*(\w+)\s*:", r'\1"\2":', cleaned)
+            try:
+                arguments = json.loads(js_to_json)
+                if isinstance(arguments, dict):
+                    return arguments
+            except json.JSONDecodeError:
+                pass
+
+            # Strategy 4: Try parsing as nested structure with arrays
+            # Handle format like: {files:[{path:"value"}]}
+            # First, ensure all keys are quoted
+            step1 = re.sub(r"(\{|\[|,)\s*(\w+)\s*:", r'\1"\2":', raw_params)
+            # Replace <ctrlNN> with quotes
+            step2 = re.sub(r"<ctrl\d+>", '"', step1)
+            try:
+                arguments = json.loads(step2)
+                if isinstance(arguments, dict):
+                    return arguments
+            except json.JSONDecodeError:
+                pass
+
+            # Strategy 5: Extract key-value pairs manually
+            # For simple cases like {path: <ctrl46>value<ctrl46>}
+            kv_pattern = re.compile(
+                r'["\']?(\w+)["\']?\s*:\s*(?:<ctrl\d+>|["\'])([^"\'<}]+)(?:<ctrl\d+>|["\'])?',
+                re.IGNORECASE,
+            )
+            matches = kv_pattern.findall(raw_params)
+            if matches:
+                for key, value in matches:
+                    arguments[key] = value.strip()
+
+        except Exception as e:
+            self.logger.debug(f"[{self.req_id}] Error parsing inline params: {e}")
+
+        return arguments
 
     def _parse_json_function_calls(self, json_text: str) -> List[Any]:
         """Parse function calls from JSON text.

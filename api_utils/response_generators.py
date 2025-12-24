@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import time
 from asyncio import Event
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, cast
@@ -23,6 +24,13 @@ from .common_utils import random_id
 from .sse import generate_sse_chunk, generate_sse_stop_chunk
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats
+
+# Pattern to strip emulated function call text from body content
+# This prevents "Request function call: ..." from being sent as text content
+_FUNCTION_CALL_TEXT_PATTERN = re.compile(
+    r"Request\s+function\s+call:\s*[^\n]+(?:\n(?:Parameters:\s*)?\s*\{[\s\S]*?\})?",
+    re.IGNORECASE,
+)
 
 
 async def resilient_stream_generator(
@@ -257,27 +265,35 @@ async def gen_sse_from_aux_stream(
                 last_reason_pos = len(reason)
 
             # The Latch: Body Handling
+            # Strip "Request function call:..." text from body when function calls exist
+            # This prevents emulated FC text from appearing as content to clients
+            if function and body:
+                body = _FUNCTION_CALL_TEXT_PATTERN.sub("", body).strip()
+                full_body_content = body
+
             if len(body) > last_body_pos:
                 body_delta = body[last_body_pos:]
-                has_started_body = True
-                output = {
-                    "id": chat_completion_id,
-                    "object": "chat.completion.chunk",
-                    "model": model_name_for_stream,
-                    "created": created_timestamp,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {
-                                "role": "assistant",
-                                "content": body_delta,
-                            },
-                            "finish_reason": None,
-                        }
-                    ],
-                }
+                # Only stream body content if there's actual content after stripping
+                if body_delta.strip():
+                    has_started_body = True
+                    output = {
+                        "id": chat_completion_id,
+                        "object": "chat.completion.chunk",
+                        "model": model_name_for_stream,
+                        "created": created_timestamp,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {
+                                    "role": "assistant",
+                                    "content": body_delta,
+                                },
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
                 last_body_pos = len(body)
-                yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
             if done:
                 is_recovering = GlobalState.IS_RECOVERING
@@ -300,7 +316,14 @@ async def gen_sse_from_aux_stream(
                     is_quota_exceeded = GlobalState.IS_QUOTA_EXCEEDED
                     is_recovering = GlobalState.IS_RECOVERING
 
-                if not has_started_body and not is_recovering and not is_quota_exceeded:
+                if (
+                    not has_started_body
+                    and not is_recovering
+                    and not is_quota_exceeded
+                    and not function
+                ):
+                    # Only show synthetic message when there's truly no content AND no function calls
+                    # In native FC mode, empty body with function calls is expected
                     fallback_text = (
                         "\n\n*(Model finished thinking but generated no output.)*"
                     )
