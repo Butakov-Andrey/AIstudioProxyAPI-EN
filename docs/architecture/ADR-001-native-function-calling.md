@@ -1,7 +1,7 @@
 # ADR-001: Native Function Calling Architecture
 
 **Date:** 2025-01-23
-**Status:** Proposed
+**Status:** Implemented
 **Decision Makers:** Core Team
 **Supersedes:** None (New Feature)
 
