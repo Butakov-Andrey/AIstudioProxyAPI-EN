@@ -37,7 +37,11 @@ logger = logging.getLogger("AIStudioProxyServer")
 # Enhanced pattern: captures function names with underscores, hyphens, and special chars
 # Uses greedy match up to newline or open brace, then strips trailing whitespace
 _STATIC_EMULATED_FC_PATTERN = re.compile(
-    r"Request\s+function\s+call:\s*([\w\-_.]+)(?:\s*\n|\s*\{|\s*$)",
+    r"Request\s+function\s+call:\s*([\w\-_.:]+)(?:\s*\n|\s*\{|\s*$)",
+    re.IGNORECASE,
+)
+_STATIC_EMULATED_PARAMS_PATTERN = re.compile(
+    r"Parameters:\s*\n?\s*(\{[\s\S]*?\})\s*(?:\n\n|\Z|(?=Request\s+function\s+call:))",
     re.IGNORECASE,
 )
 _STATIC_EMULATED_PARAMS_PATTERN = re.compile(
@@ -243,7 +247,7 @@ class FunctionCallResponseParser:
     # Supports: with params (newline or {), without params (end of string/line)
     # Enhanced: uses \w, hyphen, underscore, and dot to capture full function names
     EMULATED_FUNCTION_CALL_PATTERN = re.compile(
-        r"Request\s+function\s+call:\s*([\w\-_.]+)(?:\s*\n|\s*\{|\s*$)",
+        r"Request\s+function\s+call:\s*([\w\-_.:]+)(?:\s*\n|\s*\{|\s*$)",
         re.IGNORECASE,
     )
     # Pattern to extract the JSON parameters block after "Parameters:"
