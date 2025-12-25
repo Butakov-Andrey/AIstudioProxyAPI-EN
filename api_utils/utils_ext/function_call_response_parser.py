@@ -1043,14 +1043,19 @@ class FunctionCallResponseParser:
 
         args_text = args_text.strip()
 
+        # Debug log raw args_text
+        self.logger.debug(
+            f"[{self.req_id}] Raw args_text (len={len(args_text)}): {args_text[:500]}"
+        )
+
         # Try JSON parse
         try:
             result = json.loads(args_text)
             if isinstance(result, dict):
                 return result
             return {"value": result}
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            self.logger.debug(f"[{self.req_id}] JSON parse failed: {e}")
 
         # Try to extract key-value pairs
         kv_pattern = re.compile(r'"?(\w+)"?\s*[:=]\s*(".*?"|[^,}\]]+)')

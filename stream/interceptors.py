@@ -150,12 +150,25 @@ class HttpInterceptor:
             buffer_bytes = self.response_buffer.encode("utf-8")
             matches = list(re.finditer(pattern, buffer_bytes))
 
+            # Debug: Log match count when processing is done
+            if is_done and matches:
+                self.logger.debug(
+                    f"[FC:Wire] Found {len(matches)} wire format matches in buffer"
+                )
+
             if matches:
                 # Process all complete matches found in buffer
                 for match in matches:
                     try:
                         json_data = json.loads(match.group(0))
                         payload = json_data[0][0]
+
+                        # Debug: Log payload structure for function call detection
+                        if len(payload) >= 10:
+                            self.logger.debug(
+                                f"[FC:Wire] Payload len={len(payload)}, [1]={payload[1]}, "
+                                f"has [10]={len(payload) > 10 and isinstance(payload[10], list)}"
+                            )
 
                         if len(payload) == 2:  # body
                             resp["body"] += payload[1]
@@ -166,7 +179,12 @@ class HttpInterceptor:
                         ):  # function
                             array_tool_calls = payload[10]
                             func_name = array_tool_calls[0]
-                            params = self.parse_toolcall_params(array_tool_calls[1])
+                            raw_args = array_tool_calls[1]
+                            # Log raw wire format for debugging
+                            self.logger.debug(
+                                f"[FC:Wire] Raw args for '{func_name}': {json.dumps(raw_args)[:500]}"
+                            )
+                            params = self.parse_toolcall_params(raw_args)
                             # Log warning if params are empty for tracking potential parse failures
                             if not params:
                                 self.logger.warning(
@@ -282,6 +300,13 @@ class HttpInterceptor:
                 param_name = param[0]
                 param_value = param[1]
 
+                # Debug: log raw param_value structure
+                self.logger.debug(
+                    f"Parsing param '{param_name}': type={type(param_value).__name__}, "
+                    f"len={len(param_value) if isinstance(param_value, list) else 'N/A'}, "
+                    f"value={str(param_value)[:100]}"
+                )
+
                 if isinstance(param_value, list):
                     if len(param_value) == 1:  # null
                         func_params[param_name] = None
@@ -325,31 +350,117 @@ class HttpInterceptor:
         """Parse array items from AI Studio's wire format.
 
         Each item in the array follows the same type encoding as parameters.
+        The wire format uses variable nesting levels, so we must handle:
+        - Direct type-encoded items: [null], [null, num], [null, null, str], etc.
+        - Wrapped items: [[...actual item...]] - extra nesting layer
+        - Object items with param lists inside
         """
+        self.logger.debug(
+            f"_parse_array_items input (len={len(array_items)}): {array_items[:3] if len(array_items) > 3 else array_items}"
+        )
         result = []
-        for item in array_items:
-            if isinstance(item, list):
-                if len(item) == 1:  # null
-                    result.append(None)
-                elif len(item) == 2:  # number
-                    result.append(item[1])
-                elif len(item) == 3:  # string
-                    result.append(item[2])
-                elif len(item) == 4:  # boolean
-                    result.append(item[3] == 1)
-                elif len(item) == 5:  # object
-                    result.append(self.parse_toolcall_params(item[4]))
-                elif len(item) == 6:  # nested array
-                    nested_items = item[5]
-                    if isinstance(nested_items, list):
-                        result.append(self._parse_array_items(nested_items))
-                    else:
-                        result.append([])
-                else:
-                    result.append(item)
-            else:
-                result.append(item)
+        for i, item in enumerate(array_items):
+            self.logger.debug(f"  Array item[{i}] raw: {item}")
+            parsed = self._parse_single_array_item(item)
+            self.logger.debug(f"  Array item[{i}] parsed: {parsed}")
+            result.append(parsed)
         return result
+
+    def _parse_single_array_item(self, item: Any) -> Any:
+        """Parse a single array item, handling variable nesting depth.
+
+        This method recursively unwraps nested structures until it finds
+        a recognizable type-encoded value or a parameter list (object).
+        """
+        if not isinstance(item, list):
+            return item
+
+        if len(item) == 0:
+            return None
+
+        # PRIORITY CHECK: Is this a param list (object)?
+        # A param list is [[name, value], [name, value], ...]
+        # This must be checked BEFORE length-based type decoding
+        if self._looks_like_param_list(item):
+            return self.parse_toolcall_params([item])
+
+        # Check for type-encoded values based on structure
+        # Type-encoded values have None/value patterns at specific positions
+
+        # Length 1: Could be null OR a wrapper containing nested data
+        if len(item) == 1:
+            inner = item[0]
+            # If inner is a list, this is a wrapper - unwrap and recurse
+            if isinstance(inner, list):
+                return self._parse_single_array_item(inner)
+            # If inner is None or non-list, this is a null value
+            return None
+
+        # Length 2: number/integer - [null, value]
+        if len(item) == 2:
+            if item[0] is None and item[1] is not None:
+                return item[1]
+            # Could be a 2-element wrapper or 2-element param list (already handled above)
+            if isinstance(item[0], list):
+                return self._parse_single_array_item(item[0])
+            return item[1]
+
+        # Length 3: string - [null, null, value]
+        if len(item) == 3:
+            if item[0] is None and item[1] is None:
+                return item[2]
+            # Could be wrapper
+            if isinstance(item[0], list):
+                return self._parse_single_array_item(item[0])
+            return item[2]
+
+        # Length 4: boolean - [null, null, null, 0|1]
+        if len(item) == 4:
+            if item[0] is None and item[1] is None and item[2] is None:
+                return item[3] == 1
+            # Could be wrapper
+            if isinstance(item[0], list):
+                return self._parse_single_array_item(item[0])
+            return item[3] == 1
+
+        # Length 5: object - [null, null, null, null, params]
+        if len(item) == 5:
+            if item[4] is not None:
+                return self.parse_toolcall_params(item[4])
+            return {}
+
+        # Length 6: nested array - [null, null, null, null, null, items]
+        if len(item) == 6:
+            nested_items = item[5]
+            if isinstance(nested_items, list):
+                return self._parse_array_items(nested_items)
+            return []
+
+        # Unknown structure - try to unwrap first element if it's a list
+        if isinstance(item[0], list):
+            return self._parse_single_array_item(item[0])
+
+        # Fallback: return as-is
+        self.logger.debug(
+            f"Unknown array item structure (len={len(item)}): {item[:3]}..."
+        )
+        return item
+
+    def _looks_like_param_list(self, data: Any) -> bool:
+        """Check if data looks like a parameter list (list of [name, value] tuples).
+
+        A param list is a list where elements are [string_name, encoded_value] tuples.
+        """
+        if not isinstance(data, list) or len(data) == 0:
+            return False
+
+        # Check first element - should be a list with string as first element
+        first = data[0]
+        if isinstance(first, list) and len(first) >= 2:
+            if isinstance(first[0], str):
+                return True
+
+        return False
 
     @staticmethod
     def _decompress_zlib_stream(compressed_stream: Union[bytearray, bytes]) -> bytes:
