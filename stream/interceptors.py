@@ -24,6 +24,9 @@ class HttpInterceptor:
         self.log_dir = log_dir
         self.logger = logging.getLogger("http_interceptor")
         self.response_buffer = ""  # Persistent buffer for accumulating response data
+        # Accumulate unique function calls across streaming chunks
+        # Key: (function_name, params_hash) - Value: {"name": str, "params": dict}
+        self._accumulated_function_calls: dict[tuple[str, str], dict] = {}
         self.setup_logging()
 
     @staticmethod
@@ -43,6 +46,16 @@ class HttpInterceptor:
         logging.getLogger("websockets").setLevel(logging.ERROR)
         # Silence http_interceptor by default (too verbose)
         logging.getLogger("http_interceptor").setLevel(logging.WARNING)
+
+    def reset_for_new_request(self) -> None:
+        """Reset interceptor state for a new request.
+
+        This clears the response buffer and function call accumulation state.
+        Should be called at the start of each new GenerateContent request to
+        ensure clean state.
+        """
+        self.response_buffer = ""
+        self._accumulated_function_calls.clear()
 
     @staticmethod
     def should_intercept(host: str, path: str):
@@ -132,6 +145,11 @@ class HttpInterceptor:
     def parse_response_from_buffer(self, is_done=False):
         """
         Parse complete JSON objects from the persistent response buffer.
+
+        Function calls are deduplicated across streaming chunks to prevent
+        the same function call from being returned multiple times. AI Studio's
+        wire format sometimes sends the same function call data in multiple
+        stream chunks.
         """
         resp = {"reason": "", "body": "", "function": [], "done": is_done}
 
@@ -187,6 +205,28 @@ class HttpInterceptor:
                                     f"[FC:Wire] Raw args for '{func_name}': {json.dumps(raw_args)[:500]}"
                                 )
                             params = self.parse_toolcall_params(raw_args)
+
+                            # Accumulate unique function calls across streaming chunks.
+                            # AI Studio's wire format sends duplicate function call data
+                            # in multiple stream chunks. We accumulate and deduplicate them,
+                            # returning the complete list only when done=True.
+                            try:
+                                params_str = json.dumps(params, sort_keys=True)
+                            except (TypeError, ValueError):
+                                params_str = str(params)
+                            dedup_key = (func_name, params_str)
+
+                            if dedup_key in self._accumulated_function_calls:
+                                if FUNCTION_CALLING_DEBUG:
+                                    self.logger.debug(
+                                        f"[FC:Wire] Skipping duplicate function call: {func_name}"
+                                    )
+                                continue
+
+                            # Store this function call in accumulator
+                            func_call_data = {"name": func_name, "params": params}
+                            self._accumulated_function_calls[dedup_key] = func_call_data
+
                             # Log warning if params are empty for tracking potential parse failures
                             if not params:
                                 if FUNCTION_CALLING_DEBUG:
@@ -208,9 +248,6 @@ class HttpInterceptor:
                                         params=params,
                                         success=True,
                                     )
-                            resp["function"].append(
-                                {"name": func_name, "params": params}
-                            )
                         elif len(payload) > 2:  # reason
                             resp["reason"] += payload[1]
 
@@ -227,6 +264,22 @@ class HttpInterceptor:
                     )
                 else:
                     self.response_buffer = ""
+
+                # When stream is done, return ALL accumulated unique function calls
+                # During streaming (not done), we return empty list to avoid duplicates
+                # The complete list is returned only with done=True
+                if is_done and self._accumulated_function_calls:
+                    resp["function"] = list(self._accumulated_function_calls.values())
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[FC:Wire] Returning {len(resp['function'])} unique function call(s) on done"
+                        )
+                    # Clear accumulator for next request
+                    self._accumulated_function_calls.clear()
+                elif self._accumulated_function_calls:
+                    # During streaming, still return the current accumulated list
+                    # so that has_seen_functions can be set correctly
+                    resp["function"] = list(self._accumulated_function_calls.values())
             else:
                 self.logger.debug("Buffering incomplete JSON data...")
 
