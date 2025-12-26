@@ -5,12 +5,8 @@
 # Release Types:
 #   - Stable: Push a tag (git tag v4.0.6 && git push origin v4.0.6)
 #   - Nightly: Automatic on every push to main branch (rolling release)
-#   - Manual: Actions -> Release -> Run workflow -> Enter version (e.g., v4.0.6)
-#
-# IMPORTANT for Manual Releases:
-#   The tag MUST exist before triggering the workflow. Create it first:
-#     git tag v4.0.7 && git push origin v4.0.7
-#   Then trigger the workflow with the same version.
+#   - Manual: Actions -> Release -> Run workflow -> Enter version (e.g., v4.0.7)
+#             The tag will be auto-created on the current HEAD if it doesn't exist.
 
 name: Release
 
@@ -79,30 +75,36 @@ jobs:
           echo "version_number=${VERSION#v}" >> $GITHUB_OUTPUT
           echo "Release version: $VERSION"
 
-      - name: Verify tag exists (manual trigger)
+      - name: Setup Git for tagging (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create or verify tag (manual trigger)
         if: github.event_name == 'workflow_dispatch'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           # Fetch all tags to ensure we have the latest
           git fetch --tags --force
-          if ! git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-            echo "::error::Tag '$VERSION' does not exist in the repository."
-            echo "::error::Please create the tag first using:"
-            echo "::error::  git tag $VERSION && git push origin $VERSION"
-            echo ""
-            echo "Available tags:"
-            git tag --list 'v*' | tail -20
-            exit 1
+          
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "✓ Tag $VERSION already exists"
+            echo "Checking out existing tag..."
+            git checkout "refs/tags/$VERSION"
+          else
+            echo "Tag $VERSION does not exist, creating it on current HEAD..."
+            CURRENT_SHA=$(git rev-parse HEAD)
+            echo "Creating tag $VERSION at commit $CURRENT_SHA"
+            
+            # Create the tag locally
+            git tag -a "$VERSION" -m "Release $VERSION"
+            
+            # Push the tag to remote
+            git push origin "$VERSION"
+            
+            echo "✓ Tag $VERSION created and pushed successfully"
           fi
-          echo "✓ Tag $VERSION exists and is valid"
-
-      - name: Checkout tag (manual trigger)
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          echo "Checking out tag: $VERSION"
-          git checkout "refs/tags/$VERSION"
-          echo "✓ Successfully checked out $VERSION"
 
       - name: Generate changelog
         id: changelog
