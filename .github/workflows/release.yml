@@ -6,6 +6,11 @@
 #   - Stable: Push a tag (git tag v4.0.6 && git push origin v4.0.6)
 #   - Nightly: Automatic on every push to main branch (rolling release)
 #   - Manual: Actions -> Release -> Run workflow -> Enter version (e.g., v4.0.6)
+#
+# IMPORTANT for Manual Releases:
+#   The tag MUST exist before triggering the workflow. Create it first:
+#     git tag v4.0.7 && git push origin v4.0.7
+#   Then trigger the workflow with the same version.
 
 name: Release
 
@@ -58,7 +63,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for changelog generation
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          # For workflow_dispatch, checkout default branch first, then verify/checkout tag
+          # For tag pushes, checkout the tag directly
+          ref: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
 
       - name: Determine version
         id: version
@@ -76,12 +83,26 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          if ! git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "::error::Tag '$VERSION' does not exist. Please create the tag first:"
+          # Fetch all tags to ensure we have the latest
+          git fetch --tags --force
+          if ! git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag '$VERSION' does not exist in the repository."
+            echo "::error::Please create the tag first using:"
             echo "::error::  git tag $VERSION && git push origin $VERSION"
+            echo ""
+            echo "Available tags:"
+            git tag --list 'v*' | tail -20
             exit 1
           fi
-          echo "Tag $VERSION exists and is valid"
+          echo "✓ Tag $VERSION exists and is valid"
+
+      - name: Checkout tag (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Checking out tag: $VERSION"
+          git checkout "refs/tags/$VERSION"
+          echo "✓ Successfully checked out $VERSION"
 
       - name: Generate changelog
         id: changelog
