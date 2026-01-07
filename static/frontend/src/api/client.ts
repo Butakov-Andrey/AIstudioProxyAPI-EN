@@ -40,7 +40,7 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
       const errorBody = await response.text();
       throw new ApiError(
         response.status,
-        `请求失败: ${response.statusText}`,
+        `Request failed: ${response.statusText}`,
         errorBody
       );
     }
@@ -48,7 +48,7 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     return response.json();
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError(0, "网络错误，请检查连接", error);
+    throw new ApiError(0, "Network error", error);
   }
 }
 
@@ -85,11 +85,11 @@ export async function* streamChatCompletion(
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, `请求失败: ${response.statusText}`);
+    throw new ApiError(response.status, `Request failed: ${response.statusText}`);
   }
 
   const reader = response.body?.getReader();
-  if (!reader) throw new ApiError(0, "无法读取响应流");
+  if (!reader) throw new ApiError(0, "Cannot read response stream");
 
   const decoder = new TextDecoder();
   let buffer = "";

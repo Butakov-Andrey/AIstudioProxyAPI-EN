@@ -15,6 +15,7 @@ import {
 import type { ChatMessage, Message, Tool } from '@/types';
 import { streamChatCompletion } from '@/api';
 import { useSettings } from './SettingsContext';
+import { useI18n } from './I18nContext';
 
 // Generate unique ID
 const generateId = () => Math.random().toString(36).substring(2, 11);
@@ -125,6 +126,7 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(chatReducer, { messages: [] });
   const { settings, selectedModel } = useSettings();
+  const { t } = useI18n();
   const abortControllerRef = useRef<AbortController | null>(null);
   const [currentStatus, setCurrentStatus] = useState('');
 
@@ -221,7 +223,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     // Create abort controller
     abortControllerRef.current = new AbortController();
-    setCurrentStatus('正在连接...');
+    setCurrentStatus(t.chat.connecting);
 
     try {
       const stream = streamChatCompletion(request, abortControllerRef.current.signal);
@@ -234,7 +236,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         
         // Handle thinking content
         if (reasoningContent) {
-          setCurrentStatus('正在思考...');
+          setCurrentStatus(t.chat.thinkingStatus);
           dispatch({
             type: 'UPDATE_THINKING',
             payload: { id: assistantMessage.id, thinkingContent: reasoningContent },
@@ -247,7 +249,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           if (!hasReceivedContent) {
             hasReceivedContent = true;
             dispatch({ type: 'SET_THINKING_DONE', payload: { id: assistantMessage.id } });
-            setCurrentStatus('正在生成...');
+            setCurrentStatus(t.chat.generating);
           }
           dispatch({
             type: 'UPDATE_MESSAGE',
@@ -271,7 +273,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           type: 'SET_ERROR',
           payload: {
             id: assistantMessage.id,
-            error: error instanceof Error ? error.message : '发生未知错误',
+            error: error instanceof Error ? error.message : t.chat.unknownError,
           },
         });
       }
@@ -279,7 +281,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       abortControllerRef.current = null;
       setCurrentStatus('');
     }
-  }, [selectedModel, state.messages, buildRequest]);
+  }, [selectedModel, state.messages, buildRequest, t]);
 
   const regenerateFrom = useCallback(async (messageId: string) => {
     // Find the message to regenerate
@@ -305,7 +307,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // Build request
     const request = buildRequest(previousMessages);
     abortControllerRef.current = new AbortController();
-    setCurrentStatus('正在重新生成...');
+    setCurrentStatus(t.chat.regenerating);
 
     try {
       const stream = streamChatCompletion(request, abortControllerRef.current.signal);
@@ -317,7 +319,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const content = delta?.content;
         
         if (reasoningContent) {
-          setCurrentStatus('正在思考...');
+          setCurrentStatus(t.chat.thinkingStatus);
           dispatch({
             type: 'UPDATE_THINKING',
             payload: { id: assistantMessage.id, thinkingContent: reasoningContent },
@@ -328,7 +330,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           if (!hasReceivedContent) {
             hasReceivedContent = true;
             dispatch({ type: 'SET_THINKING_DONE', payload: { id: assistantMessage.id } });
-            setCurrentStatus('正在生成...');
+            setCurrentStatus(t.chat.generating);
           }
           dispatch({
             type: 'UPDATE_MESSAGE',
@@ -347,7 +349,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           type: 'SET_ERROR',
           payload: {
             id: assistantMessage.id,
-            error: error instanceof Error ? error.message : '发生未知错误',
+            error: error instanceof Error ? error.message : t.chat.unknownError,
           },
         });
       }
@@ -355,7 +357,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       abortControllerRef.current = null;
       setCurrentStatus('');
     }
-  }, [state.messages, buildRequest]);
+  }, [state.messages, buildRequest, t]);
 
   const editMessage = useCallback(async (messageId: string, newContent: string) => {
     // Find the message
@@ -394,7 +396,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // Build and send request
       const request = buildRequest(updatedMessages);
       abortControllerRef.current = new AbortController();
-      setCurrentStatus('正在生成回复...');
+      setCurrentStatus(t.chat.generatingReply);
 
       try {
         const stream = streamChatCompletion(request, abortControllerRef.current.signal);
@@ -406,7 +408,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           const content = delta?.content;
           
           if (reasoningContent) {
-            setCurrentStatus('正在思考...');
+            setCurrentStatus(t.chat.thinkingStatus);
             dispatch({
               type: 'UPDATE_THINKING',
               payload: { id: assistantMessage.id, thinkingContent: reasoningContent },
@@ -417,7 +419,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             if (!hasReceivedContent) {
               hasReceivedContent = true;
               dispatch({ type: 'SET_THINKING_DONE', payload: { id: assistantMessage.id } });
-              setCurrentStatus('正在生成...');
+              setCurrentStatus(t.chat.generating);
             }
             dispatch({
               type: 'UPDATE_MESSAGE',
@@ -436,7 +438,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             type: 'SET_ERROR',
             payload: {
               id: assistantMessage.id,
-              error: error instanceof Error ? error.message : '发生未知错误',
+              error: error instanceof Error ? error.message : t.chat.unknownError,
             },
           });
         }
@@ -445,7 +447,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setCurrentStatus('');
       }
     }
-  }, [state.messages, buildRequest]);
+  }, [state.messages, buildRequest, t]);
 
   const clearMessages = useCallback(() => {
     stopGeneration();

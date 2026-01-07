@@ -24,7 +24,7 @@ import {
   ChevronDown,
   AlertCircle
 } from 'lucide-react';
-import { useChat } from '@/contexts';
+import { useChat, useI18n } from '@/contexts';
 import type { ChatMessage } from '@/types';
 import styles from './ChatPanel.module.css';
 
@@ -77,6 +77,7 @@ function useElapsedTimer(isActive: boolean): { liveMs: number; finalMs: number; 
 }
 
 export function ChatPanel() {
+  const { t } = useI18n();
   const { 
     messages, 
     isStreaming, 
@@ -126,9 +127,9 @@ export function ChatPanel() {
         {messages.length === 0 ? (
           <div className={styles.emptyState}>
             <MessageSquare className={styles.emptyIcon} />
-            <h2 className={styles.emptyTitle}>Start Conversation</h2>
+            <h2 className={styles.emptyTitle}>{t.chat.startConversation}</h2>
             <p className={styles.emptyDescription}>
-              Type a message below to start chatting with the AI assistant
+              {t.chat.startDescription}
             </p>
           </div>
         ) : (
@@ -156,7 +157,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message... (Shift+Enter for new line)"
+            placeholder={t.chat.placeholder}
             rows={1}
             disabled={isStreaming}
           />
@@ -165,7 +166,7 @@ export function ChatPanel() {
               <button
                 className={styles.clearButton}
                 onClick={clearMessages}
-                title="Clear Chat"
+                title={t.chat.clearChat}
                 disabled={isStreaming}
               >
                 <Trash2 size={20} />
@@ -175,7 +176,7 @@ export function ChatPanel() {
               <button
                 className={`${styles.sendButton} ${styles.stopButton}`}
                 onClick={stopGeneration}
-                title="Stop Generating"
+                title={t.chat.stopGenerating}
               >
                 <Square size={20} />
               </button>
@@ -184,7 +185,7 @@ export function ChatPanel() {
                 className={styles.sendButton}
                 onClick={handleSend}
                 disabled={!input.trim()}
-                title="Send Message"
+                title={t.chat.sendMessage}
               >
                 <Send size={20} />
               </button>
@@ -212,6 +213,7 @@ function Message({
   onRegenerate: () => void;
   disabled: boolean;
 }) {
+  const { t } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   // Capture both dimensions to match edit area to original message box
@@ -311,7 +313,7 @@ function Message({
                 ) : (
                   <Brain size={14} className={message.isThinking ? styles.spinningIcon : ''} />
                 )}
-                <span>{message.error ? 'Thinking Interrupted' : message.isThinking ? 'Thinking...' : 'Thinking Process'}</span>
+                <span>{message.error ? t.chat.thinkingInterrupted : message.isThinking ? t.chat.thinking : t.chat.thinkingProcess}</span>
               </div>
               <div className={styles.thinkingHeaderRight}>
                 {!message.error && (
@@ -350,16 +352,16 @@ function Message({
                 <button 
                   className={styles.editActionButton}
                   onClick={handleSaveEdit}
-                  title="Save"
+                  title={t.common.save}
                 >
-                  <Check size={14} /> Save
+                  <Check size={14} /> {t.common.save}
                 </button>
                 <button 
                   className={`${styles.editActionButton} ${styles.cancel}`}
                   onClick={handleCancelEdit}
-                  title="Cancel"
+                  title={t.common.cancel}
                 >
-                  <X size={14} /> Cancel
+                  <X size={14} /> {t.common.cancel}
                 </button>
               </div>
             </div>
@@ -416,7 +418,7 @@ function Message({
         {/* Total time badge - always visible for AI messages with time */}
         {!isUser && !message.isStreaming && totalSeconds > 0 && (
           <div className={styles.totalTimeBadge}>
-            <span>Total Time {formatTime(totalSeconds)}</span>
+            <span>{t.chat.totalTime} {formatTime(totalSeconds)}</span>
           </div>
         )}
 
@@ -427,7 +429,7 @@ function Message({
               className={styles.actionButton}
               onClick={startEditing}
               disabled={disabled}
-              title="Edit Message"
+              title={t.chat.editMessage}
             >
               <Pencil size={14} />
             </button>
@@ -435,7 +437,7 @@ function Message({
               className={styles.actionButton}
               onClick={onRegenerate}
               disabled={disabled}
-              title={isUser ? "Resend" : "Regenerate"}
+              title={isUser ? t.chat.resend : t.chat.regenerate}
             >
               <RefreshCw size={14} />
             </button>
