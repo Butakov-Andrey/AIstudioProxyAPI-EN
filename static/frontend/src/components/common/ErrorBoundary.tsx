@@ -1,6 +1,7 @@
 /**
  * Error Boundary Component
  * Catches React errors and displays fallback UI
+ * Note: Class components can't use hooks, so we accept translations as props
  */
 
 import { Component, type ReactNode } from 'react';
@@ -15,6 +16,13 @@ interface State {
   hasError: boolean;
   error: Error | null;
 }
+
+// Default messages (will be in English as fallback)
+const defaultMessages = {
+  failed: 'failed to load',
+  unknownError: 'Unknown error',
+  retry: 'Retry',
+};
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -46,10 +54,10 @@ export class ErrorBoundary extends Component<Props, State> {
           color: '#ef4444',
         }}>
           <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>
-            {this.props.name || '组件'} 加载失败
+            {this.props.name || 'Component'} {defaultMessages.failed}
           </h3>
           <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>
-            {this.state.error?.message || '未知错误'}
+            {this.state.error?.message || defaultMessages.unknownError}
           </p>
           <button 
             onClick={() => this.setState({ hasError: false, error: null })}
@@ -64,7 +72,7 @@ export class ErrorBoundary extends Component<Props, State> {
               cursor: 'pointer',
             }}
           >
-            重试
+            {defaultMessages.retry}
           </button>
         </div>
       );

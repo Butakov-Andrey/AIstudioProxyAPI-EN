@@ -6,11 +6,13 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wifi, RefreshCw, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { useI18n } from '@/contexts';
 import { fetchProxyConfig, updateProxyConfig, testProxyConnectivity } from '@/api';
 import type { ProxyConfig, ProxyTestResult } from '@/api';
 import styles from './SettingsPanel.module.css';
 
 export function ProxySettings() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [localConfig, setLocalConfig] = useState<ProxyConfig>({ enabled: false, address: 'http://127.0.0.1:7890' });
   const [testResult, setTestResult] = useState<ProxyTestResult | null>(null);
@@ -70,7 +72,7 @@ export function ProxySettings() {
     return (
       <div className={styles.loading}>
         <Loader2 size={16} className={styles.spinning} />
-        <span>加载中...</span>
+        <span>{t.common.loading}</span>
       </div>
     );
   }
@@ -80,8 +82,8 @@ export function ProxySettings() {
       {/* Enable Toggle */}
       <div className={styles.toggle}>
         <div className={styles.toggleLabel}>
-          <span className={styles.label}>启用浏览器代理</span>
-          <span className={styles.description}>通过代理服务器访问网络</span>
+          <span className={styles.label}>{t.settingsPage.enableBrowserProxy}</span>
+          <span className={styles.description}>{t.settingsPage.enableBrowserProxyDesc}</span>
         </div>
         <button
           className={`${styles.switch} ${localConfig.enabled ? styles.active : ''}`}
@@ -95,7 +97,7 @@ export function ProxySettings() {
 
       {/* Proxy Address Input */}
       <div className={styles.formGroup}>
-        <label className={styles.label}>代理地址</label>
+        <label className={styles.label}>{t.settingsPage.proxyAddress}</label>
         <div className={styles.inputGroup}>
           <input
             type="text"
@@ -103,7 +105,7 @@ export function ProxySettings() {
             value={localConfig.address}
             onChange={(e) => handleAddressChange(e.target.value)}
             placeholder="http://127.0.0.1:7890"
-            aria-label="代理地址"
+            aria-label={t.settingsPage.proxyAddress}
           />
         </div>
       </div>
@@ -120,7 +122,7 @@ export function ProxySettings() {
           ) : (
             <Wifi size={14} />
           )}
-          测试连接
+          {t.settingsPage.testConnection}
         </button>
         <button
           className={styles.primaryButton}
@@ -132,7 +134,7 @@ export function ProxySettings() {
           ) : (
             <RefreshCw size={14} />
           )}
-          保存
+          {t.common.save}
         </button>
       </div>
 

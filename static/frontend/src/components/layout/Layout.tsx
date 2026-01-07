@@ -11,9 +11,10 @@ import {
   Sun,
   Layers,
   Settings,
-  MessageSquare
+  MessageSquare,
+  Languages
 } from 'lucide-react';
-import { useTheme } from '@/contexts';
+import { useTheme, useI18n, type Language } from '@/contexts';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
@@ -25,9 +26,15 @@ type MainView = 'chat' | 'settings';
 
 export function Layout() {
   const { theme, toggleTheme } = useTheme();
+  const { language, setLanguage, t } = useI18n();
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [mainView, setMainView] = useState<MainView>('chat');
+
+  const toggleLanguage = () => {
+    const newLang: Language = language === 'en' ? 'zh' : 'en';
+    setLanguage(newLang);
+  };
 
   return (
     <div className={styles.layout}>
@@ -36,13 +43,13 @@ export function Layout() {
         <aside 
           className={`${styles.sidebar} ${!leftSidebarOpen ? styles.collapsed : ''}`}
           role="complementary"
-          aria-label="模型面板"
+          aria-label={t.layout.modelSettings}
         >
           <div className={styles.sidebarHeader}>
-            <span className={styles.sidebarTitle}>模型设置</span>
+            <span className={styles.sidebarTitle}>{t.layout.modelSettings}</span>
           </div>
           <div className={styles.sidebarContent}>
-            <ErrorBoundary name="模型面板">
+            <ErrorBoundary name={t.layout.modelSettings}>
               <SettingsPanel />
             </ErrorBoundary>
           </div>
@@ -58,7 +65,7 @@ export function Layout() {
               <button 
                 className={styles.toggleButton}
                 onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-                aria-label={leftSidebarOpen ? '隐藏设置面板' : '显示设置面板'}
+                aria-label={leftSidebarOpen ? t.layout.hideSettingsPanel : t.layout.showSettingsPanel}
                 aria-expanded={leftSidebarOpen}
               >
                 <PanelLeft size={20} aria-hidden="true" />
@@ -66,7 +73,7 @@ export function Layout() {
             )}
             <div className={styles.logo}>
               <Layers className={styles.logoIcon} size={24} aria-hidden="true" />
-              <span className={styles.logoText}>AI Studio Proxy</span>
+              <span className={styles.logoText}>{t.layout.appTitle}</span>
             </div>
           </div>
           <div className={styles.headerCenter}>
@@ -76,22 +83,32 @@ export function Layout() {
                 onClick={() => setMainView('chat')}
               >
                 <MessageSquare size={16} />
-                聊天
+                {t.layout.chat}
               </button>
               <button
                 className={`${styles.mainTab} ${mainView === 'settings' ? styles.active : ''}`}
                 onClick={() => setMainView('settings')}
               >
                 <Settings size={16} />
-                设置
+                {t.layout.settings}
               </button>
             </div>
           </div>
           <div className={styles.headerRight}>
+            {/* Language Toggle Button */}
+            <button 
+              className={styles.langToggle}
+              onClick={toggleLanguage}
+              aria-label={language === 'en' ? '切换到中文' : 'Switch to English'}
+              title={language === 'en' ? '切换到中文' : 'Switch to English'}
+            >
+              <Languages size={18} aria-hidden="true" />
+              <span className={styles.langLabel}>{language === 'en' ? 'EN' : '中'}</span>
+            </button>
             <button 
               className={styles.toggleButton}
               onClick={toggleTheme}
-              aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+              aria-label={theme === 'dark' ? t.layout.switchToLight : t.layout.switchToDark}
             >
               {theme === 'dark' ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
             </button>
@@ -99,7 +116,7 @@ export function Layout() {
               <button 
                 className={styles.toggleButton}
                 onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-                aria-label={rightSidebarOpen ? '隐藏日志面板' : '显示日志面板'}
+                aria-label={rightSidebarOpen ? t.layout.hideLogsPanel : t.layout.showLogsPanel}
                 aria-expanded={rightSidebarOpen}
               >
                 <PanelRight size={20} aria-hidden="true" />
@@ -112,13 +129,13 @@ export function Layout() {
         <div className={styles.content}>
           {mainView === 'chat' ? (
             <div className={styles.chatArea}>
-              <ErrorBoundary name="聊天面板">
+              <ErrorBoundary name={t.layout.chat}>
                 <ChatPanel />
               </ErrorBoundary>
             </div>
           ) : (
             <div className={styles.settingsArea}>
-              <ErrorBoundary name="设置页面">
+              <ErrorBoundary name={t.layout.settings}>
                 <SettingsPage />
               </ErrorBoundary>
             </div>
@@ -131,15 +148,15 @@ export function Layout() {
         <aside 
           className={`${styles.rightSidebar} ${!rightSidebarOpen ? styles.collapsed : ''}`}
           role="complementary"
-          aria-label="日志面板"
+          aria-label={t.layout.logs}
         >
           <div className={styles.sidebarHeader}>
             <span className={styles.sidebarTitle}>
-              日志
+              {t.layout.logs}
             </span>
           </div>
           <div className={styles.sidebarContent}>
-            <ErrorBoundary name="日志查看器">
+            <ErrorBoundary name={t.layout.logs}>
               {rightSidebarOpen && <LogViewer />}
             </ErrorBoundary>
           </div>
@@ -148,4 +165,3 @@ export function Layout() {
     </div>
   );
 }
-

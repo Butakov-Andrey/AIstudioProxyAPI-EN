@@ -5,10 +5,12 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Key, Check, Trash2, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
+import { useI18n } from '@/contexts';
 import { fetchAuthFiles, activateAuthFile, deactivateAuth } from '@/api';
 import styles from './SettingsPanel.module.css';
 
 export function AuthManager() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   // Fetch auth files
@@ -40,7 +42,7 @@ export function AuthManager() {
     return (
       <div className={styles.loading}>
         <Loader2 size={16} className={styles.spinning} />
-        <span>加载中...</span>
+        <span>{t.common.loading}</span>
       </div>
     );
   }
@@ -49,20 +51,20 @@ export function AuthManager() {
     <div className={styles.authManager}>
       {/* Current Active Auth */}
       <div className={styles.formGroup}>
-        <label className={styles.label}>当前认证</label>
+        <label className={styles.label}>{t.settingsPage.currentAuth}</label>
         <div className={styles.activeAuthDisplay}>
           <Key size={14} />
-          <span>{activeFile || '无'}</span>
+          <span>{activeFile || t.common.none}</span>
         </div>
       </div>
 
       {/* Auth File List */}
       <div className={styles.formGroup}>
-        <label className={styles.label}>可用认证文件</label>
+        <label className={styles.label}>{t.settingsPage.availableAuthFiles}</label>
         {savedFiles.length === 0 ? (
           <div className={styles.infoBox}>
             <AlertCircle size={16} />
-            <span>没有保存的认证文件</span>
+            <span>{t.settingsPage.noAuthFiles}</span>
           </div>
         ) : (
           <div className={styles.authFileList}>
@@ -80,13 +82,13 @@ export function AuthManager() {
                     className={styles.iconButton}
                     onClick={() => activateMutation.mutate(file.name)}
                     disabled={activateMutation.isPending}
-                    title="激活此认证"
+                    title={t.settingsPage.activateAuth}
                   >
                     <Check size={14} />
                   </button>
                 )}
                 {file.is_active && (
-                  <span className={styles.activeLabel}>已激活</span>
+                  <span className={styles.activeLabel}>{t.common.activated}</span>
                 )}
               </div>
             ))}
@@ -102,7 +104,7 @@ export function AuthManager() {
           disabled={isLoading}
         >
           <RefreshCw size={14} />
-          刷新
+          {t.common.refresh}
         </button>
         {activeFile && (
           <button
@@ -115,7 +117,7 @@ export function AuthManager() {
             ) : (
               <Trash2 size={14} />
             )}
-            移除认证
+            {t.settingsPage.removeAuth}
           </button>
         )}
       </div>

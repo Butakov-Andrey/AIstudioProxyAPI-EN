@@ -6,13 +6,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, ChevronDown, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
-import { useSettings } from '@/contexts';
+import { useSettings, useI18n } from '@/contexts';
 import { fetchModels } from '@/api';
 import { useModelCapabilities } from '@/hooks/useModelCapabilities';
 import type { ThinkingLevel } from '@/types';
 import styles from './SettingsPanel.module.css';
 
 export function SettingsPanel() {
+  const { t } = useI18n();
   const { settings, dispatch, selectedModel, setSelectedModel } = useSettings();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     model: true,
@@ -51,7 +52,7 @@ export function SettingsPanel() {
     }
     
     const options: { value: ThinkingLevel | ''; label: string }[] = [
-      { value: '', label: '未指定' }
+      { value: '', label: t.settingsPanel.unspecified }
     ];
     
     for (const level of capabilities.levels) {
@@ -78,21 +79,21 @@ export function SettingsPanel() {
     <div className={styles.settingsPanel}>
       {/* Model Selection */}
       <CollapsibleSection 
-        title="模型选择" 
+        title={t.settingsPanel.modelSelection} 
         expanded={expandedSections.model}
         onToggle={() => toggleSection('model')}
       >
         <div className={styles.formGroup}>
-          <label className={styles.label}>当前模型</label>
+          <label className={styles.label}>{t.settingsPanel.currentModel}</label>
           <select
             className={styles.select}
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             disabled={modelsLoading}
-            aria-label="选择模型"
+            aria-label={t.settingsPanel.currentModel}
           >
             {models.length === 0 && (
-              <option value="">加载中...</option>
+              <option value="">{t.common.loading}</option>
             )}
             {models.map((model) => (
               <option key={model.id} value={model.id}>
@@ -104,35 +105,35 @@ export function SettingsPanel() {
         <button 
           className={styles.refreshButton}
           onClick={() => refetch()}
-          aria-label="刷新模型列表"
+          aria-label={t.settingsPanel.refreshModelList}
         >
           <RefreshCw size={14} aria-hidden="true" />
-          刷新模型列表
+          {t.settingsPanel.refreshModelList}
         </button>
       </CollapsibleSection>
 
       {/* Thinking Settings - Dynamic UI based on backend capabilities */}
       <CollapsibleSection 
-        title="思考设置" 
+        title={t.settingsPanel.thinkingSettings} 
         expanded={expandedSections.thinking}
         onToggle={() => toggleSection('thinking')}
       >
         {capabilitiesLoading ? (
           <div className={styles.loading}>
             <Loader2 size={16} className={styles.spinning} />
-            <span>加载中...</span>
+            <span>{t.common.loading}</span>
           </div>
         ) : capabilities?.thinkingType === 'level' ? (
           /* Level selector (Gemini 3) */
           <div className={styles.formGroup}>
-            <label className={styles.label}>思考等级</label>
+            <label className={styles.label}>{t.settingsPanel.thinkingLevel}</label>
             <select
               className={styles.select}
               value={settings.thinkingLevel}
               onChange={(e) => 
                 dispatch({ type: 'SET_THINKING_LEVEL', payload: e.target.value })
               }
-              aria-label="选择思考等级"
+              aria-label={t.settingsPanel.thinkingLevel}
             >
               {levelOptions.map((level) => (
                 <option key={level.value} value={level.value}>
@@ -141,17 +142,17 @@ export function SettingsPanel() {
               ))}
             </select>
             <span className={styles.description}>
-              {category} 支持 {capabilities.levels?.length || 0} 个等级
+              {category} {t.settingsPanel.supportsLevels.replace('{count}', String(capabilities.levels?.length || 0))}
             </span>
           </div>
         ) : capabilities?.thinkingType === 'budget' ? (
           /* Budget controls (Gemini 2.5) */
           <>
             <Toggle
-              label="思考模式"
+              label={t.settingsPanel.thinkingMode}
               description={capabilities.alwaysOn 
-                ? "此模型始终启用思考模式" 
-                : "启用模型的深度思考能力"
+                ? t.settingsPanel.alwaysOnThinking 
+                : t.settingsPanel.enableThinking
               }
               checked={capabilities.alwaysOn ? true : settings.enableThinking}
               disabled={capabilities.alwaysOn}
@@ -162,8 +163,8 @@ export function SettingsPanel() {
             {(capabilities.alwaysOn || settings.enableThinking) && (
               <>
                 <Toggle
-                  label="限制思考预算"
-                  description="手动限制模型思考的 token 数量"
+                  label={t.settingsPanel.limitBudget}
+                  description={t.settingsPanel.limitBudgetDesc}
                   checked={settings.enableManualBudget}
                   onChange={(checked) => 
                     dispatch({ type: 'SET_ENABLE_MANUAL_BUDGET', payload: checked })
@@ -171,7 +172,7 @@ export function SettingsPanel() {
                 />
                 {settings.enableManualBudget && (
                   <Slider
-                    label="思考预算"
+                    label={t.settingsPanel.thinkingBudget}
                     value={settings.thinkingBudget}
                     min={getBudgetRange().min}
                     max={getBudgetRange().max}
@@ -188,19 +189,19 @@ export function SettingsPanel() {
           /* No thinking support */
           <div className={styles.infoBox}>
             <AlertCircle size={16} aria-hidden="true" />
-            <span>当前模型不支持思考模式配置。</span>
+            <span>{t.settingsPanel.noThinkingSupport}</span>
           </div>
         )}
       </CollapsibleSection>
 
       {/* Parameters */}
       <CollapsibleSection 
-        title="生成参数" 
+        title={t.settingsPanel.generationParams} 
         expanded={expandedSections.params}
         onToggle={() => toggleSection('params')}
       >
         <Slider
-          label="温度"
+          label={t.settingsPanel.temperature}
           value={settings.temperature}
           min={0}
           max={2}
@@ -210,7 +211,7 @@ export function SettingsPanel() {
           }
         />
         <Slider
-          label="最大令牌数"
+          label={t.settingsPanel.maxTokens}
           value={settings.maxOutputTokens}
           min={1}
           max={65536}
@@ -220,7 +221,7 @@ export function SettingsPanel() {
           }
         />
         <Slider
-          label="Top P"
+          label={t.settingsPanel.topP}
           value={settings.topP}
           min={0}
           max={1}
@@ -233,15 +234,15 @@ export function SettingsPanel() {
 
       {/* Tools */}
       <CollapsibleSection 
-        title="工具" 
+        title={t.settingsPanel.tools} 
         expanded={expandedSections.tools}
         onToggle={() => toggleSection('tools')}
       >
         <Toggle
-          label="Google 搜索"
+          label={t.settingsPanel.googleSearch}
           description={capabilities?.supportsGoogleSearch === false 
-            ? "此模型不支持 Google 搜索" 
-            : "允许模型搜索网络信息"
+            ? t.settingsPanel.googleSearchUnsupported 
+            : t.settingsPanel.googleSearchDesc
           }
           checked={capabilities?.supportsGoogleSearch === false ? false : settings.enableGoogleSearch}
           disabled={capabilities?.supportsGoogleSearch === false}
@@ -253,7 +254,7 @@ export function SettingsPanel() {
 
       {/* System Prompt */}
       <CollapsibleSection 
-        title="系统提示" 
+        title={t.settingsPanel.systemPrompt} 
         expanded={expandedSections.system}
         onToggle={() => toggleSection('system')}
       >
@@ -263,8 +264,8 @@ export function SettingsPanel() {
           onChange={(e) => 
             dispatch({ type: 'SET_SYSTEM_PROMPT', payload: e.target.value })
           }
-          placeholder="输入系统提示词..."
-          aria-label="系统提示词"
+          placeholder={t.settingsPanel.systemPromptPlaceholder}
+          aria-label={t.settingsPanel.systemPrompt}
         />
       </CollapsibleSection>
     </div>
@@ -341,7 +342,7 @@ function Slider({
             const v = parseFloat(e.target.value);
             if (!isNaN(v)) onChange(v);
           }}
-          aria-label={`${label} 数值`}
+          aria-label={`${label} value`}
         />
       </div>
     </div>

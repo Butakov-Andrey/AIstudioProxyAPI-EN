@@ -3,7 +3,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ThemeProvider, SettingsProvider, ChatProvider } from '@/contexts';
+import { ThemeProvider, SettingsProvider, ChatProvider, I18nProvider } from '@/contexts';
 import { Layout } from '@/components/layout/Layout';
 import '@/styles/index.css';
 
@@ -19,13 +19,15 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <SettingsProvider>
-          <ChatProvider>
-            <Layout />
-          </ChatProvider>
-        </SettingsProvider>
-      </ThemeProvider>
+      <I18nProvider>
+        <ThemeProvider>
+          <SettingsProvider>
+            <ChatProvider>
+              <Layout />
+            </ChatProvider>
+          </SettingsProvider>
+        </ThemeProvider>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

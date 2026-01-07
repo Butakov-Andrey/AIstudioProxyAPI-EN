@@ -6,11 +6,13 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save, AlertTriangle, Loader2 } from 'lucide-react';
+import { useI18n } from '@/contexts';
 import { fetchPortConfig, updatePortConfig } from '@/api';
 import type { PortConfig } from '@/api';
 import styles from './SettingsPanel.module.css';
 
 export function PortConfiguration() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [localConfig, setLocalConfig] = useState<PortConfig>({
     fastapi_port: 2048,
@@ -60,7 +62,7 @@ export function PortConfiguration() {
     return (
       <div className={styles.loading}>
         <Loader2 size={16} className={styles.spinning} />
-        <span>加载中...</span>
+        <span>{t.common.loading}</span>
       </div>
     );
   }
@@ -71,13 +73,13 @@ export function PortConfiguration() {
       {hasChanges && (
         <div className={`${styles.alertBox} ${styles.warning}`}>
           <AlertTriangle size={16} />
-          <span>更改将在下次重启服务时生效</span>
+          <span>{t.settingsPage.restartWarning}</span>
         </div>
       )}
 
       {/* FastAPI Port */}
       <div className={styles.formGroup}>
-        <label className={styles.label}>FastAPI 服务端口</label>
+        <label className={styles.label}>{t.settingsPage.fastapiPort}</label>
         <input
           type="number"
           className={styles.numberInput}
@@ -87,13 +89,13 @@ export function PortConfiguration() {
           onChange={(e) => handleChange('fastapi_port', parseInt(e.target.value) || 2048)}
         />
         {!validatePort(localConfig.fastapi_port) && (
-          <span className={styles.errorText}>端口必须在 1024-65535 之间</span>
+          <span className={styles.errorText}>{t.settingsPage.portRangeError}</span>
         )}
       </div>
 
       {/* Camoufox Debug Port */}
       <div className={styles.formGroup}>
-        <label className={styles.label}>Camoufox 调试端口</label>
+        <label className={styles.label}>{t.settingsPage.camoufoxPort}</label>
         <input
           type="number"
           className={styles.numberInput}
@@ -107,7 +109,7 @@ export function PortConfiguration() {
       {/* Stream Proxy Toggle + Port */}
       <div className={styles.toggle}>
         <div className={styles.toggleLabel}>
-          <span className={styles.label}>流式代理服务</span>
+          <span className={styles.label}>{t.settingsPage.streamProxy}</span>
         </div>
         <button
           className={`${styles.switch} ${localConfig.stream_proxy_enabled ? styles.active : ''}`}
@@ -121,7 +123,7 @@ export function PortConfiguration() {
 
       {localConfig.stream_proxy_enabled && (
         <div className={styles.formGroup}>
-          <label className={styles.label}>流式代理端口</label>
+          <label className={styles.label}>{t.settingsPage.streamProxyPort}</label>
           <input
             type="number"
             className={styles.numberInput}
@@ -145,7 +147,7 @@ export function PortConfiguration() {
           ) : (
             <Save size={14} />
           )}
-          保存配置
+          {t.settingsPage.saveConfig}
         </button>
       </div>
     </div>
