@@ -1106,7 +1106,8 @@ if __name__ == "__main__":
     effective_active_auth_json_path = None  # Initialize early
 
     # --- Interactive Auth File Creation Logic ---
-    if final_launch_mode == "debug" and not args.active_auth_json:
+    # Skip this prompt if --save-auth-as is already provided (e.g., from GUI launcher)
+    if final_launch_mode == "debug" and not args.active_auth_json and not args.save_auth_as:
         create_new_auth_choice = (
             input_with_timeout(
                 "  Create and save new auth file? (y/n; Default: n, 15s timeout): ", 15
@@ -1691,6 +1692,9 @@ if __name__ == "__main__":
         and args.auto_save_auth_from_cli
     ):
         os.environ["AUTO_SAVE_AUTH"] = str(args.auto_save_auth).lower()
+    # Also set AUTO_SAVE_AUTH if --save-auth-as is provided (e.g., from GUI launcher)
+    elif final_launch_mode == "debug" and args.save_auth_as:
+        os.environ["AUTO_SAVE_AUTH"] = "true"
     # Otherwise keep existing environment variable value (loaded from .env)
     if args.save_auth_as:
         os.environ["SAVE_AUTH_FILENAME"] = args.save_auth_as
