@@ -18,6 +18,8 @@ LAUNCH_SCRIPT = PROJECT_ROOT / "launch_camoufox.py"
 CONFIG_FILE = GUI_DIR / "user_config.json"
 LOG_FILE = PROJECT_ROOT / "logs" / "gui_launcher.log"
 CUSTOM_THEME_FILE = GUI_DIR / "theme.json"
+ENV_FILE = PROJECT_ROOT / ".env"
+ENV_EXAMPLE_FILE = PROJECT_ROOT / ".env.example"
 
 # =============================================================================
 # Version
@@ -111,3 +113,18 @@ DIMENSIONS = {
 # =============================================================================
 GITHUB_URL = "https://github.com/MasuRii/AIstudioProxyAPI-EN"
 DOCS_URL = f"{GITHUB_URL}#readme"
+
+# =============================================================================
+# Advanced Settings Category Icons
+# =============================================================================
+CATEGORY_ICONS = {
+    "server": "🖥️",
+    "logging": "📝",
+    "auth": "🔐",
+    "cookie": "🍪",
+    "browser": "🌐",
+    "api": "⚡",
+    "function_calling": "🔧",
+    "timeouts": "⏱️",
+    "misc": "📦",
+}
