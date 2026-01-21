@@ -354,7 +354,11 @@ class CTkEnvSettingsPanel(ctk.CTkScrollableFrame):
             on_save: Callback when settings are saved
             on_change: Callback when dirty state changes (receives is_dirty)
         """
-        kwargs.setdefault("fg_color", "transparent")
+        # Set default colors for proper theming
+        kwargs.setdefault("fg_color", COLORS["bg_dark"])
+        kwargs.setdefault("scrollbar_fg_color", COLORS["bg_medium"])
+        kwargs.setdefault("scrollbar_button_color", COLORS["border"])
+        kwargs.setdefault("scrollbar_button_hover_color", COLORS["accent"])
         super().__init__(master, **kwargs)
 
         self._env_manager = env_manager
@@ -525,20 +529,26 @@ class CTkEnvSettingsPanel(ctk.CTkScrollableFrame):
         for child in widget.winfo_children():
             self._bind_scroll_to_widget(child)
 
-    def _on_mousewheel(self, event) -> None:
+    def _on_mousewheel(self, event) -> Optional[str]:
         """Handle mouse wheel on Windows/macOS."""
         if hasattr(self, "_parent_canvas") and self._parent_canvas:
             if platform.system() == "Darwin":
                 self._parent_canvas.yview_scroll(int(-1 * event.delta), "units")
             else:
                 self._parent_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            return "break"  # Stop event propagation to parent scrollable frames
+        return None
 
-    def _on_scroll_up(self, event) -> None:
+    def _on_scroll_up(self, event) -> Optional[str]:
         """Handle scroll up on Linux."""
         if hasattr(self, "_parent_canvas") and self._parent_canvas:
             self._parent_canvas.yview_scroll(-3, "units")
+            return "break"  # Stop event propagation to parent scrollable frames
+        return None
 
-    def _on_scroll_down(self, event) -> None:
+    def _on_scroll_down(self, event) -> Optional[str]:
         """Handle scroll down on Linux."""
         if hasattr(self, "_parent_canvas") and self._parent_canvas:
             self._parent_canvas.yview_scroll(3, "units")
+            return "break"  # Stop event propagation to parent scrollable frames
+        return None

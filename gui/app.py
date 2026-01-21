@@ -608,16 +608,16 @@ class GUILauncher:
         # Create scrollable container for all settings
         settings_scroll = ctk.CTkScrollableFrame(
             tab,
-            fg_color="transparent",
+            fg_color=COLORS["bg_dark"],
+            scrollbar_fg_color=COLORS["bg_medium"],
+            scrollbar_button_color=COLORS["border"],
+            scrollbar_button_hover_color=COLORS["accent"],
         )
         settings_scroll.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         settings_scroll.grid_columnconfigure(0, weight=1)
 
         # Store reference for scroll binding
         self._settings_scroll = settings_scroll
-
-        # Bind mouse wheel scrolling
-        self._bind_settings_scroll_events(settings_scroll)
 
         # Port settings card
         port_card = ctk.CTkFrame(
@@ -830,6 +830,9 @@ class GUILauncher:
         # =========================================================================
         self._create_advanced_settings_section(settings_scroll, row=5)
 
+        # Bind mouse wheel scrolling AFTER all widgets are created
+        self._bind_settings_scroll_events(settings_scroll)
+
     def _create_advanced_settings_section(self, parent, row: int):
         """Create the collapsible advanced settings section."""
         # Advanced settings toggle button
@@ -851,7 +854,8 @@ class GUILauncher:
         # Advanced settings container (hidden by default)
         self.advanced_settings_frame = ctk.CTkFrame(
             parent,
-            fg_color="transparent",
+            fg_color=COLORS["bg_dark"],
+            corner_radius=DIMENSIONS["corner_radius"],
         )
         # Don't grid initially - will be shown when toggled
         self.advanced_settings_frame.grid_columnconfigure(0, weight=1)
@@ -1367,7 +1371,18 @@ class GUILauncher:
         self._bind_scroll_to_widget(scrollable_frame, scrollable_frame)
 
     def _bind_scroll_to_widget(self, widget, target_scrollable):
-        """Recursively bind scroll events to widget and children."""
+        """Recursively bind scroll events to widget and children.
+
+        Skips any nested CTkScrollableFrame widgets since they handle
+        their own scrolling independently.
+        """
+        # Skip if this is a nested scrollable frame (not the target itself)
+        # Let nested scrollable frames handle their own scrolling
+        if widget is not target_scrollable and isinstance(
+            widget, ctk.CTkScrollableFrame
+        ):
+            return
+
         if platform.system() == "Linux":
             widget.bind(
                 "<Button-4>", lambda e: self._on_scroll(target_scrollable, -3), add="+"
