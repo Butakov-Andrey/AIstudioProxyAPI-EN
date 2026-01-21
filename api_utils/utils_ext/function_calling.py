@@ -14,7 +14,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -25,6 +25,41 @@ logger = logging.getLogger("AIStudioProxyServer")
 
 # FC debug logger for schema conversion and response formatting
 fc_logger = get_fc_logger()
+
+
+# =============================================================================
+# Constants for Function Calling Improvements
+# =============================================================================
+
+# Constant signature value used for Gemini 3 function call validation
+# This is a placeholder that satisfies the API validation requirement
+# Reference: iBUHub/AIStudioToAPI FormatConverter.js lines 84-112
+DUMMY_THOUGHT_SIGNATURE: str = "context_engineering_is_the_way_to_go"
+
+# Type mappings for schema conversion - UPPERCASE variant (pending UI verification)
+TYPE_MAP_UPPER: Dict[str, str] = {
+    "string": "STRING",
+    "integer": "INTEGER",
+    "number": "NUMBER",
+    "boolean": "BOOLEAN",
+    "array": "ARRAY",
+    "object": "OBJECT",
+    "null": "NULL",
+}
+
+# Type mappings for schema conversion - lowercase variant (current, verified working)
+TYPE_MAP_LOWER: Dict[str, str] = {
+    "string": "string",
+    "integer": "integer",
+    "number": "number",
+    "boolean": "boolean",
+    "array": "array",
+    "object": "object",
+    "null": "null",
+}
+
+# Type alias for MCP response items
+MCPResponseItem = Dict[str, Any]
 
 
 # =============================================================================
@@ -91,6 +126,350 @@ class FunctionCallingConfig:
             clear_between_requests=FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS,
             debug=FUNCTION_CALLING_DEBUG,
         )
+
+
+# =============================================================================
+# Tool Choice Conversion: OpenAI -> Gemini (FC-003)
+# =============================================================================
+
+
+@dataclass
+class GeminiToolConfig:
+    """Gemini API toolConfig.functionCallingConfig structure.
+
+    NOTE: This config is for logging/future API mode only.
+    Current UI automation does not support applying this config.
+
+    Represents the Gemini-native way to control function calling behavior.
+
+    Attributes:
+        mode: Function calling mode. One of:
+              - "AUTO": Model decides whether to call functions
+              - "NONE": Model must not call functions
+              - "ANY": Model must call at least one function
+        allowed_function_names: Optional list of function names the model is
+                                allowed to call. Only valid with mode="ANY".
+    """
+
+    mode: str
+    allowed_function_names: Optional[List[str]] = None
+
+    # Valid mode values
+    VALID_MODES = frozenset({"AUTO", "NONE", "ANY"})
+
+    def __post_init__(self) -> None:
+        """Validate configuration."""
+        if self.mode not in self.VALID_MODES:
+            raise ValueError(
+                f"Invalid mode: {self.mode}. Must be one of {self.VALID_MODES}"
+            )
+
+        if self.allowed_function_names is not None and self.mode != "ANY":
+            raise ValueError(
+                f"allowed_function_names is only valid with mode='ANY', "
+                f"got mode='{self.mode}'"
+            )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to Gemini API request format.
+
+        Returns:
+            Dict suitable for inclusion in toolConfig field of Gemini request.
+
+        Example:
+            >>> config = GeminiToolConfig(mode="ANY", allowed_function_names=["fn1"])
+            >>> config.to_dict()
+            {'functionCallingConfig': {'mode': 'ANY', 'allowedFunctionNames': ['fn1']}}
+        """
+        config: Dict[str, Any] = {"mode": self.mode}
+
+        if self.allowed_function_names:
+            config["allowedFunctionNames"] = self.allowed_function_names
+
+        return {"functionCallingConfig": config}
+
+    def __str__(self) -> str:
+        """Human-readable representation for logging."""
+        if self.allowed_function_names:
+            funcs = ", ".join(self.allowed_function_names)
+            return f"GeminiToolConfig(mode={self.mode}, functions=[{funcs}])"
+        return f"GeminiToolConfig(mode={self.mode})"
+
+    def __repr__(self) -> str:
+        return (
+            f"GeminiToolConfig(mode={self.mode!r}, "
+            f"allowed_function_names={self.allowed_function_names!r})"
+        )
+
+
+def convert_tool_choice(
+    tool_choice: Union[str, Dict[str, Any], None],
+) -> Optional[GeminiToolConfig]:
+    """Convert OpenAI tool_choice parameter to Gemini toolConfig.
+
+    OpenAI to Gemini mapping:
+    - "auto" -> mode: AUTO
+    - "none" -> mode: NONE
+    - "required" -> mode: ANY
+    - {"type": "function", "function": {"name": "x"}} -> mode: ANY, allowedFunctionNames: ["x"]
+    - "function_name" (string) -> mode: ANY, allowedFunctionNames: ["function_name"]
+
+    NOTE: This conversion is for logging/future API use only.
+    AI Studio UI automation CANNOT set toolConfig.
+
+    Args:
+        tool_choice: OpenAI tool_choice parameter. Can be:
+                     - None: No preference
+                     - str: "auto", "none", "required", or function name
+                     - dict: Specific function selection
+
+    Returns:
+        GeminiToolConfig if tool_choice is specified and recognized,
+        None if tool_choice is None or unrecognized.
+
+    Examples:
+        >>> convert_tool_choice("auto")
+        GeminiToolConfig(mode='AUTO', allowed_function_names=None)
+
+        >>> convert_tool_choice("required")
+        GeminiToolConfig(mode='ANY', allowed_function_names=None)
+
+        >>> convert_tool_choice({"type": "function", "function": {"name": "get_weather"}})
+        GeminiToolConfig(mode='ANY', allowed_function_names=['get_weather'])
+    """
+    if tool_choice is None:
+        return None
+
+    # Handle string values
+    if isinstance(tool_choice, str):
+        choice_lower = tool_choice.lower().strip()
+
+        if choice_lower == "auto":
+            return GeminiToolConfig(mode="AUTO")
+        elif choice_lower == "none":
+            return GeminiToolConfig(mode="NONE")
+        elif choice_lower == "required":
+            return GeminiToolConfig(mode="ANY")
+        else:
+            # Treat as function name (some clients pass function name directly)
+            return GeminiToolConfig(mode="ANY", allowed_function_names=[tool_choice])
+
+    # Handle dict format
+    if isinstance(tool_choice, dict):
+        # Standard format: {"type": "function", "function": {"name": "x"}}
+        function_spec = tool_choice.get("function")
+        if isinstance(function_spec, dict):
+            func_name = function_spec.get("name")
+            if func_name and isinstance(func_name, str):
+                return GeminiToolConfig(mode="ANY", allowed_function_names=[func_name])
+
+        # Legacy format: {"name": "x"}
+        func_name = tool_choice.get("name")
+        if func_name and isinstance(func_name, str):
+            return GeminiToolConfig(mode="ANY", allowed_function_names=[func_name])
+
+    # Unrecognized format
+    return None
+
+
+# =============================================================================
+# MCP Response Handling (FC-002)
+# =============================================================================
+
+
+def normalize_tool_response(
+    content: Union[str, List[Dict[str, Any]], Dict[str, Any]],
+    preserve_on_error: bool = True,
+) -> Dict[str, Any]:
+    """Normalize various tool response formats to Gemini-compatible Struct.
+
+    Gemini's functionResponse.response field requires a Struct (object),
+    but MCP and other tool frameworks may return arrays or strings.
+    This function normalizes all formats to valid Struct.
+
+    Normalization rules:
+    1. Dict input: returned as-is (already valid Struct)
+    2. String input:
+       - If valid JSON object: parsed and returned
+       - Otherwise: wrapped as {"result": content}
+    3. Array input:
+       - Empty array: {"result": "[]"}
+       - Single item with parseable JSON text: unwrapped to that object
+       - Multiple items: wrapped as {"result": JSON.stringify(items)}
+
+    Args:
+        content: Tool response in any supported format.
+        preserve_on_error: If True, wrap unparseable content rather than raising.
+
+    Returns:
+        Gemini-compatible response object (Struct).
+
+    Raises:
+        ValueError: If preserve_on_error=False and content cannot be normalized.
+
+    Examples:
+        >>> normalize_tool_response({"temp": 72})
+        {'temp': 72}
+
+        >>> normalize_tool_response("plain text")
+        {'result': 'plain text'}
+
+        >>> normalize_tool_response([{"type": "text", "text": '{"temp": 72}'}])
+        {'temp': 72}
+    """
+    # Case 1: Already a dict - return as-is
+    if isinstance(content, dict):
+        return content
+
+    # Case 2: String - try to parse as JSON object
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict) and parsed is not None:
+                return parsed
+            # Parsed but not a dict (array, primitive)
+            return {"result": content}
+        except (json.JSONDecodeError, TypeError):
+            return {"result": content}
+
+    # Case 3: Array (common in MCP)
+    if isinstance(content, list):
+        if len(content) == 0:
+            return {"result": "[]"}
+
+        processed_items: List[Any] = []
+
+        for item in content:
+            if not isinstance(item, dict):
+                processed_items.append(item)
+                continue
+
+            # Handle MCP text items with nested JSON
+            if item.get("type") == "text" and "text" in item:
+                text_content = item["text"]
+                try:
+                    parsed = json.loads(text_content)
+                    # Only unwrap if it's a proper dict
+                    if isinstance(parsed, dict) and parsed is not None:
+                        processed_items.append(parsed)
+                    else:
+                        # Keep as wrapped text for primitives/arrays
+                        processed_items.append(
+                            {"content": text_content, "type": "text"}
+                        )
+                except (json.JSONDecodeError, TypeError):
+                    processed_items.append({"content": text_content, "type": "text"})
+            else:
+                # Keep other item types (image, etc.) as-is
+                processed_items.append(item)
+
+        # Unwrap single dict item
+        if (
+            len(processed_items) == 1
+            and isinstance(processed_items[0], dict)
+            and processed_items[0] is not None
+        ):
+            return processed_items[0]
+
+        # Multiple items - wrap in result as JSON string
+        try:
+            return {"result": json.dumps(processed_items, ensure_ascii=False)}
+        except (TypeError, ValueError):
+            if preserve_on_error:
+                return {"result": str(processed_items)}
+            raise ValueError(f"Cannot serialize processed items: {processed_items}")
+
+    # Fallback for other types
+    if preserve_on_error:
+        return {"result": str(content)}
+    raise ValueError(f"Unsupported content type: {type(content)}")
+
+
+# =============================================================================
+# thoughtSignature Support for Gemini 3 (FC-001)
+# =============================================================================
+
+
+def ensure_thought_signature(
+    messages: List[Dict[str, Any]],
+    apply: bool = True,
+    signature: str = DUMMY_THOUGHT_SIGNATURE,
+) -> List[Dict[str, Any]]:
+    """Add thoughtSignature to functionCall parts in conversation history.
+
+    Gemini 3 models require thoughtSignature on functionCall parts when
+    replaying conversation history. This function injects the signature
+    into assistant messages that contain tool_calls.
+
+    Rules:
+    - Only assistant messages with tool_calls are modified
+    - Only the FIRST tool_call in each message gets the signature
+    - functionResponse (tool role) messages are NOT modified
+    - Messages are cloned, original list is not mutated
+
+    Args:
+        messages: List of OpenAI-format message dicts.
+        apply: If False, returns messages unchanged (for config toggle).
+        signature: The signature value to inject.
+
+    Returns:
+        New list with thoughtSignature added where needed.
+        Original messages list is not modified.
+
+    Example:
+        >>> messages = [
+        ...     {"role": "user", "content": "What's the weather?"},
+        ...     {"role": "assistant", "tool_calls": [
+        ...         {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}
+        ...     ]},
+        ...     {"role": "tool", "tool_call_id": "call_1", "content": "Sunny"}
+        ... ]
+        >>> result = ensure_thought_signature(messages)
+        >>> result[1]["tool_calls"][0]["_thought_signature"]
+        'context_engineering_is_the_way_to_go'
+    """
+    if not apply:
+        return messages
+
+    if not messages:
+        return messages
+
+    result: List[Dict[str, Any]] = []
+
+    for msg in messages:
+        # Only process assistant messages with tool_calls
+        if msg.get("role") != "assistant":
+            result.append(msg)
+            continue
+
+        tool_calls = msg.get("tool_calls")
+        if not tool_calls or not isinstance(tool_calls, list):
+            result.append(msg)
+            continue
+
+        # Clone message to avoid mutation
+        modified_msg = msg.copy()
+        modified_calls: List[Dict[str, Any]] = []
+        signature_added = False
+
+        for call in tool_calls:
+            if not isinstance(call, dict):
+                modified_calls.append(call)
+                continue
+
+            call_copy = call.copy()
+
+            # Add signature to first function-type call only
+            if not signature_added and call.get("type") == "function":
+                call_copy["_thought_signature"] = signature
+                signature_added = True
+
+            modified_calls.append(call_copy)
+
+        modified_msg["tool_calls"] = modified_calls
+        result.append(modified_msg)
+
+    return result
 
 
 # =============================================================================
@@ -203,6 +582,8 @@ class SchemaConverter:
     # doesn't support union types
     SPECIAL_FIELDS = {"type", "properties", "items", "anyOf", "const", "oneOf", "allOf"}
 
+    # Legacy TYPE_MAP - kept for backwards compatibility
+    # Use type_map property for configurable case
     TYPE_MAP = {
         "string": "string",
         "integer": "integer",
@@ -211,6 +592,38 @@ class SchemaConverter:
         "array": "array",
         "object": "object",
     }
+
+    @property
+    def type_map(self) -> Dict[str, str]:
+        """Get the type map based on configuration.
+
+        Returns:
+            TYPE_MAP_UPPER if FUNCTION_CALLING_UPPERCASE_TYPES is True,
+            TYPE_MAP_LOWER otherwise.
+
+        This allows configurable type case for Gemini compatibility.
+        Default is lowercase (TYPE_MAP_LOWER) for backwards compatibility.
+        """
+        from config.settings import FUNCTION_CALLING_UPPERCASE_TYPES
+
+        return TYPE_MAP_UPPER if FUNCTION_CALLING_UPPERCASE_TYPES else TYPE_MAP_LOWER
+
+    def _normalize_type(self, type_value: str) -> str:
+        """Normalize a type value using the configured type map.
+
+        Args:
+            type_value: JSON Schema type string (e.g., "string", "object").
+
+        Returns:
+            Normalized type string based on configuration.
+        """
+        lower_type = type_value.lower().strip()
+        current_type_map = self.type_map
+        # If not in map, use the configured case convention
+        from config.settings import FUNCTION_CALLING_UPPERCASE_TYPES
+
+        default = lower_type.upper() if FUNCTION_CALLING_UPPERCASE_TYPES else lower_type
+        return current_type_map.get(lower_type, default)
 
     def convert_tool(self, openai_tool: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Convert a single OpenAI tool definition to Gemini FunctionDeclaration.
@@ -383,9 +796,9 @@ class SchemaConverter:
             if nullable:
                 cleaned["nullable"] = True
 
-            # Map and lowercase type
+            # Map type using configurable type map
             if isinstance(raw_type, str):
-                cleaned["type"] = self.TYPE_MAP.get(raw_type.lower(), raw_type.lower())
+                cleaned["type"] = self._normalize_type(raw_type)
 
         # 4. Handle properties recursively (must do before the loop)
         if "properties" in schema and isinstance(schema["properties"], dict):
@@ -937,4 +1350,16 @@ __all__ = [
     # Convenience Functions
     "convert_openai_tools_to_gemini",
     "create_tool_calls_response",
+    # FC-001: thoughtSignature Support
+    "DUMMY_THOUGHT_SIGNATURE",
+    "ensure_thought_signature",
+    # FC-002: MCP Response Handling
+    "normalize_tool_response",
+    "MCPResponseItem",
+    # FC-003: Tool Choice Conversion
+    "GeminiToolConfig",
+    "convert_tool_choice",
+    # FC-004: Type Case Normalization
+    "TYPE_MAP_UPPER",
+    "TYPE_MAP_LOWER",
 ]
