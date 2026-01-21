@@ -4,6 +4,7 @@ GUI Launcher Custom Widgets
 Extended widgets for the GUI including collapsible frames and setting editors.
 """
 
+import platform
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import customtkinter as ctk
 
@@ -366,6 +367,9 @@ class CTkEnvSettingsPanel(ctk.CTkScrollableFrame):
         # Build the UI
         self._build_settings_ui()
 
+        # Enable mouse wheel scrolling
+        self._bind_scroll_events()
+
     def _build_settings_ui(self) -> None:
         """Build the settings UI with collapsible categories."""
         from .i18n import get_text
@@ -500,3 +504,41 @@ class CTkEnvSettingsPanel(ctk.CTkScrollableFrame):
     def get_modified_keys(self) -> List[str]:
         """Get list of modified setting keys."""
         return self._env_manager.get_modified_keys()
+
+    def _bind_scroll_events(self) -> None:
+        """Bind mouse wheel scroll events for cross-platform compatibility."""
+        self._bind_scroll_to_widget(self)
+        # Also bind to all category frames
+        for frame in self._category_frames.values():
+            self._bind_scroll_to_widget(frame)
+            self._bind_scroll_to_widget(frame.get_content_frame())
+
+    def _bind_scroll_to_widget(self, widget) -> None:
+        """Bind scroll events to a specific widget and its children."""
+        if platform.system() == "Linux":
+            widget.bind("<Button-4>", self._on_scroll_up, add="+")
+            widget.bind("<Button-5>", self._on_scroll_down, add="+")
+        else:
+            widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+
+        # Recursively bind to children
+        for child in widget.winfo_children():
+            self._bind_scroll_to_widget(child)
+
+    def _on_mousewheel(self, event) -> None:
+        """Handle mouse wheel on Windows/macOS."""
+        if hasattr(self, "_parent_canvas") and self._parent_canvas:
+            if platform.system() == "Darwin":
+                self._parent_canvas.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                self._parent_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_scroll_up(self, event) -> None:
+        """Handle scroll up on Linux."""
+        if hasattr(self, "_parent_canvas") and self._parent_canvas:
+            self._parent_canvas.yview_scroll(-3, "units")
+
+    def _on_scroll_down(self, event) -> None:
+        """Handle scroll down on Linux."""
+        if hasattr(self, "_parent_canvas") and self._parent_canvas:
+            self._parent_canvas.yview_scroll(3, "units")

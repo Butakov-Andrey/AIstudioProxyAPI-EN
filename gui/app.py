@@ -613,6 +613,12 @@ class GUILauncher:
         settings_scroll.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         settings_scroll.grid_columnconfigure(0, weight=1)
 
+        # Store reference for scroll binding
+        self._settings_scroll = settings_scroll
+
+        # Bind mouse wheel scrolling
+        self._bind_settings_scroll_events(settings_scroll)
+
         # Port settings card
         port_card = ctk.CTkFrame(
             settings_scroll,
@@ -1355,6 +1361,45 @@ class GUILauncher:
             set_appearance_mode(new_mode)
             self._save_config()
             self._log(get_text("log_theme_changed", mode=new_mode))
+
+    def _bind_settings_scroll_events(self, scrollable_frame):
+        """Bind mouse wheel scroll events to settings scrollable frame."""
+        self._bind_scroll_to_widget(scrollable_frame, scrollable_frame)
+
+    def _bind_scroll_to_widget(self, widget, target_scrollable):
+        """Recursively bind scroll events to widget and children."""
+        if platform.system() == "Linux":
+            widget.bind(
+                "<Button-4>", lambda e: self._on_scroll(target_scrollable, -3), add="+"
+            )
+            widget.bind(
+                "<Button-5>", lambda e: self._on_scroll(target_scrollable, 3), add="+"
+            )
+        else:
+            widget.bind(
+                "<MouseWheel>",
+                lambda e: self._on_mousewheel(e, target_scrollable),
+                add="+",
+            )
+
+        # Recursively bind to children
+        for child in widget.winfo_children():
+            self._bind_scroll_to_widget(child, target_scrollable)
+
+    def _on_mousewheel(self, event, target):
+        """Handle mouse wheel on Windows/macOS."""
+        if hasattr(target, "_parent_canvas") and target._parent_canvas:
+            if platform.system() == "Darwin":
+                target._parent_canvas.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                target._parent_canvas.yview_scroll(
+                    int(-1 * (event.delta / 120)), "units"
+                )
+
+    def _on_scroll(self, target, delta):
+        """Handle scroll on Linux."""
+        if hasattr(target, "_parent_canvas") and target._parent_canvas:
+            target._parent_canvas.yview_scroll(delta, "units")
 
     def _save_and_notify(self):
         """Save settings and notify user."""
