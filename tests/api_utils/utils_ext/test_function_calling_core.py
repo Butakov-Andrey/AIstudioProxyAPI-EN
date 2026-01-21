@@ -527,5 +527,478 @@ class TestOrchestratorEdgeCases(unittest.TestCase):
         self.assertFalse(orchestrator.should_use_native_mode([], None))
 
 
+# =============================================================================
+# FC-003: Tool Choice Conversion Tests
+# =============================================================================
+
+
+class TestGeminiToolConfig(unittest.TestCase):
+    """Test suite for GeminiToolConfig dataclass."""
+
+    def test_valid_modes(self):
+        """All valid modes should be accepted."""
+        from api_utils.utils_ext.function_calling import GeminiToolConfig
+
+        for mode in ["AUTO", "NONE", "ANY"]:
+            config = GeminiToolConfig(mode=mode)
+            self.assertEqual(config.mode, mode)
+
+    def test_invalid_mode_raises(self):
+        """Invalid mode should raise ValueError."""
+        from api_utils.utils_ext.function_calling import GeminiToolConfig
+
+        with self.assertRaises(ValueError) as ctx:
+            GeminiToolConfig(mode="INVALID")
+        self.assertIn("Invalid mode", str(ctx.exception))
+
+    def test_allowed_names_with_any_mode(self):
+        """allowed_function_names should work with ANY mode."""
+        from api_utils.utils_ext.function_calling import GeminiToolConfig
+
+        config = GeminiToolConfig(mode="ANY", allowed_function_names=["fn1", "fn2"])
+        self.assertEqual(config.allowed_function_names, ["fn1", "fn2"])
+
+    def test_allowed_names_with_non_any_raises(self):
+        """allowed_function_names with non-ANY mode should raise."""
+        from api_utils.utils_ext.function_calling import GeminiToolConfig
+
+        with self.assertRaises(ValueError) as ctx:
+            GeminiToolConfig(mode="AUTO", allowed_function_names=["fn1"])
+        self.assertIn("only valid with mode='ANY'", str(ctx.exception))
+
+    def test_to_dict_simple(self):
+        """to_dict should produce valid Gemini format."""
+        from api_utils.utils_ext.function_calling import GeminiToolConfig
+
+        config = GeminiToolConfig(mode="AUTO")
+        self.assertEqual(config.to_dict(), {"functionCallingConfig": {"mode": "AUTO"}})
+
+    def test_to_dict_with_names(self):
+        """to_dict with function names should include them."""
+        from api_utils.utils_ext.function_calling import GeminiToolConfig
+
+        config = GeminiToolConfig(mode="ANY", allowed_function_names=["fn1"])
+        expected = {
+            "functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": ["fn1"]}
+        }
+        self.assertEqual(config.to_dict(), expected)
+
+    def test_str_representation(self):
+        """String representation should be readable."""
+        from api_utils.utils_ext.function_calling import GeminiToolConfig
+
+        config = GeminiToolConfig(mode="ANY", allowed_function_names=["fn1", "fn2"])
+        result = str(config)
+        self.assertIn("mode=ANY", result)
+        self.assertIn("fn1, fn2", result)
+
+
+class TestConvertToolChoice(unittest.TestCase):
+    """Test suite for convert_tool_choice function."""
+
+    def test_none_input(self):
+        """None should return None."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        self.assertIsNone(convert_tool_choice(None))
+
+    def test_auto_string(self):
+        """'auto' should map to AUTO mode."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        result = convert_tool_choice("auto")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.mode, "AUTO")
+        self.assertIsNone(result.allowed_function_names)
+
+    def test_auto_case_insensitive(self):
+        """'AUTO', 'Auto' should work."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        for val in ["AUTO", "Auto", "aUtO"]:
+            result = convert_tool_choice(val)
+            self.assertEqual(result.mode, "AUTO")
+
+    def test_none_string(self):
+        """'none' should map to NONE mode."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        result = convert_tool_choice("none")
+        self.assertEqual(result.mode, "NONE")
+
+    def test_required_string(self):
+        """'required' should map to ANY mode."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        result = convert_tool_choice("required")
+        self.assertEqual(result.mode, "ANY")
+
+    def test_function_name_string(self):
+        """Unrecognized string should be treated as function name."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        result = convert_tool_choice("get_weather")
+        self.assertEqual(result.mode, "ANY")
+        self.assertEqual(result.allowed_function_names, ["get_weather"])
+
+    def test_standard_dict_format(self):
+        """Standard OpenAI dict format should extract function name."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        result = convert_tool_choice(
+            {"type": "function", "function": {"name": "get_weather"}}
+        )
+        self.assertEqual(result.mode, "ANY")
+        self.assertEqual(result.allowed_function_names, ["get_weather"])
+
+    def test_legacy_dict_format(self):
+        """Legacy {"name": "x"} format should work."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        result = convert_tool_choice({"name": "my_function"})
+        self.assertEqual(result.mode, "ANY")
+        self.assertEqual(result.allowed_function_names, ["my_function"])
+
+    def test_empty_dict(self):
+        """Empty dict should return None."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        self.assertIsNone(convert_tool_choice({}))
+
+    def test_dict_without_name(self):
+        """Dict without name field should return None."""
+        from api_utils.utils_ext.function_calling import convert_tool_choice
+
+        result = convert_tool_choice({"type": "function"})
+        self.assertIsNone(result)
+
+
+# =============================================================================
+# FC-002: MCP Response Normalization Tests
+# =============================================================================
+
+
+class TestNormalizeToolResponse(unittest.TestCase):
+    """Test suite for normalize_tool_response function."""
+
+    def test_dict_passthrough(self):
+        """Dict input should be returned unchanged."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        data = {"weather": "sunny", "temp": 72}
+        self.assertEqual(normalize_tool_response(data), data)
+
+    def test_empty_dict(self):
+        """Empty dict should be returned as-is."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        self.assertEqual(normalize_tool_response({}), {})
+
+    def test_string_json_object(self):
+        """String containing JSON object should be parsed."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response('{"key": "value"}')
+        self.assertEqual(result, {"key": "value"})
+
+    def test_string_json_array(self):
+        """String containing JSON array should be wrapped."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response("[1, 2, 3]")
+        self.assertEqual(result, {"result": "[1, 2, 3]"})
+
+    def test_string_plain_text(self):
+        """Plain text string should be wrapped in result."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response("Hello world")
+        self.assertEqual(result, {"result": "Hello world"})
+
+    def test_string_invalid_json(self):
+        """Invalid JSON string should be wrapped in result."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response("{invalid json")
+        self.assertEqual(result, {"result": "{invalid json"})
+
+    def test_empty_array(self):
+        """Empty array should return {result: '[]'}."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response([])
+        self.assertEqual(result, {"result": "[]"})
+
+    def test_single_mcp_text_with_json(self):
+        """Single MCP text item with JSON should unwrap."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response([{"type": "text", "text": '{"temp": 72}'}])
+        self.assertEqual(result, {"temp": 72})
+
+    def test_single_mcp_text_plain(self):
+        """Single MCP text item without JSON should wrap."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response([{"type": "text", "text": "plain text"}])
+        self.assertEqual(result, {"content": "plain text", "type": "text"})
+
+    def test_multiple_mcp_items(self):
+        """Multiple items should wrap in result as JSON string."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        items = [
+            {"type": "text", "text": '{"a": 1}'},
+            {"type": "text", "text": '{"b": 2}'},
+        ]
+        result = normalize_tool_response(items)
+        self.assertIn("result", result)
+        parsed = json.loads(result["result"])
+        self.assertEqual(len(parsed), 2)
+
+    def test_mixed_mcp_items(self):
+        """Mixed item types should be handled."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        items = [{"type": "text", "text": "hello"}, {"type": "image", "data": "base64"}]
+        result = normalize_tool_response(items)
+        self.assertIn("result", result)
+
+    def test_non_dict_array_items(self):
+        """Array with non-dict items should handle gracefully."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response([1, 2, 3])
+        self.assertIn("result", result)
+        self.assertEqual(json.loads(result["result"]), [1, 2, 3])
+
+    def test_preserve_on_error_false(self):
+        """With preserve_on_error=False, should raise on unsupported types."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        with self.assertRaises(ValueError):
+            normalize_tool_response(None, preserve_on_error=False)
+
+    def test_preserve_on_error_true(self):
+        """With preserve_on_error=True (default), should not raise."""
+        from api_utils.utils_ext.function_calling import normalize_tool_response
+
+        result = normalize_tool_response(None, preserve_on_error=True)
+        self.assertIn("result", result)
+
+
+# =============================================================================
+# FC-001: thoughtSignature Support Tests
+# =============================================================================
+
+
+class TestEnsureThoughtSignature(unittest.TestCase):
+    """Test suite for ensure_thought_signature function."""
+
+    def test_empty_messages(self):
+        """Empty list should return empty list."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        self.assertEqual(ensure_thought_signature([]), [])
+
+    def test_apply_false_returns_original(self):
+        """When apply=False, messages should be returned unchanged."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [{"role": "user", "content": "test"}]
+        result = ensure_thought_signature(messages, apply=False)
+        self.assertIs(result, messages)  # Same reference
+
+    def test_user_message_unchanged(self):
+        """User messages should not be modified."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [{"role": "user", "content": "Hello"}]
+        result = ensure_thought_signature(messages)
+        self.assertEqual(result[0], messages[0])
+
+    def test_tool_message_unchanged(self):
+        """Tool (function response) messages should not be modified."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [{"role": "tool", "tool_call_id": "123", "content": "result"}]
+        result = ensure_thought_signature(messages)
+        self.assertNotIn("_thought_signature", str(result))
+
+    def test_assistant_without_tool_calls_unchanged(self):
+        """Assistant messages without tool_calls should not be modified."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [{"role": "assistant", "content": "Hello!"}]
+        result = ensure_thought_signature(messages)
+        self.assertNotIn("tool_calls", result[0])
+
+    def test_assistant_with_tool_calls_gets_signature(self):
+        """Assistant messages with tool_calls should get signature on first call."""
+        from api_utils.utils_ext.function_calling import (
+            DUMMY_THOUGHT_SIGNATURE,
+            ensure_thought_signature,
+        )
+
+        messages = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "test", "arguments": "{}"},
+                    }
+                ],
+            }
+        ]
+        result = ensure_thought_signature(messages)
+        self.assertEqual(
+            result[0]["tool_calls"][0]["_thought_signature"], DUMMY_THOUGHT_SIGNATURE
+        )
+
+    def test_only_first_call_gets_signature(self):
+        """Only the first tool_call should get the signature."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "fn1", "arguments": "{}"},
+                    },
+                    {
+                        "id": "call_2",
+                        "type": "function",
+                        "function": {"name": "fn2", "arguments": "{}"},
+                    },
+                ],
+            }
+        ]
+        result = ensure_thought_signature(messages)
+        self.assertIn("_thought_signature", result[0]["tool_calls"][0])
+        self.assertNotIn("_thought_signature", result[0]["tool_calls"][1])
+
+    def test_original_not_mutated(self):
+        """Original messages list should not be mutated."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "1",
+                        "type": "function",
+                        "function": {"name": "x", "arguments": "{}"},
+                    }
+                ],
+            }
+        ]
+        original_str = str(messages)
+        ensure_thought_signature(messages)
+        self.assertEqual(str(messages), original_str)
+
+    def test_custom_signature(self):
+        """Custom signature value should be used."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "1",
+                        "type": "function",
+                        "function": {"name": "x", "arguments": "{}"},
+                    }
+                ],
+            }
+        ]
+        result = ensure_thought_signature(messages, signature="custom_sig")
+        self.assertEqual(result[0]["tool_calls"][0]["_thought_signature"], "custom_sig")
+
+    def test_non_function_type_skipped(self):
+        """Tool calls with type != 'function' should not get signature."""
+        from api_utils.utils_ext.function_calling import ensure_thought_signature
+
+        messages = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {"id": "1", "type": "other", "data": {}},
+                    {
+                        "id": "2",
+                        "type": "function",
+                        "function": {"name": "x", "arguments": "{}"},
+                    },
+                ],
+            }
+        ]
+        result = ensure_thought_signature(messages)
+        self.assertNotIn("_thought_signature", result[0]["tool_calls"][0])
+        self.assertIn("_thought_signature", result[0]["tool_calls"][1])
+
+
+# =============================================================================
+# FC-004: Type Case Normalization Tests
+# =============================================================================
+
+
+class TestTypeCaseNormalization(unittest.TestCase):
+    """Test suite for type case normalization in SchemaConverter."""
+
+    def setUp(self):
+        # Reset to default (lowercase) for each test
+        import os
+
+        os.environ.pop("FUNCTION_CALLING_UPPERCASE_TYPES", None)
+
+    def test_type_conversion_lowercase_by_default(self):
+        """Types should be lowercase by default (safe default until verified)."""
+        converter = SchemaConverter()
+        result = converter.convert_tool(
+            {
+                "type": "function",
+                "function": {
+                    "name": "test",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"x": {"type": "string"}},
+                    },
+                },
+            }
+        )
+        self.assertEqual(result["parameters"]["type"], "object")
+        self.assertEqual(result["parameters"]["properties"]["x"]["type"], "string")
+
+    def test_normalize_type_method_lowercase(self):
+        """_normalize_type should use lowercase by default."""
+        converter = SchemaConverter()
+        self.assertEqual(converter._normalize_type("string"), "string")
+        self.assertEqual(converter._normalize_type("OBJECT"), "object")
+        self.assertEqual(converter._normalize_type("Boolean"), "boolean")
+
+    def test_type_map_property_returns_correct_map(self):
+        """type_map property should return correct map based on config."""
+        from api_utils.utils_ext.function_calling import TYPE_MAP_LOWER
+
+        converter = SchemaConverter()
+        # Default should be lowercase
+        self.assertEqual(converter.type_map, TYPE_MAP_LOWER)
+
+    def test_type_map_constants_exist(self):
+        """TYPE_MAP_UPPER and TYPE_MAP_LOWER constants should exist."""
+        from api_utils.utils_ext.function_calling import TYPE_MAP_LOWER, TYPE_MAP_UPPER
+
+        self.assertIn("string", TYPE_MAP_LOWER)
+        self.assertEqual(TYPE_MAP_LOWER["string"], "string")
+        self.assertIn("string", TYPE_MAP_UPPER)
+        self.assertEqual(TYPE_MAP_UPPER["string"], "STRING")
+
+
 if __name__ == "__main__":
     unittest.main()

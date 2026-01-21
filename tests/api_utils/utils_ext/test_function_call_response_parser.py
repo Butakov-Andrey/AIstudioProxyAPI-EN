@@ -164,6 +164,65 @@ class TestFunctionCallResponseParser:
         result = parser._deduplicate_calls(calls)
         assert len(result) == 3
 
+    def test_deduplicate_calls_prefers_non_empty_args(self, parser):
+        """Test that deduplication prefers calls with arguments over empty ones.
+
+        This handles the case where AI Studio's DOM renders multiple chunks for
+        a single function call, where one chunk may be missing arguments.
+        See: https://github.com/MasuRii/AIstudioProxyAPI-EN/issues/XXX
+        """
+        calls = [
+            ParsedFunctionCall(name="read", arguments={"filePath": "/path/to/file"}),
+            ParsedFunctionCall(
+                name="read", arguments={}
+            ),  # Empty args - should be dropped
+        ]
+        result = parser._deduplicate_calls(calls)
+
+        assert len(result) == 1
+        assert result[0].name == "read"
+        assert result[0].arguments == {"filePath": "/path/to/file"}
+
+    def test_deduplicate_calls_empty_comes_first(self, parser):
+        """Test deduplication when empty args call comes before non-empty."""
+        calls = [
+            ParsedFunctionCall(name="read", arguments={}),  # Empty first
+            ParsedFunctionCall(name="read", arguments={"filePath": "/path/to/file"}),
+        ]
+        result = parser._deduplicate_calls(calls)
+
+        assert len(result) == 1
+        assert result[0].arguments == {"filePath": "/path/to/file"}
+
+    def test_deduplicate_calls_multiple_non_empty_preserved(self, parser):
+        """Test that multiple non-empty calls to same function are kept.
+
+        This is important for legitimate parallel tool calls (e.g., reading
+        multiple files in parallel).
+        """
+        calls = [
+            ParsedFunctionCall(name="read", arguments={"filePath": "/file1"}),
+            ParsedFunctionCall(name="read", arguments={"filePath": "/file2"}),
+            ParsedFunctionCall(name="read", arguments={}),  # Should be dropped
+        ]
+        result = parser._deduplicate_calls(calls)
+
+        assert len(result) == 2
+        args_set = {json.dumps(r.arguments, sort_keys=True) for r in result}
+        assert '{"filePath": "/file1"}' in args_set
+        assert '{"filePath": "/file2"}' in args_set
+
+    def test_deduplicate_calls_all_empty_keeps_one(self, parser):
+        """Test that if all calls have empty args, one is kept."""
+        calls = [
+            ParsedFunctionCall(name="todoread", arguments={}),
+            ParsedFunctionCall(name="todoread", arguments={}),
+        ]
+        result = parser._deduplicate_calls(calls)
+
+        assert len(result) == 1
+        assert result[0].name == "todoread"
+
     @pytest.mark.asyncio
     async def test_detect_function_calls_widget_found(self, parser, mock_page):
         """Test detection when widget is found."""
