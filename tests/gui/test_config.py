@@ -1,8 +1,6 @@
 """Tests for gui/config.py module."""
 
-import pytest
 import re
-from pathlib import Path
 
 
 class TestConfigPaths:
@@ -25,7 +23,7 @@ class TestConfigPaths:
 
     def test_auth_profiles_dir_structure(self):
         """AUTH_PROFILES_DIR should be under PROJECT_ROOT."""
-        from gui.config import PROJECT_ROOT, AUTH_PROFILES_DIR
+        from gui.config import AUTH_PROFILES_DIR, PROJECT_ROOT
 
         assert AUTH_PROFILES_DIR == PROJECT_ROOT / "auth_profiles"
 
@@ -37,26 +35,26 @@ class TestConfigPaths:
 
     def test_active_auth_dir_structure(self):
         """ACTIVE_AUTH_DIR should be under AUTH_PROFILES_DIR."""
-        from gui.config import AUTH_PROFILES_DIR, ACTIVE_AUTH_DIR
+        from gui.config import ACTIVE_AUTH_DIR, AUTH_PROFILES_DIR
 
         assert ACTIVE_AUTH_DIR == AUTH_PROFILES_DIR / "active"
 
     def test_launch_script_path(self):
         """LAUNCH_SCRIPT should point to launch_camoufox.py."""
-        from gui.config import PROJECT_ROOT, LAUNCH_SCRIPT
+        from gui.config import LAUNCH_SCRIPT, PROJECT_ROOT
 
         assert LAUNCH_SCRIPT == PROJECT_ROOT / "launch_camoufox.py"
         assert LAUNCH_SCRIPT.exists()
 
     def test_config_file_path(self):
         """CONFIG_FILE should be in GUI_DIR."""
-        from gui.config import GUI_DIR, CONFIG_FILE
+        from gui.config import CONFIG_FILE, GUI_DIR
 
         assert CONFIG_FILE == GUI_DIR / "user_config.json"
 
     def test_log_file_path(self):
         """LOG_FILE should be in PROJECT_ROOT/logs."""
-        from gui.config import PROJECT_ROOT, LOG_FILE
+        from gui.config import LOG_FILE, PROJECT_ROOT
 
         assert LOG_FILE == PROJECT_ROOT / "logs" / "gui_launcher.log"
 
@@ -266,7 +264,7 @@ class TestUrls:
 
     def test_docs_url_references_github(self):
         """DOCS_URL should reference the GitHub README."""
-        from gui.config import GITHUB_URL, DOCS_URL
+        from gui.config import DOCS_URL, GITHUB_URL
 
         assert DOCS_URL.startswith(GITHUB_URL)
         assert "#readme" in DOCS_URL

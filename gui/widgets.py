@@ -5,7 +5,8 @@ Extended widgets for the GUI including collapsible frames and setting editors.
 """
 
 import platform
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
+
 import customtkinter as ctk
 
 from .config import COLORS, DIMENSIONS, FONTS

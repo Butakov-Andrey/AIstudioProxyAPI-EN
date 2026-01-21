@@ -4,8 +4,9 @@ GUI Launcher Theme Manager
 Handles light/dark mode switching with persistence.
 """
 
+from typing import Callable, List, Literal
+
 import customtkinter as ctk
-from typing import Literal, Callable, List
 
 # Type alias for appearance modes
 AppearanceMode = Literal["dark", "light", "system"]

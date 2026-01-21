@@ -4,14 +4,14 @@ GUI Launcher Utilities
 Helper functions and widgets for the CustomTkinter GUI.
 """
 
-import customtkinter as ctk
-from typing import Callable, Optional, List, Any
-import time
 import platform
+import time
+from typing import Any, Callable, List, Optional
 
-from .config import COLORS, FONTS, DIMENSIONS
+import customtkinter as ctk
+
+from .config import COLORS, DIMENSIONS, FONTS
 from .i18n import get_text
-
 
 # =============================================================================
 # Mouse Wheel Scrolling Support

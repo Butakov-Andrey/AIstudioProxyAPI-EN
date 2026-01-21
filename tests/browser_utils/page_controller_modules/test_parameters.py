@@ -330,10 +330,17 @@ async def test_adjust_google_search(controller, mock_check_disconnect, mock_page
     request_params = {"tools": [{"function": {"name": "googleSearch"}}]}
 
     toggle = AsyncMock()
+    # Mock get_attribute for all calls in _adjust_google_search:
+    # 1. "aria-checked" -> "false" (initial check)
+    # 2. "disabled" -> None (toggle is not disabled)
+    # 3. "class" -> "" (no disabled class)
+    # 4. "aria-checked" -> "true" (after click verification)
     toggle.get_attribute.side_effect = [
-        "false",
-        "true",
-    ]  # Initial check, then check after click
+        "false",  # Initial aria-checked check
+        None,  # disabled attribute check
+        "",  # class attribute check
+        "true",  # aria-checked after click
+    ]
     mock_page.locator.return_value = toggle
 
     # Mock _supports_google_search to return True so the function doesn't skip early
@@ -1073,8 +1080,17 @@ async def test_adjust_google_search_update_failed(
     request_params = {"tools": [{"function": {"name": "googleSearch"}}]}
 
     toggle = AsyncMock()
-    # Initially off, stays off after click (update failed)
-    toggle.get_attribute.side_effect = ["false", "false"]
+    # Mock get_attribute for all calls:
+    # 1. "aria-checked" -> "false" (initial check)
+    # 2. "disabled" -> None (toggle is not disabled)
+    # 3. "class" -> "" (no disabled class)
+    # 4. "aria-checked" -> "false" (after click - update failed, stays off)
+    toggle.get_attribute.side_effect = [
+        "false",  # Initial aria-checked check
+        None,  # disabled attribute check
+        "",  # class attribute check
+        "false",  # aria-checked after click (update failed)
+    ]
     mock_page.locator.return_value = toggle
 
     with patch.object(controller, "_supports_google_search", return_value=True):

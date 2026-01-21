@@ -99,8 +99,8 @@ async def initialize_page_logic(  # pragma: no cover
                         health = check_profile_cookie_health(next_profile)
                         if health["health_status"] == "critical":
                             logger.warning(
-                                f"   ⚠️ Selected profile has expired authentication cookies. "
-                                f"Consider refreshing by logging in again in debug mode."
+                                "   ⚠️ Selected profile has expired authentication cookies. "
+                                "Consider refreshing by logging in again in debug mode."
                             )
                     else:
                         logger.warning(

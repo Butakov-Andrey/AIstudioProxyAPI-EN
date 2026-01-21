@@ -325,8 +325,8 @@ async def lifespan(app: FastAPI):
             logger.info("[STOP] Stopping Cookie Refresh Task...")
             try:
                 from browser_utils.cookie_refresh import (
-                    stop_periodic_refresh,
                     save_cookies_on_shutdown,
+                    stop_periodic_refresh,
                 )
 
                 await stop_periodic_refresh()

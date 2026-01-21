@@ -4,10 +4,11 @@ GUI Launcher Styles
 CustomTkinter theme configuration and custom widget styles.
 """
 
-import customtkinter as ctk
 from typing import Optional
 
-from .config import CTK_COLOR_THEME, COLORS, FONTS, DIMENSIONS
+import customtkinter as ctk
+
+from .config import COLORS, CTK_COLOR_THEME, DIMENSIONS
 
 
 def apply_theme(root: Optional[ctk.CTk] = None, appearance_mode: str = "dark") -> None:

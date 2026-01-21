@@ -1,6 +1,5 @@
 """Tests for gui/tray.py module."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -130,7 +129,7 @@ class TestTrayIconPystray:
 
                 mock_app = MagicMock()
                 mock_app.root = MagicMock()
-                tray = TrayIcon(mock_app)
+                TrayIcon(mock_app)
 
                 # The actual test - mocked pystray should work
                 # (Implementation detail: this tests the exception path)

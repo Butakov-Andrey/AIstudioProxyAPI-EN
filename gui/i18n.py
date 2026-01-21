@@ -4,7 +4,7 @@ GUI Launcher Internationalization (i18n)
 Contains all translations for English and Chinese.
 """
 
-from typing import Dict, Any
+from typing import Dict
 
 # Current language setting (module-level state)
 _current_language = "en"

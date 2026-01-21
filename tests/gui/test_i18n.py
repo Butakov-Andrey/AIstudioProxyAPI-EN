@@ -1,6 +1,5 @@
 """Tests for gui/i18n.py module."""
 
-import pytest
 
 
 class TestLanguageState:
@@ -127,8 +126,9 @@ class TestTranslationsCompleteness:
 
     def test_format_placeholders_consistent(self):
         """Format placeholders should match between languages."""
-        from gui.i18n import TRANSLATIONS
         import re
+
+        from gui.i18n import TRANSLATIONS
 
         placeholder_pattern = re.compile(r"\{(\w+)\}")
 

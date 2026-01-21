@@ -1,7 +1,5 @@
 """Tests for gui/utils.py module."""
 
-import pytest
-from unittest.mock import MagicMock, patch
 
 
 class TestValidatePort:
@@ -142,7 +140,7 @@ class TestCTkTooltip:
 
     def test_tooltip_alias_exists(self):
         """Tooltip alias should exist for backwards compatibility."""
-        from gui.utils import Tooltip, CTkTooltip
+        from gui.utils import CTkTooltip, Tooltip
 
         assert Tooltip is CTkTooltip
 
@@ -150,7 +148,7 @@ class TestCTkTooltip:
         """CTkTooltip binds hover events."""
         from gui.utils import CTkTooltip
 
-        tooltip = CTkTooltip(mock_widget, "tooltip_account")
+        CTkTooltip(mock_widget, "tooltip_account")
 
         # Should bind at least 3 events
         assert mock_widget.bind.call_count >= 3
@@ -189,7 +187,7 @@ class TestCTkScrollableList:
 
     def test_scrollable_list_alias_exists(self):
         """ScrollableListbox alias should exist for backwards compatibility."""
-        from gui.utils import ScrollableListbox, CTkScrollableList
+        from gui.utils import CTkScrollableList, ScrollableListbox
 
         assert ScrollableListbox is CTkScrollableList
 
@@ -227,7 +225,7 @@ class TestCTkStatusBar:
 
     def test_status_bar_alias_exists(self):
         """StatusBar alias should exist for backwards compatibility."""
-        from gui.utils import StatusBar, CTkStatusBar
+        from gui.utils import CTkStatusBar, StatusBar
 
         assert StatusBar is CTkStatusBar
 

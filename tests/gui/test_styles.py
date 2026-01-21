@@ -1,6 +1,5 @@
 """Tests for gui/styles.py module."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -28,7 +27,7 @@ class TestApplyTheme:
     def test_apply_theme_calls_set_default_color_theme(self):
         """apply_theme should set CTk color theme."""
         with patch("gui.styles.ctk") as mock_ctk:
-            from gui.styles import apply_theme, CTK_COLOR_THEME
+            from gui.styles import CTK_COLOR_THEME, apply_theme
 
             apply_theme()
 
@@ -87,8 +86,8 @@ class TestGetButtonColors:
 
     def test_get_button_colors_success(self):
         """get_button_colors returns success style."""
-        from gui.styles import get_button_colors
         from gui.config import COLORS
+        from gui.styles import get_button_colors
 
         colors = get_button_colors("success")
         assert colors["fg_color"] == COLORS["success"]
@@ -96,8 +95,8 @@ class TestGetButtonColors:
 
     def test_get_button_colors_danger(self):
         """get_button_colors returns danger style."""
-        from gui.styles import get_button_colors
         from gui.config import COLORS
+        from gui.styles import get_button_colors
 
         colors = get_button_colors("danger")
         assert colors["fg_color"] == COLORS["error"]
@@ -105,8 +104,8 @@ class TestGetButtonColors:
 
     def test_get_button_colors_accent(self):
         """get_button_colors returns accent style."""
-        from gui.styles import get_button_colors
         from gui.config import COLORS
+        from gui.styles import get_button_colors
 
         colors = get_button_colors("accent")
         assert colors["fg_color"] == COLORS["accent"]
@@ -194,8 +193,8 @@ class TestColorsIntegration:
 
     def test_colors_imported_from_config(self):
         """Styles module imports COLORS from config."""
-        from gui.styles import COLORS
         from gui.config import COLORS as CONFIG_COLORS
+        from gui.styles import COLORS
 
         assert COLORS is CONFIG_COLORS
 

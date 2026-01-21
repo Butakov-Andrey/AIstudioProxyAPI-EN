@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 import customtkinter as ctk
 
 from .config import (
+    ACTIVE_AUTH_DIR,
     COLORS,
     CONFIG_FILE,
     DEFAULT_CONFIG,
@@ -34,14 +35,12 @@ from .config import (
     LOG_FILE,
     PROJECT_ROOT,
     SAVED_AUTH_DIR,
-    ACTIVE_AUTH_DIR,
     VERSION,
 )
-from .env_manager import EnvManager, get_env_manager
-from .widgets import CTkCollapsibleFrame, CTkEnvSettingsPanel
+from .env_manager import get_env_manager
 from .i18n import get_language, get_text, set_language
 from .styles import apply_theme, get_button_colors
-from .theme import get_appearance_mode, set_appearance_mode, get_available_modes
+from .theme import get_appearance_mode, set_appearance_mode
 from .tray import TrayIcon
 from .utils import (
     CTkScrollableList,
@@ -50,6 +49,7 @@ from .utils import (
     copy_to_clipboard,
     validate_port,
 )
+from .widgets import CTkEnvSettingsPanel
 
 
 class GUILauncher:
@@ -1315,8 +1315,8 @@ class GUILauncher:
         self._log(get_text("log_testing_api", url=url))
 
         try:
-            import urllib.request
             import urllib.error
+            import urllib.request
 
             with urllib.request.urlopen(url, timeout=5) as response:
                 if response.status == 200:
@@ -1673,13 +1673,16 @@ GitHub: {GITHUB_URL}
                 line = self.process.stdout.readline()
                 if line:
                     self.root.after(
-                        0, lambda l=line.strip(): self._log(l, save_to_file=False)
+                        0,
+                        lambda log_line=line.strip(): self._log(
+                            log_line, save_to_file=False
+                        ),
                     )
 
             exit_code = self.process.returncode if self.process else -1
             self.root.after(0, lambda: self._service_ended(exit_code))
         except Exception as e:
-            self.root.after(0, lambda: self._log(f"❌ Log error: {e}"))
+            self.root.after(0, lambda err=e: self._log(f"❌ Log error: {err}"))
 
     def _service_ended(self, exit_code: int):
         """Handle service ending."""
