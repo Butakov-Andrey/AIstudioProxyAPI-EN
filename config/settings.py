@@ -178,6 +178,20 @@ FUNCTION_CALLING_CACHE_ENABLED = get_boolean_env("FUNCTION_CALLING_CACHE_ENABLED
 # Cache is automatically invalidated on model switch or new chat
 FUNCTION_CALLING_CACHE_TTL = get_int_env("FUNCTION_CALLING_CACHE_TTL", 0)
 
+# --- New Function Calling Configuration (FC Improvements) ---
+# Add thoughtSignature to functionCall parts for Gemini 3 compatibility
+# Reference: ADR-002-thoughtSignature-support.md
+FUNCTION_CALLING_THOUGHT_SIGNATURE = get_boolean_env(
+    "FUNCTION_CALLING_THOUGHT_SIGNATURE", True
+)
+
+# Convert JSON Schema types to UPPERCASE (e.g., "string" -> "STRING")
+# Default is false for backwards compatibility - enable only after UI verification
+# Reference: ADR-005-type-case-normalization.md
+FUNCTION_CALLING_UPPERCASE_TYPES = get_boolean_env(
+    "FUNCTION_CALLING_UPPERCASE_TYPES", False
+)
+
 # --- Cookie Refresh Configuration ---
 # Enable automatic cookie refresh to keep auth profiles fresh
 COOKIE_REFRESH_ENABLED = get_boolean_env("COOKIE_REFRESH_ENABLED", True)
