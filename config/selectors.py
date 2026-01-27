@@ -20,7 +20,12 @@ INPUT_SELECTOR = PROMPT_TEXTAREA_SELECTOR
 INPUT_SELECTOR2 = PROMPT_TEXTAREA_SELECTOR
 
 # --- Button Selectors ---
+# Submit button: prioritize primary submit button in prompt area
 SUBMIT_BUTTON_SELECTOR = (
+    # Current UI structure
+    'ms-run-button button[type="submit"].ms-button-primary, '
+    'ms-run-button button[type="submit"], '
+    # Legacy selectors
     'ms-prompt-input-wrapper ms-run-button button[aria-label="Run"], '
     'ms-prompt-input-wrapper button[aria-label="Run"][type="submit"], '
     'button[aria-label="Run"].run-button, '
@@ -73,8 +78,16 @@ COPY_MARKDOWN_BUTTON_SELECTOR_ALT = 'div[role="menu"] button:has-text("Copy Mark
 MAX_OUTPUT_TOKENS_SELECTOR = 'input[aria-label="Maximum output tokens"]'
 STOP_SEQUENCE_INPUT_SELECTOR = 'input[aria-label="Add stop token"]'
 MAT_CHIP_REMOVE_BUTTON_SELECTOR = 'mat-chip button.remove-button[aria-label*="Remove"]'
-TOP_P_INPUT_SELECTOR = 'ms-slider input.slider-number-input[aria-valuemax="1"]'
-TEMPERATURE_INPUT_SELECTOR = 'ms-slider input.slider-number-input[aria-valuemax="2"]'
+TOP_P_INPUT_SELECTOR = (
+    'ms-slider input[type="number"][max="1"], '
+    'ms-slider input.slider-number-input[aria-valuemax="1"], '
+    'input.slider-number-input[aria-valuemax="1"]'
+)
+TEMPERATURE_INPUT_SELECTOR = (
+    'ms-slider input[type="number"][max="2"], '
+    'ms-slider input.slider-number-input[aria-valuemax="2"], '
+    'input.slider-number-input[aria-valuemax="2"]'
+)
 USE_URL_CONTEXT_SELECTOR = 'button[aria-label="Browse the url context"]'
 
 # --- Thinking Mode Selectors ---
