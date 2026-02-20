@@ -125,7 +125,8 @@ jobs:
           )
             
             # Get commits between tags
-            COMMITS=$(git log --pretty=format:"- %s (%h)" "$PREVIOUS_TAG..$VERSION" 2>/dev/null || echo "")
+            COMMITS=$(git log --pretty=format:"- %s by @%an (%h)" "$PREVIOUS_TAG..$VERSION" 2>/dev/null || echo "")
+            CONTRIBUTORS=$(git log --format='@%an' "$PREVIOUS_TAG..$VERSION" 2>/dev/null | sort -u | sed 's/^/- /')
             
             if [ -n "$COMMITS" ]; then
               CHANGELOG="$CHANGELOG
@@ -133,6 +134,12 @@ jobs:
             else
               CHANGELOG="$CHANGELOG
           - Various improvements and updates"
+            fi
+
+            if [ -n "$CONTRIBUTORS" ]; then
+              echo "$CONTRIBUTORS" > CONTRIBUTORS.md
+            else
+              echo "- @github-actions[bot]" > CONTRIBUTORS.md
             fi
             
             CHANGELOG="$CHANGELOG
@@ -145,6 +152,13 @@ jobs:
           This is the first release of the English version fork.
 
           See the commit history for details."
+
+            CONTRIBUTORS=$(git log --format='@%an' "$VERSION" 2>/dev/null | sort -u | sed 's/^/- /')
+            if [ -n "$CONTRIBUTORS" ]; then
+              echo "$CONTRIBUTORS" > CONTRIBUTORS.md
+            else
+              echo "- @github-actions[bot]" > CONTRIBUTORS.md
+            fi
           fi
           
           # Write to file for use in release
@@ -189,23 +203,16 @@ jobs:
           docker-compose -f docker/docker-compose.yml up -d
           ```
 
-          For detailed installation instructions, see the [Installation Guide](https://github.com/${{ github.repository }}/blob/main/docs/guides/installation-guide.md).
-
-          ## Documentation
-
-          - [Quick Start Guide](https://github.com/${{ github.repository }}/blob/main/docs/guides/quick-start-guide.md)
-          - [API Usage](https://github.com/${{ github.repository }}/blob/main/docs/guides/api-usage.md)
-          - [Environment Configuration](https://github.com/${{ github.repository }}/blob/main/docs/guides/environment-configuration.md)
-          - [Troubleshooting](https://github.com/${{ github.repository }}/blob/main/docs/guides/troubleshooting.md)
+          For full installation and configuration details, see the [README](https://github.com/${{ github.repository }}/blob/main/README.md).
 
           ## Source Code
 
           Source code archives (zip and tar.gz) are automatically attached below.
 
           ---
-
-          **Thank you to all contributors!**
           EOF
+
+          cat CONTRIBUTORS.md >> RELEASE_BODY.md
           
           echo "Release body generated successfully"
 
@@ -271,10 +278,17 @@ jobs:
         id: changes
         run: |
           # Get recent commits (last 10) for the release notes
-          echo "## Recent Changes" > NIGHTLY_CHANGES.md
+          echo "## What's Changed" > NIGHTLY_CHANGES.md
           echo "" >> NIGHTLY_CHANGES.md
-          git log --oneline -10 --pretty=format:"- %s (%h)" >> NIGHTLY_CHANGES.md
+          git log --oneline -10 --pretty=format:"- %s by @%an (%h)" >> NIGHTLY_CHANGES.md
           echo "" >> NIGHTLY_CHANGES.md
+
+          CONTRIBUTORS=$(git log --format='@%an' -10 | sort -u | sed 's/^/- /')
+          if [ -n "$CONTRIBUTORS" ]; then
+            echo "$CONTRIBUTORS" > NIGHTLY_CONTRIBUTORS.md
+          else
+            echo "- @github-actions[bot]" > NIGHTLY_CONTRIBUTORS.md
+          fi
           
           echo "Recent changes generated"
 
@@ -316,7 +330,14 @@ jobs:
           ```
           
           ---
-          
+          EOF
+
+          cat NIGHTLY_CONTRIBUTORS.md >> NIGHTLY_BODY.md
+
+          cat >> NIGHTLY_BODY.md << 'EOF'
+
+          ---
+
           *This nightly release is automatically updated on every push to the main branch.*
           EOF
           
