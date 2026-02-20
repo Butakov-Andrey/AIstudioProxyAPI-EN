@@ -40,6 +40,19 @@ def _load_release_workflow_yaml() -> dict:
     return data
 
 
+def _extract_step_block(content: str, step_name: str) -> str:
+    """Extract a step block by name from the workflow text."""
+    marker = f"      - name: {step_name}"
+    start = content.find(marker)
+    if start == -1:
+        pytest.fail(f"Step '{step_name}' was not found in release workflow")
+
+    next_step = content.find("\n      - name:", start + len(marker))
+    if next_step == -1:
+        return content[start:]
+    return content[start:next_step]
+
+
 class TestReleaseWorkflow:
     """Release workflow validation tests."""
 
@@ -53,21 +66,69 @@ class TestReleaseWorkflow:
         assert data, "Release workflow YAML should not be empty"
         assert "jobs" in data, "Release workflow should define jobs"
 
-    def test_changelog_format_uses_non_tagging_author_attribution(self) -> None:
-        """Boundary: changelog format must include author names without GitHub tagging."""
+    def test_stable_changelog_uses_github_username_and_fallback_author(self) -> None:
+        """Boundary: stable changelog should use GitHub username lookup with fallback."""
         # Arrange
         content = _read_release_workflow()
+        stable_step = _extract_step_block(content, "Generate changelog")
 
         # Act
-        has_author_attribution = "by %an" in content
-        has_tagging_author_attribution = "by @%an" in content
+        has_commit_api_lookup = (
+            'gh api "repos/${{ github.repository }}/commits/$commit_sha"' in stable_step
+        )
+        has_jq_username_extract = "jq -r '.author.login // empty'" in stable_step
+        has_github_mention_format = "by @${github_username}" in stable_step
+        has_git_fallback_format = "by ${git_author}" in stable_step
+        has_old_direct_git_format = "- %s by %an (%h)" in stable_step
 
         # Assert
-        assert has_author_attribution, (
-            "Changelog format must include author attribution 'by %an'"
+        assert has_commit_api_lookup, (
+            "Stable changelog must query the GitHub commit API per commit SHA"
         )
-        assert not has_tagging_author_attribution, (
-            "Changelog format must not include GitHub-tagging author attribution 'by @%an'"
+        assert has_jq_username_extract, (
+            "Stable changelog must extract '.author.login // empty' with jq"
+        )
+        assert has_github_mention_format, (
+            "Stable changelog must format GitHub-linked authors as '@username'"
+        )
+        assert has_git_fallback_format, (
+            "Stable changelog must fall back to git author name without '@'"
+        )
+        assert not has_old_direct_git_format, (
+            "Stable changelog must not use direct git author formatting '- %s by %an (%h)'"
+        )
+
+    def test_nightly_changes_use_github_username_and_fallback_author(self) -> None:
+        """Boundary: nightly changes should use GitHub username lookup with fallback."""
+        # Arrange
+        content = _read_release_workflow()
+        nightly_step = _extract_step_block(content, "Generate recent changes")
+
+        # Act
+        has_commit_api_lookup = (
+            'gh api "repos/${{ github.repository }}/commits/$commit_sha"'
+            in nightly_step
+        )
+        has_jq_username_extract = "jq -r '.author.login // empty'" in nightly_step
+        has_github_mention_format = "by @${github_username}" in nightly_step
+        has_git_fallback_format = "by ${git_author}" in nightly_step
+        has_old_direct_git_format = "- %s by %an (%h)" in nightly_step
+
+        # Assert
+        assert has_commit_api_lookup, (
+            "Nightly changes must query the GitHub commit API per commit SHA"
+        )
+        assert has_jq_username_extract, (
+            "Nightly changes must extract '.author.login // empty' with jq"
+        )
+        assert has_github_mention_format, (
+            "Nightly changes must format GitHub-linked authors as '@username'"
+        )
+        assert has_git_fallback_format, (
+            "Nightly changes must fall back to git author name without '@'"
+        )
+        assert not has_old_direct_git_format, (
+            "Nightly changes must not use direct git author formatting '- %s by %an (%h)'"
         )
 
     def test_docs_guides_links_are_not_broken(self) -> None:
