@@ -53,17 +53,21 @@ class TestReleaseWorkflow:
         assert data, "Release workflow YAML should not be empty"
         assert "jobs" in data, "Release workflow should define jobs"
 
-    def test_changelog_format_includes_author_attribution(self) -> None:
-        """Boundary: changelog format must include author attribution token."""
+    def test_changelog_format_uses_non_tagging_author_attribution(self) -> None:
+        """Boundary: changelog format must include author names without GitHub tagging."""
         # Arrange
         content = _read_release_workflow()
 
         # Act
-        has_author_attribution = "by @%an" in content
+        has_author_attribution = "by %an" in content
+        has_tagging_author_attribution = "by @%an" in content
 
         # Assert
         assert has_author_attribution, (
-            "Changelog format must include author attribution 'by @%an'"
+            "Changelog format must include author attribution 'by %an'"
+        )
+        assert not has_tagging_author_attribution, (
+            "Changelog format must not include GitHub-tagging author attribution 'by @%an'"
         )
 
     def test_docs_guides_links_are_not_broken(self) -> None:
@@ -84,17 +88,37 @@ class TestReleaseWorkflow:
             full_path = REPO_ROOT / sanitized
             assert full_path.exists(), f"Broken documentation link: {sanitized}"
 
-    def test_contributor_acknowledgement_not_old_thank_you_format(self) -> None:
-        """Error condition: old 'Thank you' contributor format should be absent."""
+    def test_contributor_acknowledgement_uses_thank_you_message(self) -> None:
+        """Error condition: workflow must include the thank-you contributor message."""
         # Arrange
         content = _read_release_workflow()
 
         # Act
-        uses_old_format = re.search(r"thank you", content, re.IGNORECASE) is not None
+        thank_you_occurrences = len(
+            re.findall(r"\*\*Thank you to all contributors!\*\*", content)
+        )
 
         # Assert
-        assert not uses_old_format, (
-            "Contributor acknowledgement must not use the old 'Thank you' format"
+        assert thank_you_occurrences >= 2, (
+            "Contributor acknowledgement must include '**Thank you to all contributors!**' "
+            "in both stable and nightly release sections"
+        )
+
+    def test_contributor_list_generation_is_removed(self) -> None:
+        """Error condition: contributor list files should not be generated in workflow."""
+        # Arrange
+        content = _read_release_workflow()
+
+        # Act
+        has_stable_contributors_file = "CONTRIBUTORS.md" in content
+        has_nightly_contributors_file = "NIGHTLY_CONTRIBUTORS.md" in content
+
+        # Assert
+        assert not has_stable_contributors_file, (
+            "Stable release workflow must not generate CONTRIBUTORS.md"
+        )
+        assert not has_nightly_contributors_file, (
+            "Nightly release workflow must not generate NIGHTLY_CONTRIBUTORS.md"
         )
 
     def test_readme_reference_exists_for_installation_instructions(self) -> None:
