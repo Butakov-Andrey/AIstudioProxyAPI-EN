@@ -108,6 +108,8 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           
@@ -124,16 +126,36 @@ jobs:
           CHANGELOG_EOF
           )
             
-            # Get commits between tags
-            COMMITS=$(git log --pretty=format:"- %s by %an (%h)" "$PREVIOUS_TAG..$VERSION" 2>/dev/null || echo "")
-            
-            if [ -n "$COMMITS" ]; then
+            TEMP_FILE=$(mktemp)
+
+            while read -r commit_sha; do
+              if [ -z "$commit_sha" ]; then
+                continue
+              fi
+
+              commit_msg=$(git log -1 --pretty=format:"%s" "$commit_sha")
+              short_sha=$(git rev-parse --short "$commit_sha")
+              git_author=$(git log -1 --pretty=format:"%an" "$commit_sha")
+
+              api_response=$(gh api "repos/${{ github.repository }}/commits/$commit_sha" 2>/dev/null || echo '{}')
+              github_username=$(echo "$api_response" | jq -r '.author.login // empty')
+
+              if [ -n "$github_username" ]; then
+                echo "- ${commit_msg} by @${github_username} (${short_sha})" >> "$TEMP_FILE"
+              else
+                echo "- ${commit_msg} by ${git_author} (${short_sha})" >> "$TEMP_FILE"
+              fi
+            done < <(git log --pretty=format:"%H" "$PREVIOUS_TAG..$VERSION" 2>/dev/null || true)
+
+            if [ -s "$TEMP_FILE" ]; then
               CHANGELOG="$CHANGELOG
-          $COMMITS"
+          $(cat "$TEMP_FILE")"
             else
               CHANGELOG="$CHANGELOG
           - Various improvements and updates"
             fi
+
+            rm -f "$TEMP_FILE"
 
             CHANGELOG="$CHANGELOG
 
@@ -263,11 +285,41 @@ jobs:
 
       - name: Generate recent changes
         id: changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get recent commits (last 10) for the release notes
           echo "## What's Changed" > NIGHTLY_CHANGES.md
           echo "" >> NIGHTLY_CHANGES.md
-          git log --oneline -10 --pretty=format:"- %s by %an (%h)" >> NIGHTLY_CHANGES.md
+
+          TEMP_FILE=$(mktemp)
+
+          while read -r commit_sha; do
+            if [ -z "$commit_sha" ]; then
+              continue
+            fi
+
+            commit_msg=$(git log -1 --pretty=format:"%s" "$commit_sha")
+            short_sha=$(git rev-parse --short "$commit_sha")
+            git_author=$(git log -1 --pretty=format:"%an" "$commit_sha")
+
+            api_response=$(gh api "repos/${{ github.repository }}/commits/$commit_sha" 2>/dev/null || echo '{}')
+            github_username=$(echo "$api_response" | jq -r '.author.login // empty')
+
+            if [ -n "$github_username" ]; then
+              echo "- ${commit_msg} by @${github_username} (${short_sha})" >> "$TEMP_FILE"
+            else
+              echo "- ${commit_msg} by ${git_author} (${short_sha})" >> "$TEMP_FILE"
+            fi
+          done < <(git log --pretty=format:"%H" -10 2>/dev/null || true)
+
+          if [ -s "$TEMP_FILE" ]; then
+            cat "$TEMP_FILE" >> NIGHTLY_CHANGES.md
+          else
+            echo "- Various improvements and updates" >> NIGHTLY_CHANGES.md
+          fi
+
+          rm -f "$TEMP_FILE"
           echo "" >> NIGHTLY_CHANGES.md
           
           echo "Recent changes generated"
