@@ -41,6 +41,16 @@
   },
   "matchers": [
     {
+      "pattern": "gemini-3\\.1.*flash|gemini3\\.1.*flash",
+      "category": "gemini3Flash",
+      "description": "Gemini 3.1 Flash models with 4-level thinking"
+    },
+    {
+      "pattern": "gemini-3\\.1.*pro|gemini3\\.1.*pro",
+      "category": "gemini3Pro",
+      "description": "Gemini 3.1 Pro models with 2-level thinking"
+    },
+    {
       "pattern": "gemini-3.*flash|gemini3.*flash",
       "category": "gemini3Flash",
       "description": "Gemini 3 Flash models with 4-level thinking"

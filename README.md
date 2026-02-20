@@ -143,7 +143,7 @@ graph TD
 
 ## 🚀 Quick Start
 
-New users are recommended to follow the **[Quick Start Guide](docs/guides/quick-start-guide.md)** for deployment, which should take 15-30 minutes to complete.
+New users are recommended to follow the **Quick Start** section below for deployment, which should take 15-30 minutes to complete.
 
 ### Three-Step Quick Deployment
 
@@ -173,15 +173,27 @@ curl http://127.0.0.1:2048/health
 # Get model list
 curl http://127.0.0.1:2048/v1/models
 
-# Test chat (non-streaming)
-curl -X POST http://127.0.0.1:2048/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemini-3-pro-preview","messages":[{"role":"user","content":"Hello"}]}'
+# Test chat (non-streaming) - Gemini 3.1 Pro
+ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
+   -H "Content-Type: application/json" \
+   -d '{"model":"gemini-3.1-pro","messages":[{"role":"user","content":"Hello"}]}'
+
+# Test chat with thinking level (Gemini 3.x models support thinking levels)
+ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
+   -H "Content-Type: application/json" \
+   -d '{"model":"gemini-3.1-flash","messages":[{"role":"user","content":"Explain quantum computing"}],"thinking_level":"medium"}'
 
 # Test streaming chat
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"gemini-2.5-pro","messages":[{"role":"user","content":"Tell me a story"}],"stream":true}' --no-buffer
+
+# Alternative models (all valid)
+# - gemini-3.1-pro-preview
+# - gemini-3.1-flash-preview
+# - gemini-3-pro-preview
+# - gemini-2.5-pro
+# - gemini-2.5-flash
 ```
 
 ### Access Web UI
@@ -291,36 +303,48 @@ nano .env  # or use other editor
 | | `DEBUG_LOGS_ENABLED=false` | Enable debug logs |
 | **API Parameters** | `DEFAULT_TEMPERATURE=1.0` | Default temperature parameter |
 | | `DEFAULT_MAX_OUTPUT_TOKENS=65536` | Default max output tokens |
-| **Timeout Configuration** | `RESPONSE_COMPLETION_TIMEOUT=300000` | Response timeout (milliseconds) |
+| **Gemini 3.x Configuration** | `DEFAULT_THINKING_LEVEL_PRO=high` | Default thinking level for Gemini 3 Pro (low, high) |
+| | `DEFAULT_THINKING_LEVEL_FLASH=high` | Default thinking level for Gemini 3 Flash (minimal, low, medium, high) |
+| **Function Calling** | `FUNCTION_CALLING_MODE=auto` | Mode: auto, native, or emulated |
+| | `FUNCTION_CALLING_THOUGHT_SIGNATURE=true` | Enable thoughtSignature for Gemini 3.x compatibility |
+| **Auth Rotation** | `AUTO_ROTATE_AUTH_PROFILE=true` | Auto-switch auth profiles on quota issues |
+| | `QUOTA_SOFT_LIMIT=850000` | Soft quota limit (triggers rotation after stream) |
+| | `QUOTA_HARD_LIMIT=950000` | Hard quota limit (triggers immediate rotation) |
+| **Cookie Refresh** | `COOKIE_REFRESH_ENABLED=true` | Auto-refresh browser cookies |
+| **Timeout Configuration** | `RESPONSE_COMPLETION_TIMEOUT=600000` | Response timeout (milliseconds) |
 | **Authentication Configuration** | `AUTO_SAVE_AUTH=false` | Auto-save authentication files |
+
+#### Supported Models
+
+| Model | Context Window | Max Output | Thinking Levels | Description |
+|-------|---------------|------------|-----------------|-------------|
+| **Gemini 3.1 Pro Preview** | 1M tokens | 64K | `low`, `high` (2-level) | Latest Pro model with advanced reasoning |
+| **Gemini 3.1 Flash Preview** | 1M tokens | 64K | `minimal`, `low`, `medium`, `high` (4-level) | Fast, efficient with flexible thinking |
+| **Gemini 3 Pro Preview** | 1M tokens | 64K | `low`, `high` (2-level) | Advanced reasoning model |
+| **Gemini 2.5 Pro** | 1M tokens | 64K | N/A | High-performance reasoning |
+| **Gemini 2.5 Flash** | 1M tokens | 64K | N/A | Fast, cost-effective |
+
+**Note:** Use `thinking_level` parameter with Gemini 3.x models to control reasoning depth. See `.env.example` for full configuration options.
 
 ---
 
-## 📚 Detailed Documentation
+## 📚 Documentation
 
-#### 🚀 Quick Start
+> **Note:** Detailed documentation is maintained within the codebase. Refer to the following resources:
+>
+> - **Configuration Reference:** `.env.example` - Complete list of all configuration options with descriptions
+> - **Code Comments:** Inline documentation throughout the source code
+> - **Docker Deployment:** See [Docker README](docker/README.md) and [Docker Deployment Guide](docker/README-Docker.md)
+> - **License:** [AGPLv3](LICENSE)
 
-- **[Quick Start Guide](docs/guides/quick-start-guide.md)** - 15-minute quick deployment and testing 🎯
-- [Installation Guide](docs/guides/installation-guide.md) - Detailed installation steps and environment configuration
-- [Environment Configuration Guide](docs/guides/environment-configuration.md) - .env file configuration management ⭐
-- [Complete Environment Variables Reference](docs/guides/env-variables-reference.md) - Detailed description of all configuration items 📋
-- [Authentication Setup Guide](docs/guides/authentication-setup.md) - Initial run and authentication file setup
-- [Daily Usage Guide](docs/guides/daily-usage.md) - Daily use and configuration options
+### Key Configuration Files
 
-#### 🔧 Feature Usage
-
-- [API Usage Guide](docs/guides/api-usage.md) - API endpoints and client configuration
-- **[Native Function Calling Guide](docs/guides/native-function-calling.md)** - Complete guide for OpenAI-compatible tool calls 🆕
-- **[OpenAI Compatibility Guide](docs/guides/openai-compatibility.md)** - Differences and limitations with OpenAI API 🔄
-- **[Client Integration Examples](docs/guides/client-examples.md)** - Python, JavaScript, cURL and other example code 💻
-- [Web UI Usage Guide](docs/guides/webui-guide.md) - Web interface feature description
-- [Script Injection Guide](docs/guides/script_injection_guide.md) - Tampermonkey script dynamic mounting feature usage guide (v3.0)
-
-#### 🌍 Platform & Deployment
-
-- [Platform Differences](docs/guides/platform-differences.md) - Windows/macOS/Linux differences and considerations
-- [Docker Deployment Guide (docker/README-Docker.md)](docker/README-Docker.md) - Complete containerized deployment process
-- [Docker Quick Guide (docker/README.md)](docker/README.md) - One-click Compose start
+| File | Purpose |
+|------|---------|
+| `.env.example` | Complete configuration template with all options documented |
+| `docker/README.md` | Docker Compose quick start guide |
+| `docker/README-Docker.md` | Detailed Docker deployment documentation |
+| `LICENSE` | AGPLv3 license terms |
 
 ---
 
