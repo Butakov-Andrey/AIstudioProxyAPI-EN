@@ -10,14 +10,16 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, cast
 from playwright.async_api import Page as AsyncPage
 
 from api_utils.utils_ext.usage_tracker import increment_profile_usage
-from config import CHAT_COMPLETION_ID_PREFIX
+from config import CHAT_COMPLETION_ID_PREFIX, get_boolean_env, get_int_env
 from config.global_state import GlobalState
 from logging_utils import set_request_id
 from models import (
     ChatCompletionRequest,
     ClientDisconnectedError,
+    ForbiddenRetry,
     QuotaExceededError,
     QuotaExceededRetry,
+    UpstreamError,
 )
 
 from .common_utils import random_id
@@ -60,13 +62,16 @@ async def resilient_stream_generator(
     logger = state.logger
     from browser_utils.auth_rotation import perform_auth_rotation
 
-    max_retries = 3
-    retry_count = 0
+    max_quota_retries = 3
+    quota_retry_count = 0
+    retry_on_403 = get_boolean_env("RETRY_ON_403", False)
+    max_403_retries = max(1, get_int_env("RETRY_ON_403_MAX_ATTEMPTS", 3))
+    retry_403_count = 0
 
     inner_event = Event()
 
     try:
-        while retry_count <= max_retries:
+        while True:
             try:
                 if inner_event.is_set():
                     inner_event.clear()
@@ -76,19 +81,39 @@ async def resilient_stream_generator(
 
                 return
 
-            except (QuotaExceededError, QuotaExceededRetry) as e:
-                retry_count += 1
-                if retry_count > max_retries:
+            except ForbiddenRetry as e:
+                if not retry_on_403:
+                    raise
+
+                retry_403_count += 1
+                if retry_403_count > max_403_retries:
                     logger.error(
-                        f"[{req_id}] Max retries ({max_retries}) exhausted for quota recovery."
+                        f"[{req_id}] Max retries ({max_403_retries}) exhausted for 403 recovery."
+                    )
+                    yield f"data: {json.dumps({'error': 'Max retries exhausted for 403 recovery.'}, ensure_ascii=False)}\n\n"
+                    return
+
+                backoff_seconds = min(2 * retry_403_count, 6)
+                logger.warning(
+                    f"[{req_id}] Upstream 403 detected. Retrying (Attempt {retry_403_count}/{max_403_retries}) after {backoff_seconds}s..."
+                )
+                yield f": retrying after upstream 403 (attempt {retry_403_count})...\n\n"
+                await asyncio.sleep(backoff_seconds)
+                continue
+
+            except (QuotaExceededError, QuotaExceededRetry) as e:
+                quota_retry_count += 1
+                if quota_retry_count > max_quota_retries:
+                    logger.error(
+                        f"[{req_id}] Max retries ({max_quota_retries}) exhausted for quota recovery."
                     )
                     yield f"data: {json.dumps({'error': 'Max retries exhausted for quota recovery.'}, ensure_ascii=False)}\n\n"
                     return
 
                 logger.warning(
-                    f"[{req_id}] Quota limit hit during stream: {str(e)}. Initiating rotation (Attempt {retry_count}/{max_retries})..."
+                    f"[{req_id}] Quota limit hit during stream: {str(e)}. Initiating rotation (Attempt {quota_retry_count}/{max_quota_retries})..."
                 )
-                yield f": processing auth rotation (attempt {retry_count})...\n\n"
+                yield f": processing auth rotation (attempt {quota_retry_count})...\n\n"
 
                 rotation_task = asyncio.create_task(
                     perform_auth_rotation(target_model_id=model_name)
@@ -150,6 +175,10 @@ async def gen_sse_from_aux_stream(
     finish_reason = "stop"
 
     has_started_body = False
+    stream_final_message_only = bool(
+        getattr(request, "stream_final_message_only", False)
+    )
+    retry_on_403 = get_boolean_env("RETRY_ON_403", False)
 
     try:
         async for raw_data in use_stream_response(
@@ -255,7 +284,7 @@ async def gen_sse_from_aux_stream(
             # The Latch: Reasoning Handling
             if len(reason) > last_reason_pos:
                 reason_delta = reason[last_reason_pos:]
-                if not has_started_body:
+                if not has_started_body and not stream_final_message_only:
                     output = {
                         "id": chat_completion_id,
                         "object": "chat.completion.chunk",
@@ -305,23 +334,24 @@ async def gen_sse_from_aux_stream(
                 # Only stream body content if there's actual content after stripping
                 if body_delta.strip():
                     has_started_body = True
-                    output = {
-                        "id": chat_completion_id,
-                        "object": "chat.completion.chunk",
-                        "model": model_name_for_stream,
-                        "created": created_timestamp,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {
-                                    "role": "assistant",
-                                    "content": body_delta,
-                                },
-                                "finish_reason": None,
-                            }
-                        ],
-                    }
-                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                    if not stream_final_message_only:
+                        output = {
+                            "id": chat_completion_id,
+                            "object": "chat.completion.chunk",
+                            "model": model_name_for_stream,
+                            "created": created_timestamp,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": body_delta,
+                                    },
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                        yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
                 last_body_pos = len(body)
 
             if done:
@@ -372,7 +402,8 @@ async def gen_sse_from_aux_stream(
                             }
                         ],
                     }
-                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                    if not stream_final_message_only:
+                        yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
                     full_body_content += fallback_text
                     has_started_body = True
                 elif is_recovering or is_quota_exceeded:
@@ -407,6 +438,24 @@ async def gen_sse_from_aux_stream(
                     }
                 else:
                     finish_reason = "stop"
+                    if stream_final_message_only and full_body_content.strip():
+                        final_content_chunk = {
+                            "id": chat_completion_id,
+                            "object": "chat.completion.chunk",
+                            "model": model_name_for_stream,
+                            "created": created_timestamp,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": full_body_content,
+                                    },
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                        yield f"data: {json.dumps(final_content_chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
                     choice_item = {
                         "index": 0,
                         "delta": {},
@@ -424,6 +473,8 @@ async def gen_sse_from_aux_stream(
                 is_response_finalized = True
                 break
 
+    except ForbiddenRetry:
+        raise
     except (QuotaExceededError, QuotaExceededRetry):
         raise
     except ClientDisconnectedError:
@@ -435,6 +486,12 @@ async def gen_sse_from_aux_stream(
             event_to_set.set()
         raise
     except Exception as e:
+        if (
+            isinstance(e, UpstreamError)
+            and retry_on_403
+            and ("403" in str(e) or "forbidden" in str(e).lower())
+        ):
+            raise ForbiddenRetry(str(e)) from e
         logger.error(f"[{req_id}] Error in stream generator: {e}", exc_info=True)
         try:
             error_chunk = {
@@ -514,6 +571,10 @@ async def gen_sse_from_playwright(
 
     set_request_id(req_id)
     data_receiving = False
+    stream_final_message_only = bool(
+        getattr(request, "stream_final_message_only", False)
+    )
+    retry_on_403 = get_boolean_env("RETRY_ON_403", False)
     try:
         page_controller = PageController(page, logger, req_id)
         # Use get_response_with_function_calls which handles both content and functions
@@ -524,26 +585,43 @@ async def gen_sse_from_playwright(
         function_calls = response_data.get("function_calls", [])
 
         data_receiving = True
-        lines = final_content.split("\n")
-        for line_idx, line in enumerate(lines):
-            try:
-                check_client_disconnected(
-                    f"Playwright stream generator loop ({req_id}): "
-                )
-            except ClientDisconnectedError:
-                if data_receiving and not completion_event.is_set():
-                    completion_event.set()
-                break
-            if line:
-                chunk_size = 5
-                for i in range(0, len(line), chunk_size):
-                    yield generate_sse_chunk(
-                        line[i : i + chunk_size], req_id, model_name_for_stream
+        if stream_final_message_only:
+            if final_content.strip():
+                output = {
+                    "id": f"chatcmpl-{req_id}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name_for_stream,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "content": final_content},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+        else:
+            lines = final_content.split("\n")
+            for line_idx, line in enumerate(lines):
+                try:
+                    check_client_disconnected(
+                        f"Playwright stream generator loop ({req_id}): "
                     )
-                    await asyncio.sleep(0.03)
-            if line_idx < len(lines) - 1:
-                yield generate_sse_chunk("\n", req_id, model_name_for_stream)
-                await asyncio.sleep(0.01)
+                except ClientDisconnectedError:
+                    if data_receiving and not completion_event.is_set():
+                        completion_event.set()
+                    break
+                if line:
+                    chunk_size = 5
+                    for i in range(0, len(line), chunk_size):
+                        yield generate_sse_chunk(
+                            line[i : i + chunk_size], req_id, model_name_for_stream
+                        )
+                        await asyncio.sleep(0.03)
+                if line_idx < len(lines) - 1:
+                    yield generate_sse_chunk("\n", req_id, model_name_for_stream)
+                    await asyncio.sleep(0.01)
 
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages], final_content, ""
@@ -588,6 +666,8 @@ async def gen_sse_from_playwright(
             yield generate_sse_stop_chunk(
                 req_id, model_name_for_stream, "stop", usage_stats
             )
+    except ForbiddenRetry:
+        raise
     except (QuotaExceededError, QuotaExceededRetry):
         raise
     except ClientDisconnectedError:
@@ -598,6 +678,12 @@ async def gen_sse_from_playwright(
             completion_event.set()
         raise
     except Exception as e:
+        if (
+            isinstance(e, UpstreamError)
+            and retry_on_403
+            and ("403" in str(e) or "forbidden" in str(e).lower())
+        ):
+            raise ForbiddenRetry(str(e)) from e
         logger.error(
             f"[{req_id}] Error in Playwright stream generator: {e}", exc_info=True
         )

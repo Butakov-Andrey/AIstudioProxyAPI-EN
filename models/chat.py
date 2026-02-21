@@ -73,6 +73,10 @@ class ChatCompletionRequest(BaseModel):
     messages: List[Message]
     model: Optional[str] = MODEL_NAME
     stream: Optional[bool] = False
+    # Streaming mode option:
+    # - false (default): normal delta streaming
+    # - true: emit only one final assistant content chunk at completion
+    stream_final_message_only: Optional[bool] = False
     temperature: Optional[float] = None
     max_output_tokens: Optional[int] = None
     stop: Optional[Union[str, List[str]]] = None

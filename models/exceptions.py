@@ -146,6 +146,11 @@ class EmptyResponseError(UpstreamError):
 class QuotaExceededRetry(Exception):
     pass
 
+
+class ForbiddenRetry(Exception):
+    """Transient upstream 403 retry signal."""
+    pass
+
 # Timeout Errors
 class TimeoutError(AIStudioProxyError):
     def __init__(self, message: str, http_status: int = 504, **kwargs):

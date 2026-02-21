@@ -3,6 +3,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        PROXY_ADDR: ${PROXY_ADDR:-}
     container_name: ai-studio-proxy-container
     mem_limit: ${DOCKER_MEMORY_LIMIT:-0}
     memswap_limit: ${DOCKER_MEMSWAP_LIMIT:-0}
@@ -28,6 +30,7 @@ services:
       # 这些环境变量会覆盖 .env 文件中的设置
       # 如果您想使用 .env 文件，可以注释掉这些行
       - PYTHONUNBUFFERED=1
+      - INTERNAL_CAMOUFOX_PROXY=${INTERNAL_CAMOUFOX_PROXY:-}
       # - PORT=${PORT:-8000}
       # - DEFAULT_FASTAPI_PORT=${DEFAULT_FASTAPI_PORT:-2048}
       # - DEFAULT_CAMOUFOX_PORT=${DEFAULT_CAMOUFOX_PORT:-9222}

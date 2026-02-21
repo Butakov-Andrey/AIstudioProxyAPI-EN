@@ -103,6 +103,18 @@ DEFAULT_AUTH_SAVE_TIMEOUT = int(
 DEFAULT_SERVER_LOG_LEVEL = os.environ.get(
     "SERVER_LOG_LEVEL", "INFO"
 )  # Server log level
+DEFAULT_RETRY_ON_403_ENABLED = os.environ.get("RETRY_ON_403", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+try:
+    DEFAULT_RETRY_ON_403_MAX_ATTEMPTS = int(
+        os.environ.get("RETRY_ON_403_MAX_ATTEMPTS", "3")
+    )
+except (ValueError, TypeError):
+    DEFAULT_RETRY_ON_403_MAX_ATTEMPTS = 3
 AUTH_PROFILES_DIR = os.path.join(os.path.dirname(__file__), "auth_profiles")
 ACTIVE_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "active")
 SAVED_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "saved")
@@ -713,17 +725,24 @@ def determine_proxy_configuration(internal_camoufox_proxy_arg=None):
 
     # 1. Prefer command line arguments
     if internal_camoufox_proxy_arg is not None:
-        if internal_camoufox_proxy_arg.strip():  # Non-empty string
-            result["camoufox_proxy"] = internal_camoufox_proxy_arg.strip()
-            result["stream_proxy"] = internal_camoufox_proxy_arg.strip()
+        proxy_arg = internal_camoufox_proxy_arg.strip()
+        if proxy_arg:  # Non-empty string
+            if proxy_arg.lower() in {"off", "none", "disable", "disabled", "false"}:
+                result["source"] = (
+                    f"Command line arg --internal-camoufox-proxy={proxy_arg} (explicitly disabled)"
+                )
+                return result
+
+            result["camoufox_proxy"] = proxy_arg
+            result["stream_proxy"] = proxy_arg
             result["source"] = (
-                f"Command line arg --internal-camoufox-proxy: {internal_camoufox_proxy_arg.strip()}"
+                f"Command line arg --internal-camoufox-proxy: {proxy_arg}"
             )
-        else:  # Empty string, explicitly disable proxy
-            result["source"] = (
-                "Command line arg --internal-camoufox-proxy='' (explicitly disabled)"
-            )
-        return result
+            return result
+
+        # Empty string appears in some container launchers when an optional env var is
+        # expanded into the CLI argument. Treat it as "not provided" and continue to
+        # environment/system fallback sources.
 
     # 2. Try env var UNIFIED_PROXY_CONFIG (priority over HTTP/HTTPS_PROXY)
     unified_proxy = os.environ.get("UNIFIED_PROXY_CONFIG")
@@ -903,6 +922,26 @@ if __name__ == "__main__":
         "--trace-logs",
         action="store_true",
         help="Enable TRACE level more detailed logs inside server.py (env TRACE_LOGS_ENABLED).",
+    )
+    retry_403_group = parser.add_mutually_exclusive_group()
+    retry_403_group.add_argument(
+        "--retry-on-403",
+        dest="retry_on_403",
+        action="store_true",
+        help="Enable retry on transient upstream HTTP 403 errors.",
+    )
+    retry_403_group.add_argument(
+        "--no-retry-on-403",
+        dest="retry_on_403",
+        action="store_false",
+        help="Disable retry on upstream HTTP 403 errors.",
+    )
+    parser.set_defaults(retry_on_403=DEFAULT_RETRY_ON_403_ENABLED)
+    parser.add_argument(
+        "--retry-on-403-max-attempts",
+        type=int,
+        default=DEFAULT_RETRY_ON_403_MAX_ATTEMPTS,
+        help="Max retry attempts for upstream HTTP 403 errors.",
     )
 
     args = parser.parse_args()
@@ -1701,6 +1740,9 @@ if __name__ == "__main__":
     os.environ["AUTH_SAVE_TIMEOUT"] = str(args.auth_save_timeout)
     os.environ["SERVER_PORT_INFO"] = str(args.server_port)
     os.environ["STREAM_PORT"] = str(args.stream_port)
+    retry_403_max_attempts = max(1, int(args.retry_on_403_max_attempts))
+    os.environ["RETRY_ON_403"] = str(args.retry_on_403).lower()
+    os.environ["RETRY_ON_403_MAX_ATTEMPTS"] = str(retry_403_max_attempts)
 
     # Set unified proxy configuration env var
     proxy_config = determine_proxy_configuration(args.internal_camoufox_proxy)
@@ -1740,6 +1782,8 @@ if __name__ == "__main__":
         "HELPER_ENDPOINT",
         "HELPER_SAPISID",
         "STREAM_PORT",
+        "RETRY_ON_403",
+        "RETRY_ON_403_MAX_ATTEMPTS",
         "UNIFIED_PROXY_CONFIG",  # Added unified proxy config
     ]
     for key in env_keys_to_log:

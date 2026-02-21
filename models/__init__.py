@@ -10,6 +10,7 @@ from .chat import (
 # Exception classes
 from .exceptions import (
     ClientDisconnectedError,
+    ForbiddenRetry,
     QuotaExceededError,
     QuotaExceededRetry,
     UpstreamError,
@@ -27,6 +28,7 @@ __all__ = [
     "ChatCompletionRequest",
     # Exceptions
     "ClientDisconnectedError",
+    "ForbiddenRetry",
     "QuotaExceededError",
     "QuotaExceededRetry",
     "UpstreamError",

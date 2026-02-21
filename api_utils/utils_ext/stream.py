@@ -34,10 +34,12 @@ async def use_stream_response(
         LAST_CHAT_TURN_SELECTOR,
         SCROLL_CONTAINER_SELECTOR,
         UI_GENERATION_WAIT_TIMEOUT_MS,
+        get_boolean_env,
     )
     from config.global_state import GlobalState
     from models import (
         ClientDisconnectedError,
+        ForbiddenRetry,
         QuotaExceededError,
         UpstreamError,
     )
@@ -204,9 +206,22 @@ async def use_stream_response(
                     if actual_data.get("error"):
                         status = actual_data.get("status", 500)
                         message = actual_data.get("message", "Unknown error")
+                        status_str = str(status)
+                        message_lower = message.lower()
+                        is_forbidden = (
+                            status == 403
+                            or status_str == "403"
+                            or "403" in status_str
+                            or "403" in message
+                            or "forbidden" in message_lower
+                        )
                         if status == 429 or "quota" in message.lower():
                             raise QuotaExceededError(
                                 f"AI Studio quota exceeded: {message}", req_id=req_id
+                            )
+                        if is_forbidden and get_boolean_env("RETRY_ON_403", False):
+                            raise ForbiddenRetry(
+                                f"AI Studio 403 Forbidden: {message}"
                             )
                         else:
                             raise UpstreamError(

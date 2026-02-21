@@ -34,7 +34,9 @@ from config import (
     RESPONSE_COMPLETION_TIMEOUT,
     SUBMIT_BUTTON_SELECTOR,
     UPLOAD_FILES_DIR,
+    get_boolean_env,
     get_environment_variable,
+    get_int_env,
 )
 from config.global_state import GlobalState
 
@@ -45,6 +47,7 @@ from logging_utils import log_context
 from models import (
     ChatCompletionRequest,
     ClientDisconnectedError,
+    ForbiddenRetry,
     QuotaExceededError,
     QuotaExceededRetry,
 )
@@ -693,23 +696,49 @@ async def process_request_with_retry(
 
     logger = state.logger
 
-    max_retries = 3
-    attempt = 0
-    while attempt < max_retries:
-        attempt += 1
+    max_quota_retries = 3
+    quota_attempt = 0
+    retry_on_403 = get_boolean_env("RETRY_ON_403", False)
+    max_403_retries = max(1, get_int_env("RETRY_ON_403_MAX_ATTEMPTS", 3))
+    retry_403_attempt = 0
+
+    while True:
         try:
             return await _process_request_refactored(
                 req_id, request, http_request, result_future
             )
         except QuotaExceededRetry:
+            quota_attempt += 1
+            if quota_attempt >= max_quota_retries:
+                logger.error(
+                    f"[{req_id}] Request failed after {max_quota_retries} retries due to quota."
+                )
+                raise Exception(
+                    f"Request failed after {max_quota_retries} retries due to quota issues."
+                )
             logger.warning(
-                f"[{req_id}] Quota wall hit (attempt {attempt}/{max_retries}). Waiting for rotation..."
+                f"[{req_id}] Quota wall hit (attempt {quota_attempt}/{max_quota_retries}). Waiting for rotation..."
             )
             await GlobalState.rotation_complete_event.wait()
             logger.info(f"[{req_id}] Rotation complete. Retrying request.")
             continue
-    logger.error(f"[{req_id}] Request failed after {max_retries} retries due to quota.")
-    raise Exception(f"Request failed after {max_retries} retries due to quota issues.")
+        except ForbiddenRetry as e:
+            if not retry_on_403:
+                raise
+            retry_403_attempt += 1
+            if retry_403_attempt > max_403_retries:
+                logger.error(
+                    f"[{req_id}] Request failed after {max_403_retries} retries due to upstream 403."
+                )
+                raise Exception(
+                    f"Request failed after {max_403_retries} retries due to upstream 403."
+                ) from e
+            backoff_seconds = min(2 * retry_403_attempt, 6)
+            logger.warning(
+                f"[{req_id}] Upstream 403 detected (attempt {retry_403_attempt}/{max_403_retries}). Retrying after {backoff_seconds}s..."
+            )
+            await asyncio.sleep(backoff_seconds)
+            continue
 
 
 async def process_request(
